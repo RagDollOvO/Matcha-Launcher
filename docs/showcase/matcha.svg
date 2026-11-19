@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="266" viewBox="0 0 1080 266" role="img" aria-labelledby="title desc">
+  <title id="title">Matcha · 求生之路 2 启动器</title>
+  <desc id="desc">深松绿色封面，右侧是一只印着播放键的抹茶碗，碗口浮着四片茶叶。</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2=".3" gradientUnits="objectBoundingBox"><stop stop-color="#102e2d"/><stop offset="1" stop-color="#214b40"/></linearGradient>
+    <clipPath id="clip"><rect width="1080" height="266" rx="18"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect width="1080" height="266" fill="url(#bg)"/>
+    <g fill="none" stroke="#447363" stroke-width="1" opacity=".56">
+      <path d="M608-12c156 41 156 124 302 123s148 47 214 63M643-13c138 30 161 109 281 108s155 43 204 58M691-12c103 24 156 92 253 92s130 28 188 41M755-12c81 29 124 76 211 76s120 22 169 32"/>
+      <path d="M452 289c112-73 191-78 286-45s176 51 269 24 120-38 143-31M484 292c110-66 182-65 268-34s182 48 265 23M414 288c134-87 214-94 324-56s174 49 265 22 116-42 146-36"/>
+    </g>
+    <g transform="translate(50 0)">
+      <g fill="#b3dca4"><circle cx="4" cy="41" r="3.4"/><circle cx="16" cy="41" r="3.4"/><circle cx="28" cy="41" r="3.4"/><circle cx="40" cy="41" r="3.4"/></g>
+      <text x="59" y="45" font-family="Consolas,monospace" font-size="13" letter-spacing="2.6" fill="#bdd7c4">LEFT 4 DEAD 2</text>
+      <text x="-4" y="151" font-family="Georgia,'Times New Roman',serif" font-style="italic" font-weight="bold" font-size="103" letter-spacing="-5" fill="#f5f3dc">Matcha</text>
+      <text x="3" y="202" font-family="'Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="29" font-weight="bold" letter-spacing="2" fill="#e0edce">求生之路 2 启动器</text>
+    </g>
+    <g transform="translate(820 129) rotate(-7)">
+      <ellipse cx="11" cy="93" rx="112" ry="9" fill="#15382f"/>
+      <path d="M-96-4 Q-89 64 -38 78 Q0 91 42 76 Q92 56 100-4Z" fill="#e3e5b9"/>
+      <path d="M-79 26 Q-59 68 -22 73" stroke="#b3c499" fill="none" stroke-width="5" stroke-linecap="round"/>
+      <path d="M-33 78q33 11 68-1l-3 8q-30 14-60 0z" fill="#b3c499"/>
+      <ellipse cy="-4" rx="99" ry="26" fill="#eff1cb"/>
+      <ellipse cy="-3" rx="89" ry="19" fill="#8eb57e"/>
+      <path d="M-54-7q44-16 85-2m-66 6q27-8 53-2" fill="none" stroke="#c6d994" stroke-width="3" stroke-linecap="round"/>
+      <path d="M-6 26q-4-2-4 3v29q0 4 4 2l24-15q4-3 0-5z" fill="#39634d"/>
+      <g fill="#bed991"><path d="M8-41q0-26 31-39-2 27-31 39z"/><path d="M4-43q-23-3-27-26 23 2 27 26z"/><path d="M43-79q3-19 26-22-5 18-26 22z"/><path d="M29-92q-15-5-14-24 17 7 14 24z"/></g>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+# GitHub Releases → Generate release notes. Unlabelled PRs appear in the last group.
+changelog:
+  categories:
+    - title: 新功能与使用体验
+      labels: [enhancement]
+    - title: 问题修复
+      labels: [bug]
+    - title: 文档与使用说明
+      labels: [documentation]
+    - title: 其他改动
+      labels: ['*']
