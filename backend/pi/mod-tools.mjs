@@ -32,7 +32,12 @@ export function extraModTools(request) {
   read('mod_compare', '核实 Mod 资源差异', '对选中的两个 Mod 逐字节比较同路径游戏资源，分开返回相同、不同和各自独有资源。nextOffset 非 null 时继续分页，合并所有页后判断整体。', 'compare',
     { a: text('第一个 Mod ID。'), b: text('第二个 Mod ID。'), ...paging,
       expectedVersion: { ...object({ a: { type: 'array', items: { type: 'string' } }, b: { type: 'array', items: { type: 'string' } } }), required: ['a', 'b'], description: '翻页时传入第一页返回的 sourceVersion。' } }, ['a', 'b']);
-  write('mod_mark', '收藏与整理标记', '批量设置收藏或已整理标记。保留其他标记；收藏会移出新下载。保存前显示清单，支持整理记录撤销。',
+  read('mod_favorite_collections', '查看收藏合集', '查看收藏页的合集、数量以及已收藏 Mod 的 ID、名称和所属合集。提供 collectionId 只列该合集成员。', 'favorite-collections',
+    { collectionId: text('收藏合集 ID，可省略。') });
+  write('mod_favorite_collection', '整理收藏合集', '管理 Mod 收藏页：创建（可带成员）、重命名、加入、移出、删除合集。同一 Mod 可加入多个合集。加入时自动收藏；移出或删除合集保留星标。支持撤销。',
+    'metadata-preview', 'metadata', { action: { type: 'string', enum: ['create', 'rename', 'add', 'remove', 'delete'] }, collectionId: text('已有合集 ID，创建时省略。'),
+      name: text('创建或重命名时填写的合集名称。'), modIds: ids('加入或移出的 Mod ID；新建空合集时省略。') }, ['action'], p => p.lines.join('\n'), { kind: 'favorite-collection' });
+  write('mod_mark', '收藏与整理标记', '批量设置收藏或已整理标记。收藏会移出新下载，取消收藏也会移出各收藏合集。保存前显示清单，支持整理记录撤销。',
     'metadata-preview', 'metadata', { modIds: ids('Mod ID。'), favorite: { type: 'boolean' }, sorted: { type: 'boolean', description: 'true 标记已整理；false 放回新下载。' } }, ['modIds'], p => p.lines.join('\n\n'), { kind: 'mark' });
   write('mod_rename', '修改 Mod 显示名', '在 Matcha 内单个或批量改名，包括工坊及独立库 VPK。每项给 name（新名字，null 恢复当前原名）或 prefix（如 [近战]，加在原名前，可重复执行）。预览改前改后，一批可一起撤销；保留 VPK 与分类。',
     'metadata-preview', 'metadata', { items: { type: 'array', minItems: 1, maxItems: 256, items: { ...object({ modId: text('mod_inventory 中的 Mod ID。'),

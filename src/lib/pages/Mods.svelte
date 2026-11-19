@@ -12,6 +12,7 @@
   import Upload from '@lucide/svelte/icons/upload';
   import Folder from '@lucide/svelte/icons/folder';
   import FolderPlus from '@lucide/svelte/icons/folder-plus';
+  import Layers from '@lucide/svelte/icons/layers';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import FolderInput from '@lucide/svelte/icons/folder-input';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -39,6 +40,7 @@
   import SoundList from '../components/SoundList.svelte';
   import TrashView from '../components/TrashView.svelte';
   import WorkshopDialog from '../components/WorkshopDialog.svelte';
+  import FavoriteCollectionDialog from '../components/FavoriteCollectionDialog.svelte';
   import QuickTest from '../components/QuickTest.svelte';
   import type { MenuItem, MenuState } from '../components/menu';
   import { app, ROOT, FAV, INBOX, TRASH, workshopLink, mib } from '../stores/app.svelte';
@@ -46,7 +48,7 @@
   import { looksLikeWorkshop } from '../workshop';
   import { browser } from '../browser/browser.svelte';
   import { CREATOR_LABEL } from '../browser/trail';
-  import type { Mod, Profile } from '../types';
+  import type { FavoriteCollection, Mod, Profile } from '../types';
   import { desktop, pickVpk, pickDirectory, errorText, onFileDrop } from '../api/bridge';
 
   type Edit = { kind: 'profile' | 'new-profile' | 'category'; id?: string; where?: 'side' | 'main' } | null;
@@ -76,6 +78,11 @@
 
   // ---------- 当前位置：某个分类，或侧栏「库」里的收藏 / 新下载 / 回收站 ----------
   const inFav = $derived(f.category === FAV);
+  let collectionId = $state('');
+  let collectionDialog = $state<{ mode: 'create' | 'add' | 'rename'; group?: FavoriteCollection; seed?: string[] } | null>(null);
+  const collection = $derived(inFav ? app.favoriteCollections.find(c => c.id === collectionId) : undefined);
+  const favorites = $derived(app.mods.filter(m => app.isFavorite(m.id)));
+  const shelves = $derived(app.favoriteCollections.map(c => ({ group: c, members: favorites.filter(m => c.modIds.includes(m.id)) })));
   const inInbox = $derived(f.category === INBOX);
   const inTrash = $derived(f.category === TRASH);
   /** 收藏、新下载这类跨分类的视图 */
@@ -94,11 +101,11 @@
   const flat = $derived(smart || !!f.q.trim() || fstatus !== 'all');
   const scope = $derived(app.subtree(cur));
   const scopeMods = $derived(
-    inFav ? app.mods.filter((m) => app.isFavorite(m.id))
+    inFav ? collection ? favorites.filter(m => collection.modIds.includes(m.id)) : favorites
     : inInbox ? app.mods.filter((m) => app.isInbox(m.id))
     : app.mods.filter((m) => scope.has(app.folderOf(m))),
   );
-  const favCount = $derived(app.mods.filter((m) => app.isFavorite(m.id)).length);
+  const favCount = $derived(favorites.length);
   const inboxCount = $derived(app.mods.filter((m) => app.isInbox(m.id)).length);
   const downloading = $derived(app.tasks.filter((t) => t.kind === 'download' && !['done', 'failed', 'canceled'].includes(t.state)).length);
   const packing = $derived(app.tasks.filter(t => t.kind === 'pack' && t.gameRoot.toLowerCase() === app.game.root.toLowerCase() && !['done', 'failed', 'canceled'].includes(t.state)));
@@ -195,7 +202,7 @@
   ]);
   /** 库视图的标题副行 */
   const libSub = $derived(
-    inFav ? `${f.q.trim() ? `搜索结果 ${rows.length} 项 · ` : ''}${favCount} 个 Mod · 收藏所有方案共用，不改变任何方案`
+    inFav ? `${f.q.trim() ? `搜索结果 ${rows.length} 项 · ` : ''}${favCount} 个收藏 · ${shelves.length} 个合集`
     : inInbox ? `${f.q.trim() ? `搜索结果 ${rows.length} 项 · ` : ''}${inboxCount} 个待整理${downloading ? ` · ${downloading} 个正在下载` : ''} · 加入方案、移到分类或收藏后离开这里`
     : `${app.trash.length} 项${app.trash.length ? ` · ${mib(trashSize)}` : ''} · 放在 left4dead2\\.matcha-trash，不参与扫描和方案应用`,
   );
@@ -204,8 +211,43 @@
   function go(id: string) {
     if (id !== f.category) { selected = []; anchor = null; if (edit?.kind === 'category') edit = null; }
     f.category = id;
+    if (id === FAV) { collectionId = ''; selected = []; anchor = null; detailId = null; }
     if (id !== FAV && id !== INBOX && id !== TRASH) lastPlace = id;
     for (const c of app.categoryPath(id)) expanded.add(c.id);
+  }
+  function openCollection(id: string) {
+    go(FAV); collectionId = id; f.q = '';
+  }
+  $effect(() => {
+    if (!inFav) return;
+    const allowed = new Set(scopeMods.map(m => m.id));
+    if (selected.some(id => !allowed.has(id))) selected = selected.filter(id => allowed.has(id));
+    if (detailId && !allowed.has(detailId)) detailId = null;
+  });
+  async function membership(c: FavoriteCollection, ids: string[], add: boolean) {
+    if (await app.editFavoriteCollection({ action: add ? 'add' : 'remove', collectionId: c.id, modIds: ids }))
+      app.toast((add ? '已加入' : '已移出') + '「' + c.name + '」');
+  }
+  function collectionItems(ids: string[]): MenuItem[] {
+    return [
+      ...app.favoriteCollections.map((c): MenuItem => {
+        const count = ids.filter(id => c.modIds.includes(id)).length, all = count === ids.length;
+        return { label: c.name, checked: all || (count ? 'mixed' : false), hint: all ? '移出' : '加入', run: () => void membership(c, ids, !all) };
+      }),
+      ...(app.favoriteCollections.length ? [{kind: 'sep' as const}] : []),
+      { label: '新建合集…', icon: FolderPlus, run: () => collectionDialog = { mode: 'create', seed: [...ids] } },
+    ];
+  }
+  function manageCollection(c: FavoriteCollection): MenuItem[] {
+    return [
+      { label: '添加成员…', icon: Plus, run: () => collectionDialog = { mode: 'add', group:c } },
+      { label: '重命名合集…', icon: Pencil, run: () => collectionDialog = { mode: 'rename', group:c } },
+      { kind:'sep' }, { label:'删除合集…', icon:Trash, danger:true, run: async () => {
+        if (await app.confirm('删除「' + c.name + '」？', '合集中的 Mod 仍会保留在「全部收藏」。', '删除合集')) {
+          if (await app.editFavoriteCollection({action:'delete', collectionId:c.id})) openCollection('');
+        }
+      } },
+    ];
   }
   function up() { go(curPath.at(-2)?.id ?? ROOT); }
   /** 侧栏点方案：编辑这个方案；在库视图里时回到之前的分类 */
@@ -251,7 +293,7 @@
   }
   /** 在 Mod 页按 Ctrl+V：剪贴板里是工坊链接就直接打开下载对话框 */
   function onPaste(e: ClipboardEvent) {
-    if (quickTest || workshop || menu || app.confirmation || edit || (e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
+    if (quickTest || workshop || collectionDialog || menu || app.confirmation || edit || (e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
     const text = e.clipboardData?.getData('text') ?? '';
     if (!looksLikeWorkshop(text)) return;
     e.preventDefault();
@@ -415,6 +457,7 @@
     items.push(
       { label: '快速实测', icon: Play, disabled: app.game.installed ? false : '请先选择游戏目录', run: () => openTest(ids) },
       { label: allFav ? '取消收藏' : '收藏', icon: Star, hint: 'F', run: () => app.setFavorite(ids, !allFav) },
+      { label: '收藏合集', icon: Layers, items: collectionItems(ids) },
       { kind: 'sep' },
       { label: '加入方案', icon: ListChecks, disabled: mods.every(isPkg) ? '平台更新包不进方案' : false, items: mods.every(isPkg) ? undefined : profileItems(ids) },
       { label: '移到分类', icon: FolderInput, items: categoryItems(ids) },
@@ -498,6 +541,7 @@
     if (!drag) return false;
     if (key === FAV) return !drag.folder && drag.ids.some((id) => !app.isFavorite(id));
     const id = key.slice(2);
+    if (key.startsWith('g:')) return !drag.folder && !app.busy && app.favoriteCollections.some(c => c.id === id && drag!.ids.some(m => !c.modIds.includes(m)));
     if (key.startsWith('p:')) {
       const p = app.profile(id);
       return !!p && drag.ids.some((m) => !p.modIds.includes(m) && !app.mod(m)?.error && !isPkg(app.mod(m)));
@@ -534,6 +578,7 @@
       setTimeout(() => (suppressClick = false));
       const key = drag.over;
       if (key === FAV) app.setFavorite(drag.ids.filter((id) => !app.isFavorite(id)), true);
+      else if (key?.startsWith('g:')) { const c = app.favoriteCollections.find(c => c.id === key.slice(2)); if (c) void membership(c, drag.ids, true); }
       else if (key?.startsWith('p:')) setInProfile(drag.ids, key.slice(2), true);
       else if (key) {
         if (drag.folder) app.moveCategory(drag.folder, key.slice(2));
@@ -557,6 +602,7 @@
     const k = drag.over;
     if (!k) return drag.folder ? `${what} · 拖到分类或方案上` : `${what} · 拖到分类、方案或收藏上`;
     if (k === FAV) return `${what} 加入收藏`;
+    if (k.startsWith('g:')) return what + ' 加入合集「' + app.favoriteCollections.find(c => c.id === k.slice(2))?.name + '」';
     if (k.startsWith('p:')) {
       const name = app.profile(k.slice(2))?.name;
       return drag.folder ? `把${what}里的 Mod 加入「${name}」` : `${what} 加入方案「${name}」`;
@@ -597,7 +643,7 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (quickTest || menu || workshop || app.confirmation || edit || (e.target as Element).closest?.('input, select, textarea')) return;
+    if (quickTest || menu || workshop || collectionDialog || app.confirmation || edit || (e.target as Element).closest?.('input, select, textarea')) return;
     if (e.key === 'Escape') {
       if (drag) endDrag();
       else if (player.key) player.stop();
@@ -606,7 +652,7 @@
     }
     // 空格停播；聚焦在卡片上时由卡片自己处理
     if (e.key === ' ' && player.key && !(e.target as Element).closest?.('.tile, .row, button')) { e.preventDefault(); player.stop(); }
-    if (e.key === 'Backspace' && (lib || cur !== ROOT)) { e.preventDefault(); if (lib) go(lastPlace); else up(); }
+    if (e.key === 'Backspace' && (lib || cur !== ROOT)) { e.preventDefault(); if (collection) openCollection(''); else if (lib) go(lastPlace); else up(); }
     if (inTrash) return;
     if (e.key === 'Delete') {
       const ids = selected.length ? selected : detailId ? [detailId] : [];
@@ -751,7 +797,8 @@
       <div class="acts">
         <button class="icon-btn" title="重新扫描 addons 目录" aria-label="重新扫描" disabled={!!app.busy || app.refreshing} onclick={() => app.refresh()}><RefreshCw size={15} class={app.refreshing ? 'spin' : ''} /></button>
         {#if inFav}
-          <button class="btn ghost" title="把全部收藏建成一个新方案" disabled={!favCount || !!app.busy} onclick={() => newProfileWith(app.favoriteIds())}><ListChecks size={14} />用收藏新建方案</button>
+          <button class="btn ghost" disabled={!scopeMods.length || !!app.busy} onclick={() => newProfileWith(scopeMods.map(m => m.id))}><ListChecks size={14} />{collection ? '用合集新建方案' : '用收藏新建方案'}</button>
+          <button class="btn primary" disabled={!!app.busy} onclick={() => collectionDialog = {mode:'create', seed:[...selected]}}><Plus size={15}/>新建合集</button>
         {:else if inInbox}
           <button class="btn ghost" disabled={!inboxCount} onclick={() => app.markSorted(app.inboxIds())}><CheckCheck size={14} />全部标记已整理</button>
           <button class="btn" disabled={!!workshopBlock} title={workshopBlock || '粘贴创意工坊链接下载（Ctrl+V）'} onclick={() => openWorkshop()}><Link size={14} />工坊链接</button>
@@ -778,6 +825,25 @@
     {#if inTrash}
       <TrashView />
     {:else}
+    {#if inFav && shelves.length}
+      <nav class="shelf" aria-label="收藏合集">
+        <div class="shelf-scroll">
+          <button class="shelf-tab" class:active={!collection} aria-pressed={!collection} onclick={() => openCollection('')}><Star size={14}/><span>全部收藏</span><small>{favCount}</small></button>
+          {#each shelves as {group, members} (group.id)}
+            <button class="shelf-tab" class:active={collection?.id === group.id} aria-pressed={collection?.id === group.id}
+              class:drop={drag?.over === 'g:' + group.id} data-drop={'g:' + group.id} title={group.name}
+              onclick={() => { if (!suppressClick) openCollection(group.id); }} oncontextmenu={(e) => menuAt(e, manageCollection(group))}>
+              {#if members[0]}<span class="shelf-cover"><ModThumb mod={members[0]}/></span>{:else}<Layers size={15}/>{/if}
+              <span>{group.name}</span><small>{members.length}</small>
+            </button>
+          {/each}
+        </div>
+        {#if collection}<div class="shelf-actions">
+          <button class="btn ghost" disabled={!!app.busy} onclick={() => collectionDialog = {mode:'add',group:collection}}><Plus size={14}/>添加成员</button>
+          <button class="icon-btn" title="管理合集" aria-label="管理合集" onclick={(e) => menuBelow(e.currentTarget, manageCollection(collection!))}><Ellipsis size={16}/></button>
+        </div>{/if}
+      </nav>
+    {/if}
     {#if selected.length}
       <div class="toolbar bulk">
         <span class="picked">已选 <b class="mono">{selected.length}</b> 项</span>
@@ -786,6 +852,7 @@
           <button class="btn" disabled={!!app.busy} onclick={() => setInProfile(selected, prof.id, false)}>停用</button>
         {/if}
         {#if inInbox}<button class="btn" onclick={() => app.markSorted(selected)}><CheckCheck size={14} />标记已整理</button>{/if}
+        {#if inFav}<button class="btn" onclick={(e) => menuBelow(e.currentTarget, collectionItems([...selected]))}><Layers size={14} />收藏合集<ChevronDown size={13}/></button>{/if}
         <button class="btn" onclick={() => app.setFavorite(selected, !selAllFav)}><Star size={14} fill={selAllFav ? 'currentColor' : 'none'} />{selAllFav ? '取消收藏' : '收藏'}</button>
         <button class="btn" onclick={(e) => menuBelow(e.currentTarget, profileItems(selected))}><ListChecks size={14} />加入方案<ChevronDown size={13} /></button>
         <button class="btn" onclick={(e) => menuBelow(e.currentTarget, categoryItems(selected))}><FolderInput size={14} />移到分类<ChevronDown size={13} /></button>        <button class="icon-btn del" title={deleteBlock || '删除（移到回收站）'} aria-label="删除" disabled={!!deleteBlock} onclick={() => void removeMods([...selected])}><Trash size={15} /></button>
@@ -806,7 +873,7 @@
         <span class="grow"></span>
         <label class="search">
           <Search size={14} />
-          <input placeholder={inFav ? '在收藏里搜索' : inInbox ? '在新下载里搜索' : cur === ROOT ? '搜索名称、文件名、作者' : `在「${catName(cur)}」里搜索`} bind:value={f.q} />
+          <input placeholder={collection ? '在这个合集里搜索' : inFav ? '在收藏里搜索' : inInbox ? '在新下载里搜索' : cur === ROOT ? '搜索名称、文件名、作者' : `在「${catName(cur)}」里搜索`} bind:value={f.q} />
           {#if f.q}<button class="clear" aria-label="清空搜索" onclick={() => (f.q = '')}><X size={13} /></button>{/if}
         </label>
         <span class="sort">
@@ -856,7 +923,10 @@
     <div class="content" class:lib role="presentation" oncontextmenu={(e) => { if (!(e.target as Element).closest('.tile, .row')) menuAt(e, areaItems()); }}>
       {#if !rows.length && !folders.length}
         <div class="empty">
-          {#if inFav && !f.q.trim()}
+          {#if collection && !f.q.trim()}
+            <Layers size={28} strokeWidth={1.25}/><p>「{collection.name}」还是空的</p>
+            <button class="btn" onclick={() => collectionDialog = { mode:'add', group:collection }}><Plus size={14}/>从收藏添加</button>
+          {:else if inFav && !f.q.trim()}
             <Star size={28} strokeWidth={1.25} />
             <p>还没有收藏的 Mod</p>
             <span>点卡片右上角的星标，按 F，或者右键选择「收藏」</span>
@@ -1168,9 +1238,20 @@
   {#if menu}<Menu items={menu.items} x={menu.x} y={menu.y} onclose={closeMenu} />{/if}
 {/key}
 {#if workshop}<WorkshopDialog initial={workshop.text} onclose={() => (workshop = null)} />{/if}
+{#if collectionDialog}<FavoriteCollectionDialog {...collectionDialog} onclose={() => collectionDialog = null} onsaved={id => { collectionDialog = null; openCollection(id); }} />{/if}
 {#if quickTest}<QuickTest seed={quickTest.seed} onclose={()=>quickTest=null}/>{/if}
 
 <style>
+  .shelf,.shelf-scroll,.shelf-tab,.shelf-actions { display:flex; align-items:center; }
+  .shelf { gap:8px; margin:0 20px 10px; border-bottom:1px solid var(--line); }
+  .shelf-scroll { min-width:0; flex:1; gap:5px; overflow-x:auto; scrollbar-width:thin; }
+  .shelf-tab { position:relative; flex:none; gap:7px; height:40px; padding:0 10px; color:var(--fg-3); font-size:13px; }
+  .shelf-tab > span:not(.shelf-cover) { max-width:160px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .shelf-tab:hover,.shelf-tab.active { color:var(--fg); }
+  .shelf-tab.active::after { content:''; position:absolute; bottom:0; height:2px; border-radius:2px; inset-inline:8px; background:var(--md-primary); }
+  .shelf-tab small { color:var(--fg-3); font:11px var(--font-mono,monospace); }
+  .shelf-cover { flex:none; width:22px; height:22px; position:relative; overflow:hidden; border-radius:5px; }
+  .shelf-actions { flex:none; gap:1px; } .shelf-actions .btn { font-size:12px; white-space:nowrap; }
   .mods { position: absolute; inset: 0; display: flex; }
   .btn:disabled, .icon-btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
   .grow { flex: 1; }

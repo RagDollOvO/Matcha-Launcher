@@ -145,6 +145,12 @@ export interface ModMeta {
   /** 新下载、尚未整理 */
   inbox?: boolean;
 }
+export interface FavoriteCollection { id: string; name: string; modIds: string[] }
+export type FavoriteEdit =
+  | { action: 'create'; name: string; modIds?: string[] }
+  | { action: 'rename'; collectionId: string; name: string }
+  | { action: 'add' | 'remove'; collectionId: string; modIds: string[] }
+  | { action: 'delete'; collectionId: string };
 
 export interface ModTask {
   taskId: string;

@@ -33,6 +33,32 @@ async function fixture(t, options = {}) {
   return { base, ...game, addons, dataDir, api, service, ...toolsFor(service), toolsFor, setRunning: value => { running = value; } };
 }
 
+test('favorite collections share desktop and assistant writes, retain stars and survive restart', async t => {
+  const f = await fixture(t), ids = ['music.vpk', 'weapon_dir.vpk'];
+  const edit = p => f.service.dispatch('edit-favorite-collection', p);
+  const group = await edit({action:'create', name:'音效', modIds:[ids[0]]});
+  const find = () => f.run('mod_favorite_collections', {collectionId:group.id});
+  assert.deepEqual((await find()).favorites.map(m => m.id), [ids[0]]);
+  assert.equal((await f.run('mod_favorite_collection', {action:'add', collectionId:group.id, modIds:[ids[1]]}, async () => false)).applied, false);
+  await f.run('mod_favorite_collection', {action:'add', collectionId:group.id, modIds:[ids[1]]});
+  const other = await f.run('mod_favorite_collection', {action:'create', name:'常用', modIds:ids});
+  assert.deepEqual((await f.service.snapshot()).favoriteCollections.map(c => c.modIds), [ids, ids]);
+  const renamed = await f.run('mod_favorite_collection', {action:'rename', collectionId:other.collectionId, name:'周末'});
+  await f.run('mod_undo', {historyId:renamed.historyId});
+  assert.equal((await find()).collections[1].name, '常用');
+  await edit({action:'remove', collectionId:group.id, modIds:[ids[0]]});
+  assert.equal(f.service.settings.modMeta[ids[0]].favorite, true);
+  await f.service.dispatch('save-mod-meta', {patch:{[ids[1]]:null}});
+  assert.equal((await find()).favorites.length, 0);
+  await f.service.close();
+  const reopened = new DesktopService({dataDir:f.dataDir, core:f.api}); t.after(() => reopened.close()); await reopened.ready;
+  const {run} = f.toolsFor(reopened);
+  assert.deepEqual((await run('mod_favorite_collections', {collectionId:other.collectionId})).favorites.map(m => m.id), [ids[0]]);
+  await run('mod_favorite_collection', {action:'delete', collectionId:other.collectionId});
+  assert.deepEqual((await run('mod_favorite_collections')).favorites[0].collectionIds, []);
+  assert.deepEqual(reopened.settings.profiles[0].modIds, [ids[1]]);
+});
+
 test('Mod P1 inspection compares actual bytes across preload/split layouts and paginates', async t => {
   const f = await fixture(t);
   const resources = { 'addoninfo.txt': addonInfo('另一个说明'), 'models/weapons/rifle.mdl': Buffer.alloc(160000, 65), 'scripts/test.cfg': Buffer.concat([Buffer.from([255,254]), Buffer.from('音量 0.5', 'utf16le')]) };

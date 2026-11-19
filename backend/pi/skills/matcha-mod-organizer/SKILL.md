@@ -65,7 +65,8 @@ description: 在 Matcha 中管理 Left 4 Dead 2 的 VPK Mod：查看包内内容
 - 批量加前缀：在同一个 items 清单中为每项给出 `prefix`，如 `"[武器]"` 或 `"[武器] [近战]"`。前缀从原名生成，重复执行保持相同结果。按用户指定的分类层级和范围处理。
 - 恢复当前原名用 `"name":null`；撤销上一次改名用 `mod_undo`。游戏内的附加内容菜单仍由 VPK 决定。
 
-- `mod_mark {"modIds":["ID"],"favorite":true}` 收藏选中项并移出新下载；`favorite:false` 取消收藏，保留其他标记。
+- 玩家说“把收藏里的三套 MAC10 音效放进一个合集”时，先用 `mod_favorite_collections {}` 找到收藏项的实际 ID，再用 `mod_favorite_collection` 提交 `{"action":"create","name":"MAC10 音效","modIds":[…]}`。有同名合集时用其 `collectionId` 和 `add`。已有合集支持 `rename`、`add`、`remove`、`delete`；查询单个合集时传 `collectionId`。这里整理收藏页，保留 Mod 分类和方案。移出成员和解散合集保留星标，整理记录可撤销。
+- `mod_mark {"modIds":["ID"],"favorite":true}` 收藏选中项并移出新下载；`favorite:false` 取消收藏并移出其收藏合集。
 - `mod_mark {"modIds":["ID"],"sorted":true}` 标记已整理。要放回新下载，用 `sorted:false`；收藏项同时明确 `favorite:false`。
 - `mod_category` 支持 `rename`、`move`、`merge`、`delete`。提供分类 ID；重命名用 `name`，移动用 `parentId`（最外层为 null），合并用 `targetId`。
 - 删除分类默认把其中条目和直接子分类接到原上级，可指定接收分类。预览会列明去向，Mod 文件与方案选择保留。新分类沿用上面的 `mod_organize` 建立。

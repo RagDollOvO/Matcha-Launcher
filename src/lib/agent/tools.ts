@@ -46,6 +46,8 @@ export const TOOLS: Record<string, ToolMeta> = {
   mod_inspect: { label: '查看 Mod 内容', write: false, icon: Search, description: '查看包内资源、元信息和文本配置。' },
   mod_compare: { label: '核实 Mod 资源差异', write: false, icon: Search, description: '逐字节对比同路径资源，分开显示相同与差异。' },
   mod_mark: { label: '收藏与整理标记', write: true, icon: Package, description: '批量更新收藏和已整理标记，可撤销。' },
+  mod_favorite_collections: { label: '查看收藏合集', write: false, icon: Package, description: '查看收藏页的合集与成员。' },
+  mod_favorite_collection: { label: '整理收藏合集', write: true, icon: Package, description: '创建、改名、增减成员或删除收藏合集，可撤销。' },
   mod_rename: { label: '修改 Mod 显示名', write: true, icon: Package, description: '改名、加前缀或恢复原名，支持批量撤销。' },
   mod_category: { label: '维护 Mod 分类', write: true, icon: Package, description: '重命名、移动、合并和移除分类，保留文件。' },
   mod_profile_members: { label: '调整方案中的 Mod', write: true, icon: Package, description: '把 Mod 加入或移出已有方案草稿。' },

@@ -112,6 +112,7 @@ export class ModTrash {
         sizeBytes: files.reduce((n, f) => n + f.size, 0), deletedAt: new Date().toISOString(),
         categoryId: this.store.settings.assignments[id] ?? 'cat-none',
         profileIds: profiles.filter(p => sameRoot(p.modsGameRoot, root) && p.modIds.includes(id)).map(p => p.id),
+        favoriteCollectionIds: (this.store.settings.favoriteCollections ?? []).filter(c => c.modIds.includes(id)).map(c => c.id),
         meta: this.store.settings.modMeta[id], workshopId: mod.workshopId, files, state: 'moving' });
     }
     return { records: result, profiles };
@@ -158,7 +159,7 @@ export class ModTrash {
         const assignments = { ...s.assignments }, modMeta = { ...s.modMeta };
         const names = { ...displayNames(s, c.root) };
         for (const id of removed) { delete assignments[id]; delete modMeta[id]; delete names[id]; }
-        await this.store.save({ ...s, assignments, modMeta, modNames: replaceDisplayNames(s, c.root, names), profiles: profiles.map(p => sameRoot(p.modsGameRoot, c.root) ? {
+        await this.store.save({ ...s, assignments, modMeta, favoriteCollections: withoutMembers(s.favoriteCollections, removed), modNames: replaceDisplayNames(s, c.root, names), profiles: profiles.map(p => sameRoot(p.modsGameRoot, c.root) ? {
           ...p, modsInitialized: true, modsGameRoot: c.root, modIds: p.modIds.filter(id => !removed.has(id)),
         } : p) });
         committed = true;
@@ -222,6 +223,7 @@ export class ModTrash {
           ...(typeof r.displayName === 'string' ? { modNames: replaceDisplayNames(s, c.root, { [r.modId]: r.displayName, ...displayNames(s, c.root) }) } : {}),
           assignments: { ...s.assignments, [r.modId]: s.categories.some(x => x.id === r.categoryId) ? r.categoryId : 'cat-none' },
           modMeta: { ...s.modMeta, ...(r.meta ? { [r.modId]: { ...r.meta, ...s.modMeta[r.modId] } } : {}) },
+          favoriteCollections: (s.favoriteCollections ?? []).map(c => r.meta?.favorite && r.favoriteCollectionIds?.includes(c.id) && !c.modIds.includes(r.modId) ? { ...c, modIds: [...c.modIds, r.modId] } : c),
           profiles: s.profiles.map((p, i) => r.profileIds.includes(p.id) && sameRoot(p.modsGameRoot, c.root) ? {
             ...p, modsInitialized: true, modsGameRoot: c.root, modIds: [...new Set([...profiles[i].modIds, r.modId])],
           } : p),
@@ -255,3 +257,4 @@ export class ModTrash {
     }, { allowTrashRecovery: true });
   }
 }
+import { withoutMembers } from './favorite-collections.mjs';

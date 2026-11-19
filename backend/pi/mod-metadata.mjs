@@ -2,6 +2,7 @@ import { fail } from '../mods/files.mjs';
 import path from 'node:path';
 import { metadataDelta } from './mod-history.mjs';
 import { displayNames, replaceDisplayNames } from '../mods/display-names.mjs';
+import { planFavoriteCollection, withoutMembers } from '../mods/favorite-collections.mjs';
 
 const copy = value => JSON.parse(JSON.stringify(value));
 const sameRoot = (a, b) => !a || path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
@@ -10,6 +11,14 @@ const validName = value => {
   return value.trim();
 };
 export function planMetadata(kind, params, settings, inventory, root, views) {
+  if (kind === 'favorite-collection') {
+    const plan = planFavoriteCollection(settings, params, inventory.mods);
+    const changes = metadataDelta(settings, plan.next, root);
+    // A new collection gets its permanent ID on commit; compare the inputs the user actually previewed.
+    const expected = { group: settings.favoriteCollections?.find(c => c.id === params.collectionId) ?? null, lines: plan.lines,
+      before: changes.map(({ type, id, before }) => ({ type, id: params.action === 'create' && type === 'favorite-collection' ? null : id, before })) };
+    return { ...plan, changeCount: changes.length, expected };
+  }
   const next = copy(settings), lines = [];
   const chosen = () => {
     if (!Array.isArray(params.modIds) || !params.modIds.length || new Set(params.modIds).size !== params.modIds.length) fail('invalid_argument', '需要去重的 Mod ID 清单。');
@@ -50,6 +59,11 @@ export function planMetadata(kind, params, settings, inventory, root, views) {
     if (params.favorite === undefined && params.sorted === undefined) fail('invalid_argument', '请指定 favorite 或 sorted。');
     for (const key of ['favorite', 'sorted']) if (params[key] !== undefined && typeof params[key] !== 'boolean') fail('invalid_argument', 'Mod 标记需要布尔值。');
     const mods = chosen(); label = `更新 ${mods.length} 个 Mod 标记`;
+    if (params.favorite === false) {
+      const ids = new Set(mods.map(m => m.id));
+      for (const c of settings.favoriteCollections ?? []) if (c.modIds.some(id => ids.has(id))) lines.push('同时移出收藏合集「' + c.name + '」');
+      next.favoriteCollections = withoutMembers(settings.favoriteCollections, ids);
+    }
     for (const mod of mods) {
       const before = settings.modMeta[mod.id] ?? {}, value = { ...before };
       if (params.favorite !== undefined) { if (params.favorite) value.favorite = true; else delete value.favorite; }

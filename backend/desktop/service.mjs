@@ -14,6 +14,7 @@ import { listSessions, trashSession } from '../pi/session-files.mjs';
 import { platformToolCatalog } from '../pi/platform-extension.mjs';
 import { ModManager } from '../mods/manager.mjs';
 import { displayNames } from '../mods/display-names.mjs';
+import { planFavoriteCollection, withoutMembers } from '../mods/favorite-collections.mjs';
 import { ModTrash } from '../mods/trash.mjs';
 import { TaskManager } from '../mods/tasks.mjs';
 import { ModAudio } from '../mods/audio.mjs';
@@ -65,7 +66,7 @@ const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 const defaultProfile = () => ({ id: 'default', name: '默认方案', note: 'Matcha · 原生 DLL 模组', modIds: [], pluginIds: [], launchOptions: '', updatedAt: new Date().toISOString() });
 // Legacy desktop selections join the normal route; explicit CLI modes stay compatible.
 const desktopMode = mode => mode === 'direct' || mode === 'development' ? 'modded' : mode;
-const defaults = () => ({ version: 1, gameRoot: '', profiles: [defaultProfile()], activeProfileId: 'default', categories: [{ id: 'cat-none', name: '未分类', builtin: true }], assignments: {}, modMeta: {} });
+const defaults = () => ({ version: 1, gameRoot: '', profiles: [defaultProfile()], activeProfileId: 'default', categories: [{ id: 'cat-none', name: '未分类', builtin: true }], assignments: {}, modMeta: {}, favoriteCollections: [] });
 const fail = (code, message) => { throw new core.PlatformError(code, message); };
 const samePath = (a, b) => a && b && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 const exists = async p => fs.access(p).then(() => true, () => false);
@@ -673,7 +674,7 @@ export class DesktopService extends EventEmitter {
       dxvk: { installed: !!nativeLibraries?.dxvk.installed, enabled: false, version: nativeLibraries?.dxvk.version??'—',
         dll:nativeLibraries?.dxvk.entries.find(e=>e.kind==='dxvk')?.path??'', configured:false },
       plugins, availablePlugins, platforms, externalPacks, nativeLibraries, l4nPlugins, profiles: this.profileViews(mods), activeProfileId: this.settings.activeProfileId,
-      categories, mods, modMeta: this.settings.modMeta, trash, conflicts: modInventory.conflicts, servers, serverLayout, cfg: [],
+      categories, mods, modMeta: this.settings.modMeta, favoriteCollections: this.settings.favoriteCollections, trash, conflicts: modInventory.conflicts, servers, serverLayout, cfg: [],
       modState: { writable: modInventory.writable, addonListPath: modInventory.addonListPath },
       tasks: this.tasks.list(),
       capabilities: { plugins: true, l4nPlugins: true, platforms: false, platformManagement: false, mods: true, servers: true, config: true },
@@ -1113,6 +1114,12 @@ export class DesktopService extends EventEmitter {
         await this.save({ ...this.settings, modMeta, categories: p.categories, assignments: { ...this.settings.assignments, ...p.assignments } });
         return { status: 'saved' };
       }
+      case 'edit-favorite-collection': {
+        const mods = p.modIds?.length ? (await this.modManager.scan(await this.requireRoot())).mods : [];
+        const plan = planFavoriteCollection(this.settings, p, mods);
+        await this.save(plan.next);
+        return { id: plan.collectionId, favoriteCollections: plan.next.favoriteCollections };
+      }
       case 'save-mod-meta': {
         if (!p.patch || typeof p.patch !== 'object' || Array.isArray(p.patch)) fail('invalid_argument', '需要按 Mod ID 保存的标记。');
         const modMeta = { ...this.settings.modMeta };
@@ -1122,7 +1129,8 @@ export class DesktopService extends EventEmitter {
           if (value === null) delete modMeta[id]; else modMeta[id] = { ...value };
           if (value?.favorite && value?.inbox) modMeta[id].inbox = false;
         }
-        await this.save({ ...this.settings, modMeta });
+        const unstarred = new Set(Object.keys(p.patch).filter(id => !modMeta[id]?.favorite));
+        await this.save({ ...this.settings, modMeta, favoriteCollections: withoutMembers(this.settings.favoriteCollections, unstarred) });
         return { status: 'saved' };
       }
       case 'preview-delete-mods': return this.modTrash.preview(await this.requireRoot(), p.ids);

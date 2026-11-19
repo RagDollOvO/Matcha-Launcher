@@ -68,9 +68,17 @@ export function modHost(service, gameRoot) {
         sizeBytes: records.reduce((n, r) => n + r.sizeBytes, 0),
         expected: snapshot(records.map(({ modId, title, files, categoryId, profileIds, meta }) => ({ modId, title, files, categoryId, profileIds, meta }))) };
     };
+    if (operation === 'favorite-collections') {
+      const { mods } = await scan(), { favoriteCollections = [], modMeta } = service.settings;
+      const group = favoriteCollections.find(c => c.id === params.collectionId);
+      if (params.collectionId && !group) fail('collection_missing', '请选择现有收藏合集。');
+      const favorites = mods.filter(m => modMeta[m.id]?.favorite);
+      return { collections: favoriteCollections.map(c => ({ id: c.id, name: c.name, count: favorites.filter(m => c.modIds.includes(m.id)).length })),
+        favorites: favorites.filter(m => !group || group.modIds.includes(m.id)).map(({ id, title }) => ({ id, title, collectionIds: favoriteCollections.filter(c => c.modIds.includes(id)).map(c => c.id) })) };
+    }
     if (operation === 'inventory') {
       const inventory = await scan(), settings = service.settings, game = await service.core.inspectGame(gameRoot);
-      return { ...inventory, gameRoot, gameRunning: !!game.processes.length, categories: settings.categories, activeProfileId: settings.activeProfileId,
+      return { ...inventory, gameRoot, gameRunning: !!game.processes.length, categories: settings.categories, favoriteCollections: settings.favoriteCollections, activeProfileId: settings.activeProfileId,
         mods: inventory.mods.map(mod => ({ ...mod, categoryId: settings.assignments[mod.id] ?? 'cat-none', origin: settings.modOrigins?.[mod.id], ...settings.modMeta[mod.id] })),
         profiles: service.profileViews(inventory.mods).filter(p => !p.modsGameRoot || sameRoot(p.modsGameRoot, gameRoot)).map(({ id, name, modIds }) => ({ id, name, modIds })) };
     }
@@ -100,6 +108,13 @@ export function modHost(service, gameRoot) {
       const modName = id => `${inventory.mods.find(m => m.id === id)?.title ?? id} [${id}]`;
       const categoryName = id => service.settings.categories.find(c => c.id === id)?.name ?? entry.changes.find(c => c.type === 'category' && c.id === id)?.before?.name ?? '最外层';
       const lines = entry.changes.map(change => {
+        if (change.type === 'favorite-collection') {
+          if (!change.before) return '移除收藏合集「' + change.after.name + '」';
+          if (!change.after) return '恢复收藏合集「' + change.before.name + '」：' + (change.before.modIds.map(modName).join('、') || '空合集');
+          const from = new Set(change.after.modIds), to = new Set(change.before.modIds);
+          return '恢复收藏合集「' + change.before.name + '」' + (change.before.name !== change.after.name ? '（现名：' + change.after.name + '）' : '') +
+            [...to].filter(id => !from.has(id)).map(id => '\n加入 · ' + modName(id)).join('') + [...from].filter(id => !to.has(id)).map(id => '\n移出 · ' + modName(id)).join('');
+        }
         if (change.type === 'display-name') {
           const mod = inventory.mods.find(m => m.id === change.id);
           return mod.title + ' → ' + (change.before ?? mod.sourceTitle) + '\n' + mod.id;
@@ -121,7 +136,7 @@ export function modHost(service, gameRoot) {
       aborted(signal);
       const saved = await commitMetadata(service, gameRoot, plan.label, plan.next);
       service.emit('event', { type: 'objects_changed' });
-      return { status: 'saved', label: plan.label, ...saved };
+      return { status: 'saved', label: plan.label, ...(plan.collectionId && { collectionId: plan.collectionId }), ...saved };
     }
     if (operation === 'undo') {
       const { entry, known } = await undo(); aborted(signal);

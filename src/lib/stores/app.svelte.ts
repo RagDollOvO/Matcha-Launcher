@@ -70,6 +70,7 @@ class AppState {
   categories = $state<Snapshot['categories']>([]);
   /** 收藏等跨方案标记；后端未接入 modMeta 前存在本机 */
   modMeta = $state<Record<string, ModMeta>>({});
+  favoriteCollections = $state<NonNullable<Snapshot['favoriteCollections']>>([]);
   private metaRemote = false;
   private metaLoaded = false;
   /** Matcha 回收站 */
@@ -161,6 +162,7 @@ class AppState {
       l4nPlugins: s.l4nPlugins,
     });
     this.acceptMeta(s.modMeta);
+    this.favoriteCollections = s.favoriteCollections ?? [];
     this.offerNativeOnce();
     this.trash = s.trash ?? [];
     this.acceptTasks(s.tasks);
@@ -401,9 +403,16 @@ class AppState {
   // ---------- 收藏（modMeta） ----------
   isFavorite(id: string) { return !!this.modMeta[id]?.favorite; }
   favoriteIds(): string[] { return this.mods.filter((m) => this.isFavorite(m.id)).map((m) => m.id); }
+  editFavoriteCollection(edit: Parameters<typeof api.editFavoriteCollection>[0]) {
+    return this.perform('保存收藏合集', () => api.editFavoriteCollection(edit));
+  }
   setFavorite(ids: string[], favorite: boolean) {
     // 收藏也算整理过：和后端一致，顺带离开「新下载」
     this.patchMeta(ids, (m) => { if (favorite) { m.favorite = true; delete m.inbox; } else delete m.favorite; });
+    if (!favorite) {
+      const removed = new Set(ids);
+      for (const c of this.favoriteCollections) c.modIds = c.modIds.filter(id => !removed.has(id));
+    }
     // 单个点星标有即时视觉反馈，不再弹提示
     if (ids.length > 1) this.toast(favorite ? `已收藏 ${ids.length} 个 Mod` : `已取消收藏 ${ids.length} 个 Mod`);
   }
