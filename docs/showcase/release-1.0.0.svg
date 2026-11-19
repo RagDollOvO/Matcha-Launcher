@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="264" viewBox="0 0 1120 264">
+<title>Matcha 1.0.0 · 首发纪念票</title>
+<defs><pattern id="lines" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(28)"><path d="M0 0v7" stroke="#80966b" opacity=".22" stroke-width="2"/></pattern><mask id="ticket"><rect width="1120" height="264" rx="19" fill="white"/><g fill="black"><circle cx="841" cy="0" r="13"/><circle cx="841" cy="264" r="13"/></g></mask></defs>
+<g mask="url(#ticket)">
+<rect width="1120" height="264" fill="#efeeda"/><path d="M841 0h279v264H841z" fill="#193e34"/>
+<path d="M0 242h841v22H0z" fill="url(#lines)"/>
+<g stroke="#b7b99e" fill="none"><path d="M42 64h756M42 204h756"/><path d="M841 19v226" stroke-dasharray="3 6"/></g>
+<g fill="#345344" font-size="15" letter-spacing="2" font-family="Consolas,monospace"><text x="44" y="44">MATCHA   /   RELEASE SERIES</text><text x="798" y="44" text-anchor="end">NO. 001</text></g>
+<text x="39" y="166" font-family="Georgia,serif" font-weight="bold" font-style="italic" font-size="99" letter-spacing="-5" fill="#1b3d31">Matcha</text>
+<text x="45" y="192" font-family="Consolas,monospace" font-size="15" letter-spacing="3" fill="#486050">LEFT 4 DEAD 2   /   LAUNCHER</text>
+<g transform="translate(673 132)" fill="none" stroke="#548061" stroke-width="2.3"><circle r="54"/><circle r="45" stroke-dasharray="2 5"/><path d="M-22 15q12-38 47-42-3 40-40 49z" fill="#698a60" stroke="none"/><path d="M-23 30L14-13" stroke="#cfdab3"/><path d="M-13 1q-23 0-25-24 25 1 25 24z" fill="#97ac80" stroke="none"/></g>
+<g font-family="Consolas,monospace"><text x="44" y="229" font-size="14" letter-spacing="2" fill="#486050">FIRST EDITION</text><text x="798" y="229" text-anchor="end" font-size="14" letter-spacing="2" fill="#486050">2026 / 11 / 19</text></g>
+<g fill="#dfe9be"><text x="878" y="51" font-family="Consolas,monospace" font-size="15" letter-spacing="3">STABLE RELEASE</text><text x="872" y="135" font-family="Georgia,serif" font-size="73">1.0.0</text><path d="M878 161h195" stroke="#79957d"/><text x="878" y="197" font-family="Consolas,monospace" font-size="20">WINDOWS x64</text><g fill="#96c499"><circle cx="883" cy="226" r="4"/><circle cx="897" cy="226" r="4"/><circle cx="911" cy="226" r="4"/><circle cx="925" cy="226" r="4"/></g></g></g></svg>
