@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.corpse-dissolve",
+  "name": "尸体消散",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "按死亡类别选择原生消散类型、时长和布偶清理",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模块 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source 订阅死亡、子弹命中和回合事件"
+      ],
+      "memoryModification": [
+        "Source Dissolve API 1 创建和回收原生 C_EntityDissolve，独立关闭恢复所属实体绘制字段"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "special",
+      "label": "特感 / Tank 消散",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "common",
+      "label": "普感 / Witch 消散",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "type",
+      "label": "消散类型（0 普通 / 1 电气 / 2 轻量电气 / 3 核心）",
+      "type": "integer",
+      "default": 2,
+      "apply": "immediate",
+      "minimum": 0,
+      "maximum": 3
+    },
+    {
+      "id": "duration-ms",
+      "label": "消散时长（毫秒）",
+      "type": "integer",
+      "default": 550,
+      "apply": "immediate",
+      "minimum": 200,
+      "maximum": 2000,
+      "step": 50
+    },
+    {
+      "id": "ragdoll-cleanup",
+      "label": "兼容清理布偶",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取功能状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看类别占用、待处理事件和原生效果状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存功能设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "special": {
+          "type": "boolean",
+          "default": false
+        },
+        "common": {
+          "type": "boolean",
+          "default": false
+        },
+        "type": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "duration-ms": {
+          "type": "integer",
+          "default": 550,
+          "minimum": 200,
+          "maximum": 2000,
+          "step": 50
+        },
+        "ragdoll-cleanup": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "下一游戏帧应用；关闭归还所属效果和可恢复字段。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "为普感、Witch、特感和 Tank 选择独立的尸体消散效果。",
+    "description": "按普通感染者 / Witch、特感 / Tank 分别开关。四种原生消散类型，时长 200–2000 毫秒，默认轻量电气 550 毫秒。普感和特感跟随自己的击杀事件，Witch 跟随所有击杀事件；效果按原节奏分帧创建。\n\n兼容清理布偶每 200 毫秒提交一次客户端清理命令，可单独开启。玩家实体和普通感染者保持可见标志；玩家复活后按生命代次放弃旧恢复点。与减少画面干扰按类别协调，关闭后回收本模块的原生效果并归还仍由自己持有的字段。已清理布偶由后续游戏事件重新生成。\n\n原生 SDK 与独立消费者的针对性离线检查通过，游戏效果待实测。配置保存在本 DLL 的 config.json。",
+    "tags": [
+      "外观",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

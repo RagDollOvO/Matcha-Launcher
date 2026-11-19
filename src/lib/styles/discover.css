@@ -1,0 +1,89 @@
+/* 创意工坊、B站和 GameMaps 共用底色、工具条和卡片正文；封面比例与页面操作留给各页。 */
+.discover { height: 100%; display: flex; flex-direction: column; background: color-mix(in srgb, var(--md-surface) 76%, transparent); }
+
+/* ---------- 搜索 ---------- */
+.discover .controls { flex: none; padding: 16px 24px 0; }
+.discover .top { display: flex; align-items: center; gap: 6px; }
+.discover .top > .btn { margin-left: auto; flex: none; }
+.discover .search {
+  flex: 1; min-width: 0; max-width: 36rem; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px;
+  background: var(--md-surface-bright); border: 1px solid var(--line); border-radius: 14px;
+  color: var(--fg-3); transition: border-color var(--dur), background var(--dur), color var(--dur);
+}
+.discover .search:focus-within { border-color: color-mix(in srgb, var(--md-primary) 60%, transparent); background: color-mix(in srgb, var(--md-surface-bright) 85%, transparent); color: var(--fg-2); }
+.discover .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; font-size: 13px; }
+.discover kbd { height: 18px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 5px; font-size: 10px; line-height: 16px; color: var(--fg-3); }
+
+/* ---------- 筛选条：分段切换 + 横向滚动的分类 chip + 排序 ---------- */
+.discover .filters { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.discover .seg { display: inline-flex; flex: none; gap: 2px; padding: 3px; border-radius: 12px; background: color-mix(in srgb, var(--md-surface-container-high) 80%, transparent); }
+.discover .seg button { height: 26px; padding: 0 12px; border-radius: 9px; color: var(--fg-2); font-size: 13px; transition: background var(--dur), color var(--dur); }
+.discover .seg button:hover { color: var(--fg); }
+.discover .seg button.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.discover .cats { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); padding-right: 24px; }
+.discover .cats::-webkit-scrollbar { display: none; }
+.discover .cats .chip, .discover .filters > .chip { flex: none; height: 28px; padding: 0 9px; border: 0; border-radius: 9px; }
+.discover .filters .chip:not(.on):hover { background: var(--hover); }
+/* 排序：原生 select 去掉系统箭头，外面包一层 .sort 放 lucide 箭头（同 Mod 页） */
+.discover .sort { position: relative; display: inline-flex; align-items: center; flex: none; color: var(--fg-3); }
+.discover .sort select {
+  appearance: none; height: 32px; padding: 0 28px 0 12px; border: 1px solid transparent; border-radius: 12px;
+  background: color-mix(in srgb, var(--md-surface-container-high) 80%, transparent); color: var(--fg-2); font-size: 12px; cursor: pointer;
+  transition: background var(--dur), border-color var(--dur);
+}
+.discover .sort select:hover { background: var(--md-surface-container-highest); }
+.discover .sort select:focus-visible { border-color: color-mix(in srgb, var(--md-primary) 60%, transparent); }
+.discover .sort svg { position: absolute; right: 10px; pointer-events: none; }
+
+/* ---------- 卡片：封面、两行标题、次要信息、右侧动作 ---------- */
+.discover :is(.card, .work) {
+  position: relative; min-width: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--md-surface-bright); border: 1px solid var(--line-soft); border-radius: 16px;
+  transition: border-color var(--dur), opacity var(--dur), transform 240ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .discover :is(.card, .work):not(.skeleton):hover { border-color: var(--line); transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) { .discover :is(.card, .work):not(.skeleton):hover { transform: none; } }
+.discover .grid .info { display: flex; flex-direction: column; flex: 1; padding: 10px 12px 12px; }
+.discover .grid .title { display: flex; align-items: flex-start; width: 100%; height: 40px; text-align: left; font-size: 14px; font-weight: 600; line-height: 20px; transition: color var(--dur); }
+.discover .grid .title span { display: -webkit-box; min-width: 0; line-clamp: 2; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.discover .grid .title:hover { color: var(--md-primary); }
+.discover .grid .byline { margin: 3px 0 8px; min-height: 18px; color: var(--fg-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discover .grid .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; margin-top: auto; color: var(--fg-3); font-size: 12px; }
+.discover :is(.owned, .text-action) { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-3); font-size: 12px; white-space: nowrap; }
+.discover .text-action:hover { color: var(--fg); }
+.discover .foot :is(.dl, .owned, .text-action) { flex: none; }
+.discover .foot :is(.owned, .text-action) { justify-content: center; min-width: 76px; }
+
+/* ---------- 下载按钮：卡片内用浅底，悬停用主色，下载中原位显示进度 ---------- */
+.discover .dl {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; min-width: 76px; padding: 0 12px; overflow: hidden;
+  border: 1px solid var(--line-strong); border-radius: 14px; color: var(--fg); font-size: 12px; white-space: nowrap;
+  transition: background var(--dur), border-color var(--dur), color var(--dur), filter var(--dur), transform 160ms var(--ease-out);
+}
+.discover .foot .dl { background: var(--md-surface-container-high); border-color: transparent; }
+.discover button.dl:hover:not(:disabled) { background: var(--md-primary); border-color: var(--md-primary); color: var(--md-on-primary); }
+.discover button.dl:active:not(:disabled) { transform: scale(0.96); }
+.discover .dl:disabled { opacity: .4; cursor: default; }
+/* 详情页的大按钮：直接是主色（同主页「启动游戏」） */
+.discover .dl.large { height: 34px; padding: 0 16px; border-radius: 17px; font-size: 13px; background: var(--md-primary); border-color: var(--md-primary); color: var(--md-on-primary); box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--md-primary) 90%, transparent); }
+.discover button.dl.large:hover:not(:disabled) { filter: brightness(1.07); }
+.discover .dl .size { color: inherit; opacity: .7; font-size: 12px; margin-left: 4px; }
+.discover .dl.busy { color: var(--fg-2); cursor: default; animation: rise 200ms var(--ease-out); }
+.discover .dl.busy.large { background: color-mix(in srgb, var(--md-surface-container-high) 80%, transparent); border-color: transparent; color: var(--fg-2); box-shadow: none; }
+.discover .dl .fill { position: absolute; inset: 0; background: color-mix(in srgb, var(--md-primary) 26%, transparent); transform-origin: left; transition: transform 400ms var(--ease-out); }
+.discover .dl.indet .fill { transform: scaleX(0.3) !important; animation: dl-sweep 1.2s var(--ease-in-out) infinite; }
+@keyframes dl-sweep { from { translate: -100% 0; } to { translate: 340% 0; } }
+.discover .dl .txt { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- 骨架屏：扫光用前景色的极淡一层，亮暗主题都不扎眼 ---------- */
+.discover .skeleton { pointer-events: none; }
+.discover .skeleton .art, .discover .skeleton .line { position: relative; overflow: hidden; background: color-mix(in srgb, var(--md-surface-container-highest) 70%, transparent); }
+.discover .skeleton .line { height: 10px; margin: 12px 12px 0; border-radius: 5px; }
+.discover .skeleton .line.w40 { width: 40%; margin-bottom: 16px; }
+.discover .skeleton .line.w80 { width: 75%; }
+.discover .skeleton .art::after, .discover .skeleton .line::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--md-on-surface) 7%, transparent), transparent); animation: shimmer 1.3s linear infinite; }
+
+@media (max-width: 1100px) { .discover .controls { padding: 14px 18px 0; } }
+@media (prefers-reduced-motion: reduce) { .discover .skeleton .art::after, .discover .skeleton .line::after, .discover .dl.indet .fill { animation: none; } }

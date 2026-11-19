@@ -1,0 +1,115 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Matcha",
+  "mainBinaryName": "Matcha",
+  "version": "1.0.0",
+  "identifier": "com.matcha.launcher",
+  "build": {
+    "beforeDevCommand": "node scripts/ensure-vite.mjs",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build -- --mode desktop",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Matcha",
+        "visible": false,
+        "width": 1360,
+        "height": 820,
+        "minWidth": 1080,
+        "minHeight": 700,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$RESOURCE/media/home-relax.mp3"
+        ]
+      },
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://asset.localhost asset: https://*.hdslb.com https://www.gamemaps.com; font-src 'self'; media-src 'self' blob: http://asset.localhost asset:; connect-src 'self' ipc: http://ipc.localhost http://asset.localhost asset: http://localhost:5173 ws://localhost:5173"
+    }
+  },
+  "bundle": {
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "active": false,
+    "resources": {
+      "../media/home-relax.mp3": "media/home-relax.mp3",
+      "../backend/core.mjs": "backend/core.mjs",
+      "../backend/steam-profile.mjs": "backend/steam-profile.mjs",
+      "../backend/releases.mjs": "backend/releases.mjs",
+      "../backend/launch.mjs": "backend/launch.mjs",
+      "../backend/launch-argv.mjs": "backend/launch-argv.mjs",
+      "../backend/clean-launch.mjs": "backend/clean-launch.mjs",
+      "../backend/native-libraries.mjs": "backend/native-libraries.mjs",
+      "../backend/l4n-plugins.mjs": "backend/l4n-plugins.mjs",
+      "../backend/dll-status.mjs": "backend/dll-status.mjs",
+      "../backend/dll-intake.mjs": "backend/dll-intake.mjs",
+      "../backend/dll-sources.mjs": "backend/dll-sources.mjs",
+      "../backend/plugin-overlays.mjs": "backend/plugin-overlays.mjs",
+      "../backend/plugin-assets.mjs": "backend/plugin-assets.mjs",
+      "../backend/saved-game-settings.mjs": "backend/saved-game-settings.mjs",
+      "../backend/game-config.mjs": "backend/game-config.mjs",
+      "../backend/cfg-text.mjs": "backend/cfg-text.mjs",
+      "../backend/pi/settings-host.mjs": "backend/pi/settings-host.mjs",
+      "../backend/pi/settings-tools.mjs": "backend/pi/settings-tools.mjs",
+      "../backend/game-settings.mjs": "backend/game-settings.mjs",
+      "../backend/game-settings-import.mjs": "backend/game-settings-import.mjs",
+      "../backend/game-settings-describe.mjs": "backend/game-settings-describe.mjs",
+      "../backend/legacy-names.mjs": "backend/legacy-names.mjs",
+      "../backend/bilibili.mjs": "backend/bilibili.mjs",
+      "../backend/mods/": "backend/mods/",
+      "../backend/community/": "backend/community/",
+      "../backend/platforms/": "backend/platforms/",
+      "../docs/platform/skeeto-modules.json": "docs/platform/skeeto-modules.json",
+      "../backend/quick-test/": "backend/quick-test/",
+      "../backend/servers/": "backend/servers/",
+      "../backend/node_modules/": "backend/node_modules/",
+      "../backend/package.json": "backend/package.json",
+      "../backend/desktop/service.mjs": "backend/desktop/service.mjs",
+      "../backend/desktop/storage.mjs": "backend/desktop/storage.mjs",
+      "../backend/desktop/storage-files.mjs": "backend/desktop/storage-files.mjs",
+      "../backend/desktop/settings.mjs": "backend/desktop/settings.mjs",
+      "../backend/desktop/release-channel.json": "backend/desktop/release-channel.json",
+      "../backend/desktop/host.mjs": "backend/desktop/host.mjs",
+      "../backend/desktop/gamemaps-browser.mjs": "backend/desktop/gamemaps-browser.mjs",
+      "../backend/pi/transport.mjs": "backend/pi/transport.mjs",
+      "../backend/pi/platform-extension.mjs": "backend/pi/platform-extension.mjs",
+      "../backend/pi/local-catalog.mjs": "backend/pi/local-catalog.mjs",
+      "../backend/pi/local-extension.mjs": "backend/pi/local-extension.mjs",
+      "../backend/pi/autonomy.mjs": "backend/pi/autonomy.mjs",
+      "../backend/pi/player-memory.mjs": "backend/pi/player-memory.mjs",
+      "../backend/pi/MEMORY.md": "backend/pi/MEMORY.md",
+      "../backend/pi/dll-host.mjs": "backend/pi/dll-host.mjs",
+      "../backend/pi/dll-tools.mjs": "backend/pi/dll-tools.mjs",
+      "../backend/pi/server-host.mjs": "backend/pi/server-host.mjs",
+      "../backend/pi/server-tools.mjs": "backend/pi/server-tools.mjs",
+      "../backend/pi/config-files.mjs": "backend/pi/config-files.mjs",
+      "../backend/pi/session-files.mjs": "backend/pi/session-files.mjs",
+      "../backend/pi/limits.mjs": "backend/pi/limits.mjs",
+      "../backend/pi/skill-files.mjs": "backend/pi/skill-files.mjs",
+      "../backend/pi/mod-bridge.mjs": "backend/pi/mod-bridge.mjs",
+      "../backend/pi/mod-host.mjs": "backend/pi/mod-host.mjs",
+      "../backend/pi/mod-inspect.mjs": "backend/pi/mod-inspect.mjs",
+      "../backend/pi/mod-history.mjs": "backend/pi/mod-history.mjs",
+      "../backend/pi/mod-metadata.mjs": "backend/pi/mod-metadata.mjs",
+      "../backend/pi/mod-acquire.mjs": "backend/pi/mod-acquire.mjs",
+      "../backend/pi/mod-tools.mjs": "backend/pi/mod-tools.mjs",
+      "../backend/pi/skills/": "backend/pi/skills/",
+      "../native/build-x86/dist/bin/l4p/l4p_runtime.dll": "native/build-x86/dist/bin/l4p/l4p_runtime.dll",
+      "../native/build-x86/dist/bin/l4p/enabled.txt": "native/build-x86/dist/bin/l4p/enabled.txt",
+      "../native/build-x86/dist/bin/l4p/plugins/flare.game-ui/": "native/build-x86/dist/bin/l4p/plugins/flare.game-ui/",
+      "../native/build-x86/dist/bin/l4p/plugins/ragdoll.supply-radar/": "native/build-x86/dist/bin/l4p/plugins/ragdoll.supply-radar/",
+      "../native/build-x86/dist/tools/flare_audio.exe": "native/build-x86/dist/tools/flare_audio.exe",
+      "../native/build-x86/dist/tools/beacon_verify.exe": "native/build-x86/dist/tools/beacon_verify.exe",
+      "../vendor/native-libraries.json": "vendor/native-libraries.json",
+      "../backend/local-render.mjs": "backend/local-render.mjs",
+      "../native/build-x86/dist/bin/neko/plugins/MatchaRuntime.dll": "native/build-x86/dist/bin/neko/plugins/MatchaRuntime.dll"
+    }
+  }
+}

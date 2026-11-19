@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "flare.game-ui",
+  "name": "抹茶模组设置",
+  "author": "Matcha",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "loadRole": "dependency",
+  "dependencies": [],
+  "config": [],
+  "actions": []
+}

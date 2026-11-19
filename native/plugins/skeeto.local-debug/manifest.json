@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.local-debug",
+  "name": "本地调试",
+  "version": "0.1.2",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "显示本地服的噪声、生成区域、近战与特感调试信息。",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Beacon Source 服务订阅游戏帧"
+      ],
+      "memoryModification": [
+        "通过独占租约设置声明的游戏参数，关闭或离开允许环境时恢复原值"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "melee",
+      "label": "近战挥击范围",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "noise",
+      "label": "噪声等级",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "spawn",
+      "label": "生成区域",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "footsteps",
+      "label": "脚步显示等级（0 关闭）",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 3,
+      "apply": "immediate"
+    },
+    {
+      "id": "inferno",
+      "label": "燃烧范围",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "chainsaw",
+      "label": "电锯调试",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "swings",
+      "label": "感染者攻击范围",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "explosive",
+      "label": "高爆弹范围",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "tongue",
+      "label": "舌头调试",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "rock",
+      "label": "Tank 石头调试",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "vomit",
+      "label": "呕吐调试",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取功能状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示每项参数的应用、等待、缺失或冲突状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存功能设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "melee": {
+          "type": "boolean",
+          "default": false
+        },
+        "noise": {
+          "type": "boolean",
+          "default": false
+        },
+        "spawn": {
+          "type": "boolean",
+          "default": false
+        },
+        "footsteps": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "inferno": {
+          "type": "boolean",
+          "default": false
+        },
+        "chainsaw": {
+          "type": "boolean",
+          "default": false
+        },
+        "swings": {
+          "type": "boolean",
+          "default": false
+        },
+        "explosive": {
+          "type": "boolean",
+          "default": false
+        },
+        "tongue": {
+          "type": "boolean",
+          "default": false
+        },
+        "rock": {
+          "type": "boolean",
+          "default": false
+        },
+        "vomit": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "保存独立设置；下一游戏帧应用，关闭选项后恢复所持有的原值。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "显示本地服的噪声、生成区域、近战与特感调试信息。",
+    "description": "仅在本地服应用。已接入原作的 11 项数值型调试开关。碰撞箱命令、无敌点标记与传送继续待移植。各项默认关闭；换到远端服务器时恢复已修改的参数。\n\n每个选项关闭后，SDK 恢复启用前的游戏参数。游戏内切服会重新检查适用环境，冲突与缺失参数可在功能状态里查看。配置存入本 DLL 的 config.json。实际游戏效果待实测。",
+    "tags": [
+      "本地服",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.local",
+        "title": "本地实验室",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "本地服设置与调试"
+      }
+    ]
+  }
+}

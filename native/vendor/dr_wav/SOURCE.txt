@@ -1,0 +1,3 @@
+dr_wav from https://github.com/mackron/dr_libs
+Pinned commit: ebfea72a291322bf26ce4eb393c98a0262b9b561
+License: MIT-0 (full license at the end of dr_wav.h)

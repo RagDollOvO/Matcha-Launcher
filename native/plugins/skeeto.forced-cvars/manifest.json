@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.forced-cvars",
+  "name": "本地画面参数",
+  "version": "0.1.2",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "本地服的雾、渲染距离、天气、光照和色彩参数。",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Beacon Source 服务订阅游戏帧"
+      ],
+      "memoryModification": [
+        "通过独占租约设置声明的游戏参数，关闭或离开允许环境时恢复原值"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "fog",
+      "label": "去除地图迷雾",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "far",
+      "label": "增加渲染距离",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "weather",
+      "label": "关闭雨雪",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "fullbright",
+      "label": "全亮模式",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "decals",
+      "label": "关闭模型贴花",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "color",
+      "label": "关闭色彩校正",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "color_entities",
+      "label": "关闭实体色彩校正",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取功能状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示每项参数的应用、等待、缺失或冲突状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存功能设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "fog": {
+          "type": "boolean",
+          "default": false
+        },
+        "far": {
+          "type": "boolean",
+          "default": false
+        },
+        "weather": {
+          "type": "boolean",
+          "default": false
+        },
+        "fullbright": {
+          "type": "boolean",
+          "default": false
+        },
+        "decals": {
+          "type": "boolean",
+          "default": false
+        },
+        "color": {
+          "type": "boolean",
+          "default": false
+        },
+        "color_entities": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "保存独立设置；下一游戏帧应用，关闭选项后恢复所持有的原值。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "本地服的雾、渲染距离、天气、光照和色彩参数。",
+    "description": "仅在本地服应用。已移植去雾、最大渲染距离、关闭雨雪、全亮、关闭模型贴花与两类颜色校正预设。原作的自定义 Cvar 命令、手电组合参数、导演面板仍待移植。各预设独立恢复原值。\n\n每个选项关闭后，SDK 恢复启用前的游戏参数。游戏内切服会重新检查适用环境，冲突与缺失参数可在功能状态里查看。配置存入本 DLL 的 config.json。实际游戏效果待实测。",
+    "tags": [
+      "本地服",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.local",
+        "title": "本地实验室",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "本地服设置与调试"
+      }
+    ]
+  }
+}

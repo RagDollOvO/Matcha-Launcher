@@ -1,0 +1,1647 @@
+{
+  "schema": 1,
+  "id": "skeeto",
+  "name": "Skeeto",
+  "kind": "external-platform",
+  "distribution": "source-ports",
+  "source": {
+    "repo": "https://github.com/regoists/Skeeto",
+    "license": "GPL-3.0",
+    "visibility": "public",
+    "author": "regoists"
+  },
+  "evidence": {
+    "version": "2.2.19",
+    "revision": "7a18b4988d089fdf6cc7e857560cf82a9609a32c",
+    "checkedAt": "2026-11-16",
+    "installer": "packages/Skeeto-dev/Skeeto/Maintain.ps1"
+  },
+  "release": {
+    "type": "github-release",
+    "repo": "regoists/Skeeto",
+    "asset": "Skeeto_{version}.zip",
+    "automaticDownload": false,
+    "legacyZipNameEncoding": "gb18030"
+  },
+  "detect": {
+    "manifest": "Skeeto/Manifest.json",
+    "version": "VERSION.txt",
+    "core": "skeeto.dll",
+    "exports": [
+      "SkeetoBootstrapQuery",
+      "necola_export"
+    ],
+    "layout": 2,
+    "versionMarker": "SkeetoInstalledSemver="
+  },
+  "loader": {
+    "kind": "proxy-dll",
+    "file": "bin/wininet.dll",
+    "exports": [
+      "SkeetoWininetProxyIdentity"
+    ]
+  },
+  "settings": {
+    "file": "skeeto_setting.ini"
+  },
+  "update": {
+    "channel": "steam-workshop",
+    "managedChannel": "flare",
+    "workshopId": "3787239937",
+    "marker": "SkeetoWorkshopPackage=1",
+    "switch": {
+      "file": "skeeto_setting.ini",
+      "key": "workshop_update"
+    },
+    "upstreamDefault": true
+  },
+  "subPlugins": {
+    "dir": "bin/skeeto/plugins",
+    "dataDir": "left4dead2/skeeto/plugins",
+    "switch": {
+      "file": "skeeto_setting.ini",
+      "key": "plugin_platform"
+    },
+    "upstreamDefault": false
+  },
+  "docs": [
+    {
+      "title": "使用说明",
+      "path": "Skeeto/README.txt"
+    },
+    {
+      "title": "控制台命令",
+      "path": "Skeeto/Commands.txt"
+    },
+    {
+      "title": "插件平台",
+      "path": "Skeeto/DIY/Plugins_插件平台.txt"
+    },
+    {
+      "title": "主菜单背景",
+      "path": "Skeeto/DIY/Background_主菜单背景.txt"
+    },
+    {
+      "title": "主菜单 UI",
+      "path": "Skeeto/DIY/Menu_主菜单UI.txt"
+    },
+    {
+      "title": "ESC 菜单 UI",
+      "path": "Skeeto/DIY/ESCMenu_ESC菜单UI.txt"
+    },
+    {
+      "title": "贴图准星",
+      "path": "Skeeto/DIY/Crosshair_贴图准星.txt"
+    },
+    {
+      "title": "命中反馈",
+      "path": "Skeeto/DIY/HitFeedback_命中反馈.txt"
+    },
+    {
+      "title": "更新日志",
+      "path": "Skeeto_更新日志.txt"
+    }
+  ],
+  "modulesFile": "../../docs/platform/skeeto-modules.json",
+  "moduleSwitches": {
+    "hit-feedback": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "sound",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7807"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "icon",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7812"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "si_dedicated",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7832"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "si_sound",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7833"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "ff_feedback",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7836"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "kill_fx",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7837"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "crosshair": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "xhair",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6007"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "xhair_ring",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6010"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "xhair_tex",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6020"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "crosshair-tps": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "xhair_thirdperson_fix",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6014"
+        }
+      ]
+    },
+    "viewmodel": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "viewmodel_enabled",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6091"
+        }
+      ]
+    },
+    "volume-mixer": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_sound_volume",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6576"
+        }
+      ]
+    },
+    "audio-positional": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_dsp_lock",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6255"
+        }
+      ]
+    },
+    "gunshot-feel": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "gun_feel",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6453"
+        }
+      ]
+    },
+    "endgame-music": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "safe_music_enabled",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7925"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "last_music_enabled",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7915"
+        }
+      ]
+    },
+    "menu-background": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "background_engine",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7935"
+        }
+      ]
+    },
+    "game-ui": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "escmenu_ui",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7936"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "script-cues": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_low_ammo_sound",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6548"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_low_health_cue",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6552"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_heal_fade",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6556"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_empty_mag_sound",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6560"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_shell_impact",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6564"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_clank_reload",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6568"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "script_incap_roll",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6449"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "view-tilt": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_view_roll",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6572",
+          "aliases": [
+            "local_view_roll"
+          ]
+        }
+      ]
+    },
+    "corpse-dissolve": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_corpse_dissolve",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6321"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_corpse_dissolve_ci",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6316"
+        }
+      ]
+    },
+    "hide-back-items": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_hide_back_items",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6089"
+        }
+      ]
+    },
+    "team-glow-style": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "survivor_glow_always",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8041"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "laser_sight_outline",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6352"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "combat-declutter": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_no_corpse_si",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6308"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_no_corpse_ci",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6312"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_no_ground_corpses",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6535"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "hud-self": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "ammohud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8068"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "itemhud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8078"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "upgradeammo_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6747"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "bwself_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6753"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "adrenhud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7720"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "shovehud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7727"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "firegatehud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7738"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "speed",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7989"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "timer",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7996"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "maphud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8003"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "voice_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6740"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "ammo_arc_overlay",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6031"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "fire_gate_overlay",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7748"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "reload_ring_overlay",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7754"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "hud-team": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "teamhud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8010"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "mate_alert_last",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6780"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "mate_alert_save",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6781"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "mate_alert_lowhp",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6782"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "hud-stats": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "elim",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7859"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "killfeed_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6759"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "chapter_stats",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6210"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "tab_board",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6199"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "netgraphhud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7879"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "boss_dmg_board_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7706"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "world-hud-feedback": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_ff_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8017"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_witch_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8018"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_tank_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8019"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_rescue_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8020"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_melee_skeet_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8021"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_level_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8022"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_skeet_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8023"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_tongue_cut_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8024"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_melee_crown_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8025"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_crown_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8026"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "hud-intel": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "custom_director_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8129"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "director_phase_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7788"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_si_spawn_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6190"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_si_proximity_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6191"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "si_aggro_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7684"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "witch_rage_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7691"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "witch_hp_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7699"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "ignite_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7713"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "haz_molotov",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7759"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "haz_bilejar",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7760"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "haz_spitter",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7761"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "laser_round_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7791"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "si_presence_hud_total",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7892"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "si_presence_hud_smoker",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7893"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "tank_target_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7661"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "tank_spawn_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6708"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "tank_rock_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6712"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "horde_notice",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6728"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "damage_source_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7668"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "finale_rescue_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6704",
+          "aliases": [
+            "client_finale_rescue_hud"
+          ]
+        }
+      ]
+    },
+    "world-hud-intel": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "staggerhud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7597"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "world_tank_predict",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7599"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "native_world_names",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8014"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_infected_hp",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6296"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_throw_land",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6276"
+        }
+      ]
+    },
+    "timing-trainers": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "script_parry",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6417"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_tongue_cut_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6198"
+        }
+      ]
+    },
+    "hazard-outlines": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "campaign_witch_outline",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6348"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "campaign_tank_body_outline",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6346"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "campaign_tank_prop_outline",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6345"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_alarm_car_glow",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6366"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_acid_outline",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6341"
+        }
+      ]
+    },
+    "item-scan": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "supply_scan",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6381"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "interact_scan",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6353"
+        }
+      ]
+    },
+    "supply-radar": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "supply_radar_enabled",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_navigation/supply_radar/settings.h:51"
+        }
+      ]
+    },
+    "minimap-nav": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "skeeto_nav_enable",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_navigation/controls.h:12"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "skeeto_nav_navigation",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_navigation/controls.h:12"
+        }
+      ]
+    },
+    "campaign-progress": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "route_progress_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7789"
+        }
+      ]
+    },
+    "night-vision": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_spotlight_vision",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6670"
+        }
+      ]
+    },
+    "model-scale": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "wmodel_scale",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6070"
+        }
+      ]
+    },
+    "silent-si-fix": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_silent_si",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6061"
+        }
+      ]
+    },
+    "auto-semiauto": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_hold_semiauto_fire",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6119"
+        }
+      ]
+    },
+    "auto-reload": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "shotgun_autoreload_pump",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6107"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "shotgun_autoreload_auto",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6111"
+        }
+      ]
+    },
+    "tps-aim": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_thirdperson_aim_fix",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6133"
+        }
+      ]
+    },
+    "anti-anti-cheat": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_hold_semiauto_aac",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6123"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_thirdperson_aim_aac",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6127"
+        }
+      ]
+    },
+    "forced-cvars": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_force_fog",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6501"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_force_farz",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6505"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_force_melee_swing",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6509"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_force_flashlight",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6513"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_director_hud",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6494"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "escmenu_cvar_remember",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7937"
+        }
+      ],
+      "note": "关闭清单所列强制 Cvar 项及已保存的 skt_cvar pins 自动恢复（SktCvarEnsureLoaded，38418 行）；游戏内命令仍可手动调用。"
+    },
+    "local-server": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_allow0lerp",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8087"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_idle_solo",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8089"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_idle_nodelay",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8090"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_char_change",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8092"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_nofall",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8096"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_melee_script_timing",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8097"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_pausable",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8098"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_tick",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8085"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_nb",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8086"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_lerp",
+          "off": -1,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8088",
+          "valueType": "integer"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_aa",
+          "off": 10,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8091",
+          "valueType": "integer"
+        }
+      ],
+      "note": "local_lerp=-1 为不改，local_aa=10 为原版；其余关闭值为 0（2324–2330、10687–10689 行）。"
+    },
+    "local-debug": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_bug",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8093"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_bug_box",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8094"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_director",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8095"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_noise",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8105"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_spawn_areas",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8106"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_hitboxes",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8107"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_inferno",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8111"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_chainsaw",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8112"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_show_swings",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8113"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_explosive_radius",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8114"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_tongue",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8115"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_tank_rock",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8116"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_vomit",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8117"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "local_debug_footsteps",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:8108"
+        }
+      ]
+    },
+    "client-perf": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_perf_particles",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6375"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_perf_bones",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6376"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_perf_render",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6377"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_perf_sound",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6379"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_perf_listen_net",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6380"
+        }
+      ]
+    },
+    "idle-restore": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_idle_flashlight",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6065"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_idle_person_restore",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6069"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_idle_view_restore",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6097"
+        },
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "client_idle_weapon_restore",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6103"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "config-override": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "cfg_override",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7939",
+          "aliases": [
+            "cvar_override"
+          ]
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "crash-guard": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "crashguard_auto_clear_decals",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6143"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "cache-offload": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "cache_offload_enabled",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6151"
+        }
+      ]
+    },
+    "fast-load": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "fast_load_master",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6154"
+        }
+      ]
+    },
+    "career": {
+      "coverage": "unknown",
+      "switches": [],
+      "note": "按需打开生涯页面；源码入口未发现独立持久总开关。"
+    },
+    "necola-loader": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "necola_autoload",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:6292"
+        }
+      ]
+    },
+    "plugin-platform": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "plugin_platform",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7547"
+        }
+      ]
+    },
+    "menu-core": {
+      "coverage": "partial",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "debug_log",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7801"
+        }
+      ],
+      "note": "已定位部分设置；模块整体关闭能力待确认。"
+    },
+    "workshop-updater": {
+      "coverage": "complete",
+      "switches": [
+        {
+          "type": "ini",
+          "file": "skeeto_setting.ini",
+          "key": "workshop_update",
+          "off": 0,
+          "source": "src/skeeto/core/skeeto_proxy.cpp:7914"
+        }
+      ]
+    }
+  },
+  "packageFiles": [
+    {
+      "path": "skeeto.dll",
+      "role": "core"
+    },
+    {
+      "path": "bin/wininet.dll",
+      "role": "proxy"
+    },
+    {
+      "path": "VERSION.txt",
+      "role": "marker"
+    },
+    {
+      "path": "SKEETO_WORKSHOP.txt",
+      "role": "marker"
+    },
+    {
+      "path": "skeeto_apply_update.bat",
+      "role": "tool"
+    },
+    {
+      "path": "Setup_安装 维护 卸载.bat",
+      "role": "tool"
+    },
+    {
+      "path": "Skeeto/Maintain.ps1",
+      "role": "tool"
+    },
+    {
+      "path": "Skeeto/README.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/Commands.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto_更新日志.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Background_主菜单背景.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Menu_主菜单UI.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/ESCMenu_ESC菜单UI.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Plugins_插件平台.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Crosshair_贴图准星.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/HitFeedback_命中反馈.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Agent Skills/README.txt",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Agent Skills/skeeto-hit-feedback/SKILL.md",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Agent Skills/skeeto-hit-feedback/scripts/validate_feedback.py",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_ci_my_random_sfx.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_ci_my_sequence.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_ci_my_style.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_ff_my_style.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_fx_my_style.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_si_my_simple.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_si_my_streak.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/DIY/Examples 命中反馈json示例/skeeto_si_my_world.json",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/PluginSDK/README.md",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/PluginSDK/include/skeeto_plugin_api.h",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/PluginSDK/examples/HelloMenu/plugin.cpp",
+      "role": "document"
+    },
+    {
+      "path": "Skeeto/PluginSDK/examples/HelloMenu/build.bat",
+      "role": "document"
+    }
+  ]
+}

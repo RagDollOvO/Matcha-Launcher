@@ -1,0 +1,10 @@
+Built-in ImageGen; transparent background enabled.
+
+Use case: UI-mockup / game HUD sprite asset. Create ONE production-ready square sprite sheet of four clean, flat-color inventory icons for a Left 4 Dead 2 supply radar, on true transparent alpha. Exactly 2 columns by 2 rows of isolated icons, centered in their own equal quadrant with generous empty padding and zero touching. Do not draw the grid or any framing. A cohesive mature minimalist pictogram system with chunky simple forms and crisp edges, engineered to still read at 12–18 pixels high over dark gray; decisive silhouettes, at most 2–3 flat tones each and only very broad details. No typography, numerals, letters, labels, logos, outline stickers, circles/tiles behind icons, casts shadows, gradients, shine, texture, 3D, outlines around entire objects, or photographic realism.
+
+Top left: a SINGLE upright classic red soda can: simple cylinder with a short pale silver top rim, solid deep red body, and one broad ivory diagonal wave on the front. No branding or writing; unmistakably a soda can.
+Top right: a garden gnome's head only, readable as the L4D2 carnival gnome: tall slightly tilted pointy red cap above a small warm face and a big rounded, unmistakable ivory beard that tapers to a point. Dot eyes, very few details, no shoulders or body. Friendly, not a caricature.
+Bottom left: ONE broad warm amber rifle cartridge leaning up to the right paired with ONE bold pale golden four- or five-point explosion burst visibly beside the upper end. Burst and cartridge make one small compact emblem, each remains legible.
+Bottom right: ONE matching copper-orange rifle cartridge leaning up to the right paired with ONE large vivid orange-red flame with a simple pale yellow inner tongue beside the upper end. The flame reads clearly by silhouette, not as a sparkle. Use the same size and angle of cartridge as bottom left.
+
+Give the four marks equal optical weight and scale; sufficient negative space between adjacent silhouettes to cut cells into four PNGs. True alpha in all background pixels, including corners and spaces between icons. Deliver only the sprite sheet.

@@ -1,0 +1,731 @@
+{
+  "schema": 1,
+  "platform": "skeeto",
+  "basedOn": "regoists/Skeeto@main, 2026-11-16: src/skeeto/core/skeeto_menu_catalog.generated.inc (936 entries), Skeeto/README.txt, Skeeto/Commands.txt",
+  "basis": "Classified from menu names, help text and command docs; source code was not reviewed. Entries marked review need the user's decision.",
+  "kinds": {
+    "cosmetic": "外观与音效：只改看到和听到的样子",
+    "self-info": "自身与队友信息：原版也能拿到，只是换个方式显示",
+    "intel": "额外情报：原版看不到的信息（穿墙描边、仇恨、导演、物资位置等）",
+    "input": "改变输入或射击：替玩家操作或改射击方向",
+    "bypass": "绕过限制：强改受限 Cvar、对抗反作弊",
+    "local": "本地服：只作用于自己开的服务器",
+    "system": "稳定性与加载：不影响玩法",
+    "loader": "加载第三方代码",
+    "update": "更新渠道"
+  },
+  "online": {
+    "any": "任何服务器可用",
+    "no-versus": "对抗类模式（对抗、清道夫）停用",
+    "local-only": "只在单机和本地服务器",
+    "blocked": "禁止，Flare 管理时强制关闭",
+    "review": "待用户决定"
+  },
+  "modules": [
+    {
+      "id": "hit-feedback",
+      "name": "命中反馈",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "命中反馈"
+      ],
+      "touches": [
+        "hooks",
+        "filesystem"
+      ],
+      "note": "命中与击杀的画面和音效；读取创意工坊素材包 JSON"
+    },
+    {
+      "id": "crosshair",
+      "name": "准星",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "准星设置"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "静态、动态、贴图准星；其中「枪械散布调试」显示真实散布，建议拆出来归 intel"
+    },
+    {
+      "id": "crosshair-tps",
+      "name": "第三人称准星",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "准星设置 > 第三人称准星"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "只画准星，不改射击方向；改方向的是 tps-aim"
+    },
+    {
+      "id": "viewmodel",
+      "name": "持枪视角与镜像",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "更强大的持枪视角调节"
+      ],
+      "commands": [
+        "skeeto_viewmodel_mirror"
+      ],
+      "touches": [
+        "hooks",
+        "filesystem"
+      ],
+      "note": "按模型保存到 left4dead2/skeeto/viewmodel/profiles.ini"
+    },
+    {
+      "id": "volume-mixer",
+      "name": "分类音量",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "更强大的音量调节系统"
+      ],
+      "touches": [
+        "hooks"
+      ]
+    },
+    {
+      "id": "audio-positional",
+      "name": "优化听声辨位",
+      "kind": "intel",
+      "online": "review",
+      "from": [
+        "更强大的音量调节系统 > 优化听声辨位"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "关闭混响和环境音效处理，脚步更清楚；对抗里算轻度优势"
+    },
+    {
+      "id": "gunshot-feel",
+      "name": "枪声听感增强",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "战斗增强与视听优化 > 枪声听感增强"
+      ],
+      "touches": [
+        "hooks"
+      ]
+    },
+    {
+      "id": "endgame-music",
+      "name": "结算与氛围音乐",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "战斗增强与视听优化 > 安全屋结算音乐",
+        "Vscript功能客户端化(Skeetoscript) > 检测到场上只剩一人自动播放雨爱"
+      ],
+      "touches": [
+        "hooks",
+        "filesystem"
+      ]
+    },
+    {
+      "id": "menu-background",
+      "name": "主菜单背景",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "主菜单背景引擎"
+      ],
+      "touches": [
+        "hooks",
+        "filesystem"
+      ],
+      "note": "图片或 MP4 视频"
+    },
+    {
+      "id": "game-ui",
+      "name": "自定义游戏界面",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "自定义游戏UI"
+      ],
+      "commands": [
+        "skeeto_escmenu",
+        "skeeto_escmenu_native",
+        "skeeto_escmenu_home",
+        "skeeto_escmenu_edit"
+      ],
+      "touches": [
+        "hooks",
+        "filesystem"
+      ],
+      "note": "主菜单、ESC 菜单、聊天框、控制台；布局存 left4dead2/skeeto/escmenu/"
+    },
+    {
+      "id": "script-cues",
+      "name": "屏幕与音效提示",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript)"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "低血量红屏、吃药绿屏、空仓与低弹药提示音、弹壳与弹匣落地音、倒地视角倾斜、第一人称爬梯脚步、燃烧瓶地面焦痕、枪声房间混响（补充源码菜单核对）"
+    },
+    {
+      "id": "view-tilt",
+      "name": "视角倾斜",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 视角倾斜"
+      ],
+      "touches": [
+        "hooks"
+      ]
+    },
+    {
+      "id": "corpse-dissolve",
+      "name": "尸体粒子消散",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 感染者尸体粒子消散"
+      ],
+      "touches": [
+        "hooks"
+      ]
+    },
+    {
+      "id": "hide-back-items",
+      "name": "隐藏背部挂件",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 隐藏角色挂载模型"
+      ],
+      "touches": [
+        "hooks"
+      ]
+    },
+    {
+      "id": "team-glow-style",
+      "name": "队友描边样式",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "战斗增强与视听优化 > 描边颜色与渲染"
+      ],
+      "commands": [
+        "skeeto_glow_<角色名>",
+        "skeeto_laser_outline"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "角色颜色与五组状态颜色调整原生描边；常亮会覆盖原生 LOS/距离淡出，激光红点明确隔墙可见。接入时这两项保留本地门禁，其余颜色样式沿用 any。"
+    },
+    {
+      "id": "combat-declutter",
+      "name": "减少画面干扰",
+      "kind": "cosmetic",
+      "online": "review",
+      "from": [
+        "战斗增强与视听优化"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "关闭布偶尸体、曳光弹；对抗里能减少遮挡，轻度优势"
+    },
+    {
+      "id": "hud-self",
+      "name": "自身状态 HUD",
+      "kind": "self-info",
+      "online": "any",
+      "from": [
+        "自定义 HUD",
+        "叠加层 HUD"
+      ],
+      "commands": [
+        "skeeto_hud_pause"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "弹药、道具、特殊弹药、肾上腺素、推击冷却、黑白、互动进度、速度表、计时器、关卡名、开麦提示、隐藏原版 HUD；叠加层 HUD 若是独立窗口，touches 加 externalPrograms（待核实）"
+    },
+    {
+      "id": "hud-team",
+      "name": "队友信息 HUD",
+      "kind": "self-info",
+      "online": "any",
+      "from": [
+        "自定义 HUD"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "队友血条、低血量、黑白、倒地救援、被控、队友投掷物、关键保护、黑枪伤害提示"
+    },
+    {
+      "id": "hud-stats",
+      "name": "统计与结算 HUD",
+      "kind": "self-info",
+      "online": "any",
+      "from": [
+        "自定义 HUD"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "击杀列表、击杀统计、连杀、Boss 伤害排行、章节结算、TAB 计分、网络参数、内存显示；TAB「显示特感状态」在对抗里要另判"
+    },
+    {
+      "id": "world-hud-feedback",
+      "name": "世界 HUD：伤害与击杀",
+      "kind": "cosmetic",
+      "online": "any",
+      "from": [
+        "世界 HUD"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "伤害数字、Witch/Tank 击杀提示、刀爆、关键保护与解控"
+    },
+    {
+      "id": "hud-intel",
+      "name": "局内情报 HUD",
+      "kind": "intel",
+      "online": "no-versus",
+      "from": [
+        "自定义 HUD"
+      ],
+      "touches": [
+        "hooks",
+        "memoryRead"
+      ],
+      "note": "导演压力、简洁版导演 HUD、在场特感数量、特感出生与近身预警、特感仇恨、Tank 仇恨目标、举石预警、尸潮提示、Witch 惊扰度与血量、Boss 点燃、伤害来源、地面危险倒计时、终局阶段、红点局"
+    },
+    {
+      "id": "world-hud-intel",
+      "name": "世界 HUD：敌方情报",
+      "kind": "intel",
+      "online": "no-versus",
+      "from": [
+        "世界 HUD > 特感血条",
+        "世界 HUD > 特感硬直 / 踉跄提示",
+        "世界 HUD > 无条件显示人物ID",
+        "世界 HUD > Tank 行为预测",
+        "世界 HUD > 投掷物落点预览"
+      ],
+      "touches": [
+        "hooks",
+        "memoryRead"
+      ],
+      "note": "Tank 出拳计时、攻击范围、目标连线属于强情报"
+    },
+    {
+      "id": "timing-trainers",
+      "name": "时机提示",
+      "kind": "intel",
+      "online": "no-versus",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 弹反短闪",
+        "Vscript功能客户端化(Skeetoscript) > 砍舌提示 HUD",
+        "Vscript功能客户端化(Skeetoscript) > Jockey 起跳提示音"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "弹反白光提示、砍舌倒计时（含自动延迟补偿）；Jockey 起跳提示音按源码菜单补充，沿用时机情报范围"
+    },
+    {
+      "id": "hazard-outlines",
+      "name": "危险与目标描边",
+      "kind": "intel",
+      "online": "no-versus",
+      "from": [
+        "战斗增强与视听优化 > 战役危险描边",
+        "Vscript功能客户端化(Skeetoscript) > 口水酸液范围估算轮廓",
+        "Vscript功能客户端化(Skeetoscript) > 警报车武装描边"
+      ],
+      "commands": [
+        "skeeto_witch_outline",
+        "skeeto_tank_outline",
+        "skeeto_tank_prop_outline",
+        "skeeto_acid_outline_toggle"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "Witch、Tank 常驻描边，可交互铁、酸液范围、警报车"
+    },
+    {
+      "id": "item-scan",
+      "name": "物资与可交互物扫描",
+      "kind": "intel",
+      "online": "no-versus",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 物资扫描",
+        "战斗增强与视听优化 > 可交互物品扫描"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "按类别穿墙描边附近物资、按钮、门"
+    },
+    {
+      "id": "supply-radar",
+      "name": "物资雷达",
+      "kind": "intel",
+      "online": "no-versus",
+      "from": [
+        "物资雷达"
+      ],
+      "touches": [
+        "hooks",
+        "memoryRead"
+      ]
+    },
+    {
+      "id": "minimap-nav",
+      "name": "小地图与路线导航",
+      "kind": "intel",
+      "online": "no-versus",
+      "from": [
+        "小地图导航与物资提示"
+      ],
+      "commands": [
+        "skeeto_nav_goal"
+      ],
+      "touches": [
+        "hooks",
+        "filesystem"
+      ],
+      "note": "读取 NAV 网格；包括小地图物资标记和枪械筛选"
+    },
+    {
+      "id": "campaign-progress",
+      "name": "战役完成度",
+      "kind": "self-info",
+      "online": "any",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 战役完成度显示"
+      ],
+      "touches": [
+        "hooks"
+      ]
+    },
+    {
+      "id": "night-vision",
+      "name": "聚光灯夜视",
+      "kind": "intel",
+      "online": "review",
+      "from": [
+        "战斗增强与视听优化 > 聚光灯夜视"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "暗处更亮，对抗里有可见度优势"
+    },
+    {
+      "id": "model-scale",
+      "name": "感染者模型缩放",
+      "kind": "intel",
+      "online": "review",
+      "from": [
+        "缺陷修复与功能便利 > W模缩放"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "放大特感和普感模型会让目标更好打"
+    },
+    {
+      "id": "silent-si-fix",
+      "name": "无声特感补发提示音",
+      "kind": "intel",
+      "online": "review",
+      "from": [
+        "缺陷修复与功能便利 > 大幅降低无声特感发生的概率"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "修原版缺陷，但近距离补发提示音也是额外线索"
+    },
+    {
+      "id": "auto-semiauto",
+      "name": "半自动武器按住连发",
+      "kind": "input",
+      "online": "local-only",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 半自动武器按住连发"
+      ],
+      "commands": [
+        "skeeto_hold_semiauto"
+      ],
+      "touches": [
+        "hooks",
+        "input"
+      ],
+      "note": "替玩家连点；联机属于不公平优势"
+    },
+    {
+      "id": "auto-reload",
+      "name": "霰弹枪自动换弹",
+      "kind": "input",
+      "online": "review",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 霰弹枪自动换弹"
+      ],
+      "touches": [
+        "hooks",
+        "input"
+      ],
+      "note": "替玩家按换弹"
+    },
+    {
+      "id": "tps-aim",
+      "name": "第三人称弹道修正",
+      "kind": "input",
+      "online": "local-only",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 第三人称弹道修正"
+      ],
+      "commands": [
+        "skeeto_tps_aim"
+      ],
+      "touches": [
+        "hooks",
+        "input"
+      ],
+      "note": "作者说明：核心技术与静默自瞄高度相似，改的是射击方向而不是准星"
+    },
+    {
+      "id": "anti-anti-cheat",
+      "name": "反作弊对抗（AAC）",
+      "kind": "bypass",
+      "online": "blocked",
+      "from": [
+        "半自动武器按住连发 > Anti-Anti-Cheat轻量反作弊对抗",
+        "第三人称弹道修正 > Anti-Anti-Cheat轻量反作弊对抗"
+      ],
+      "touches": [
+        "hooks",
+        "input"
+      ],
+      "note": "命中 Flare 禁止项「绕过反作弊」；必须是可单独移除的模块，合规版里编译掉"
+    },
+    {
+      "id": "forced-cvars",
+      "name": "强制修改受限 Cvar",
+      "kind": "bypass",
+      "online": "local-only",
+      "from": [
+        "战斗增强与视听优化 > 强制 Cvar 修改"
+      ],
+      "commands": [
+        "skt_cvar",
+        "skeeto_cvar"
+      ],
+      "touches": [
+        "memoryWrite"
+      ],
+      "note": "去地图迷雾、拉满渲染距离、关枪火与后座、原版导演 HUD；skt_cvar 自述可能绕过原本限制"
+    },
+    {
+      "id": "local-server",
+      "name": "本地服设置",
+      "kind": "local",
+      "online": "local-only",
+      "from": [
+        "本地服体验优化"
+      ],
+      "touches": [
+        "memoryWrite"
+      ],
+      "note": "Tick、Nextbot 刷新率、lerp、单人闲置、空中加速、人物切换；作者说明不作用于远端服务器"
+    },
+    {
+      "id": "local-debug",
+      "name": "本地调试与传送",
+      "kind": "local",
+      "online": "local-only",
+      "from": [
+        "本地服体验优化 > 有趣的调试 Cvar",
+        "本地服体验优化 > 显示无敌Bug点",
+        "本地服体验优化 > 完整导演 HUD"
+      ],
+      "touches": [
+        "memoryWrite"
+      ],
+      "note": "碰撞箱、生成区域、噪声等级、导演面板、传送到无敌点；快速测试图会开 sv_cheats"
+    },
+    {
+      "id": "client-perf",
+      "name": "客户端性能预设",
+      "kind": "system",
+      "online": "any",
+      "from": [
+        "Vscript功能客户端化(Skeetoscript) > 客户端性能预设"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "其中「本地服网络插值与服端优化」只在本地服生效"
+    },
+    {
+      "id": "idle-restore",
+      "name": "闲置恢复与便利",
+      "kind": "self-info",
+      "online": "any",
+      "from": [
+        "缺陷修复与功能便利"
+      ],
+      "touches": [
+        "hooks"
+      ],
+      "note": "闲置后恢复手电、视角、武器槽、人称；修改人机名字"
+    },
+    {
+      "id": "config-override",
+      "name": "过关自动执行 CFG",
+      "kind": "system",
+      "online": "any",
+      "from": [
+        "缺陷修复与功能便利 > Config Override 过关之后自动执行CFG文件"
+      ],
+      "touches": [
+        "filesystem"
+      ]
+    },
+    {
+      "id": "crash-guard",
+      "name": "防闪退",
+      "kind": "system",
+      "online": "any",
+      "from": [
+        "防闪退功能集成",
+        "缺陷修复与功能便利"
+      ],
+      "touches": [
+        "memoryWrite"
+      ],
+      "note": "datacache 上限与清理、index_buffer、禁止贴花、自动清理弹孔血迹"
+    },
+    {
+      "id": "cache-offload",
+      "name": "缓存搬运",
+      "kind": "system",
+      "online": "any",
+      "from": [
+        "防闪退功能集成 > 缓存搬运"
+      ],
+      "commands": [
+        "skeeto_cache_reclaim"
+      ],
+      "touches": [
+        "externalPrograms",
+        "filesystem"
+      ],
+      "note": "DLL 内嵌 cache host exe，启用后解压到 LocalAppData 并启动"
+    },
+    {
+      "id": "fast-load",
+      "name": "资源加载提速（Beta）",
+      "kind": "system",
+      "online": "any",
+      "from": [
+        "引擎资源加载提速（Beta）"
+      ],
+      "touches": [
+        "hooks",
+        "memoryWrite"
+      ],
+      "note": "引擎加载补丁，实验项默认关闭；「取消本地过关切图等待」只在本地服"
+    },
+    {
+      "id": "career",
+      "name": "生涯档案",
+      "kind": "self-info",
+      "online": "any",
+      "from": [
+        "L4D2生涯档案"
+      ],
+      "touches": [
+        "network"
+      ],
+      "note": "读取 Steam 生涯统计；联网方式待核实"
+    },
+    {
+      "id": "necola-loader",
+      "name": "Necola 启动联动",
+      "kind": "loader",
+      "online": "review",
+      "from": [
+        "Necola 启动联动"
+      ],
+      "touches": [
+        "loader"
+      ],
+      "note": "启动时加载另一个项目 Necola；它自己要单独核验"
+    },
+    {
+      "id": "plugin-platform",
+      "name": "插件平台",
+      "kind": "loader",
+      "online": "review",
+      "from": [
+        "Skeeto插件平台"
+      ],
+      "commands": [
+        "skeeto_plugins"
+      ],
+      "touches": [
+        "loader",
+        "filesystem"
+      ],
+      "note": "加载 bin/skeeto/plugins/ 下的第三方 DLL，默认关闭；子插件各自显示核验状态"
+    },
+    {
+      "id": "menu-core",
+      "name": "Skeeto 菜单与帮助",
+      "kind": "system",
+      "online": "any",
+      "from": [
+        "菜单样式",
+        "帮助与调试",
+        "Skeeto",
+        "聊天框位置"
+      ],
+      "touches": [
+        "hooks",
+        "filesystem"
+      ],
+      "note": "数字菜单、搜索、样式、免责说明、debug 日志"
+    },
+    {
+      "id": "workshop-updater",
+      "name": "创意工坊自更新",
+      "kind": "update",
+      "online": "any",
+      "from": [
+        "skeeto_workshop.cpp"
+      ],
+      "touches": [
+        "externalPrograms",
+        "filesystem"
+      ],
+      "note": "订阅 3787239937，下载后经同意运行包内 Maintain.ps1；Flare 管理时关闭，更新改由 Flare 提示"
+    }
+  ]
+}

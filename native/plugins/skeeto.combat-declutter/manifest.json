@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.combat-declutter",
+  "name": "减少画面干扰",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "按类别隐藏布偶尸体和第一人称曳光弹。",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source 订阅游戏帧和 zombie_death / 回合 / 换图事件"
+      ],
+      "memoryModification": [
+        "通过参数租约设置布偶限额和曳光弹；Corpse API 1 按实体身份隐藏并恢复绘制字段，有限提交原生布偶清理命令"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "common",
+      "label": "隐藏普通感染者尸体",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "special",
+      "label": "隐藏特殊感染者与 Boss 尸体",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "all",
+      "label": "隐藏全部地面尸体",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "tracers",
+      "label": "隐藏第一人称曳光弹",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取功能状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示每项参数的应用、等待、缺失或冲突状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存功能设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "common": {
+          "type": "boolean",
+          "default": false
+        },
+        "special": {
+          "type": "boolean",
+          "default": false
+        },
+        "all": {
+          "type": "boolean",
+          "default": false
+        },
+        "tracers": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "保存独立设置；下一游戏帧应用，关闭选项后恢复所持有的原值。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "按类别隐藏布偶尸体和第一人称曳光弹。",
+    "description": "联机范围待定，当前在本地服应用。普通感染者 / Witch、特感 / Tank、全部地面尸体限额和第一人称曳光弹分别开关。zombie_death 事件定位尸体，以最多 64 项、2.5 秒短期追踪隐藏；死亡后安排有限的布偶清理和末端索引探测。玩家槽位与玩家实体保持可见。关闭后恢复仍属本模组的绘制位、模式、颜色和参数，保留原生更新及其他模块修改；已清理的布偶由后续游戏事件重新生成。与尸体消散按感染者类别共享独占资源。 消散运行期间，全局布偶限额和清理脉冲让出，独立类别限额继续；全部地面尸体选项同时申请两类资源。\n\n每个选项关闭后，SDK 恢复启用前的游戏参数。游戏内切服会重新检查适用环境，冲突与缺失参数可在功能状态里查看。配置存入本 DLL 的 config.json。实际游戏效果待实测。",
+    "tags": [
+      "本地服",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.review",
+        "title": "待定联机功能",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "保留待定分类，当前仅在本地服工作"
+      }
+    ]
+  }
+}

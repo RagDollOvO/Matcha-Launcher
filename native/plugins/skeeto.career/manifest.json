@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.career",
+  "name": "生涯档案",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Skeeto contributors · Flare 移植",
+    "purpose": "按需读取当前玩家的 Steam 累计统计：概览、团队协作、角色、模式与武器。",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [],
+      "memoryModification": []
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [],
+  "config": [],
+  "actions": [
+    {
+      "id": "refresh",
+      "label": "刷新生涯档案",
+      "description": "从游戏已加载的 Steam 接口读取累计统计。进入游戏、Beacon 加载此模组后可用。",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {}
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "Steam 累计统计 · 37 种武器 · 团队、角色与模式记录",
+    "description": "从 Skeeto 2.2.19 的生涯档案源码移植，独立读取 23 项通用统计和 37 项武器击杀。\n点击刷新时读取游戏当前的 Steam 统计缓存，展示前 6 武器、团队协作、角色出场与模式记录。缺失值以 — 显示，保留真实的 0；数据就绪后可再次刷新。\n读取接口随游戏提供；统计、成就与游戏配置均保持原状。当前已通过离线 DLL 检查，游戏内 Steam 数据读取待实测。源码、构建说明和 GPL 许可证随包提供。",
+    "tags": [
+      "自身信息",
+      "统计",
+      "源码移植",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 的源码移植大合集。开发者按用途组织小合集，每个具体功能有独立的说明、设置和启停开关。\n当前收录静态窗口准星、生涯档案和过关执行 CFG，其他功能按源码移植进度陆续加入。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.personal",
+        "title": "个人档案",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "个人记录、信息与便利功能，逐项选择和设置。",
+        "description": "查看生涯记录，设置闲置恢复与 BOT 显示名。每项功能拥有自己的说明、配置和启停开关。"
+      }
+    ]
+  }
+}

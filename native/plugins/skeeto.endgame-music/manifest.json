@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.endgame-music",
+  "name": "结算与氛围音乐",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "独立管理安全屋结算音乐与最后生还者氛围音乐",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "读取 GAME 挂载的 sound/skeeto/safe/*.wav、*.mp3 与 sound/skeeto/the last man/Rainie_Love.mp3",
+        "保存本模组 config.json 与临时 media-cache，结束后清理所属缓存"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source Sound SDK 识别并替换原生结算音乐；通过 Source 游戏帧与实体 API 读取队伍状态"
+      ],
+      "memoryModification": []
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "safe_enabled",
+      "label": "自定义安全屋音乐",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "safe_random",
+      "label": "安全屋曲目随机选择",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "safe_track",
+      "label": "安全屋曲目文件名（留空选第一首）",
+      "type": "string",
+      "default": "",
+      "maxLength": 255,
+      "apply": "immediate"
+    },
+    {
+      "id": "safe_volume",
+      "label": "安全屋音量 %",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "safe_step",
+      "label": "安全屋音量调节步进",
+      "type": "enum",
+      "default": "5",
+      "options": [
+        "1",
+        "5",
+        "10",
+        "20"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "last_enabled",
+      "label": "最后生还者自动播放雨爱",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "last_mode",
+      "label": "雨爱触发条件",
+      "type": "enum",
+      "default": "仅一人未倒地",
+      "options": [
+        "团灭后",
+        "仅一人存活",
+        "仅一人未倒地",
+        "仅自己存活",
+        "仅自己未倒地"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "last_volume",
+      "label": "雨爱音量 %",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "last_step",
+      "label": "雨爱音量调节步进",
+      "type": "enum",
+      "default": "5",
+      "options": [
+        "1",
+        "5",
+        "10",
+        "20"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "last_auto_stop",
+      "label": "条件结束自动停止雨爱",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "last_notice",
+      "label": "显示「会赢吗？」提示",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "notice_scale",
+      "label": "提示大小 %",
+      "type": "integer",
+      "default": 100,
+      "minimum": 50,
+      "maximum": 200,
+      "apply": "immediate"
+    },
+    {
+      "id": "notice_x",
+      "label": "提示横向位置",
+      "type": "integer",
+      "default": 0,
+      "minimum": -4096,
+      "maximum": 7680,
+      "apply": "immediate"
+    },
+    {
+      "id": "notice_y",
+      "label": "提示纵向位置",
+      "type": "integer",
+      "default": 120,
+      "minimum": -4096,
+      "maximum": 4320,
+      "apply": "immediate"
+    },
+    {
+      "id": "notice_absolute",
+      "label": "提示使用绝对坐标",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取音乐状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "读取保存的设置与当前播放状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存音乐设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "safe_enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "safe_random": {
+          "type": "boolean",
+          "default": false
+        },
+        "safe_track": {
+          "type": "string",
+          "default": "",
+          "maxLength": 255
+        },
+        "safe_volume": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "safe_step": {
+          "type": "enum",
+          "default": "5",
+          "options": [
+            "1",
+            "5",
+            "10",
+            "20"
+          ]
+        },
+        "last_enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "last_mode": {
+          "type": "enum",
+          "default": "仅一人未倒地",
+          "options": [
+            "团灭后",
+            "仅一人存活",
+            "仅一人未倒地",
+            "仅自己存活",
+            "仅自己未倒地"
+          ]
+        },
+        "last_volume": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "last_step": {
+          "type": "enum",
+          "default": "5",
+          "options": [
+            "1",
+            "5",
+            "10",
+            "20"
+          ]
+        },
+        "last_auto_stop": {
+          "type": "boolean",
+          "default": true
+        },
+        "last_notice": {
+          "type": "boolean",
+          "default": true
+        },
+        "notice_scale": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 50,
+          "maximum": 200
+        },
+        "notice_x": {
+          "type": "integer",
+          "default": 0,
+          "minimum": -4096,
+          "maximum": 7680
+        },
+        "notice_y": {
+          "type": "integer",
+          "default": 120,
+          "minimum": -4096,
+          "maximum": 4320
+        },
+        "notice_absolute": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "下一游戏帧应用，关闭时只停止本模组的音乐。"
+    },
+    {
+      "id": "tracks",
+      "label": "查看安全屋曲目",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "列出已扫描的挂载曲目。"
+    },
+    {
+      "id": "rescan",
+      "label": "重新扫描素材",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "重新扫描曲目并准备雨爱音轨。"
+    },
+    {
+      "id": "preview",
+      "label": "试听安全屋音乐",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "试听当前选择或随机曲目，可在菜单使用。"
+    },
+    {
+      "id": "stop",
+      "label": "停止当前音乐",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "停止本模组当前播放，后续条件变化仍可再次触发。"
+    },
+    {
+      "id": "preview-notice",
+      "label": "预览提示位置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "在对局中显示五秒提示，供调整大小与位置。"
+    },
+    {
+      "id": "adjust-volume",
+      "label": "按步进调整音量",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "channel": {
+          "type": "enum",
+          "options": [
+            "safe",
+            "last"
+          ],
+          "default": "safe"
+        },
+        "direction": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1,
+          "default": 1
+        }
+      },
+      "description": "direction 使用 -1 降低、1 提高；按所选通道的步进保存音量。"
+    },
+    {
+      "id": "playback",
+      "label": "读取播放诊断",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "读取真实媒体就绪、播放状态与成功启动次数。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "安全屋曲目随机或指定播放，五种最后生还者触发条件",
+    "description": "自定义安全屋音乐从挂载资源 sound/skeeto/safe/ 中扫描 WAV / MP3，可指定曲目或随机选择；每章替换一次原生结算音，清道夫模式保留游戏原声。音轨准备失败时继续使用游戏音乐。菜单中可试听、停止和重新扫描。\n\n最后生还者音乐读取 sound/skeeto/the last man/Rainie_Love.mp3，可选择团灭、仅一人存活、仅一人站立、仅自己存活或仅自己站立。人数包括倒地与挂边判断，至少两名生还者才触发。可选条件结束自动停止，并显示五秒「会赢吗？」提示。两类音乐各有独立音量与步进。\n\n素材沿用作者或用户已经挂载的文件；本功能按帧读到自己的临时缓存，由独立媒体线程解码播放，关闭后清理所属播放与缓存。两类音乐默认关闭。来源 Skeeto 2.2.19 SafeMusic / LastMusic，实际游戏表现待实测。",
+    "tags": [
+      "音乐",
+      "安全屋",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

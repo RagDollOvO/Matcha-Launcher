@@ -1,0 +1,57 @@
+#pragma once
+// Minimal Win32 declarations. The plugin has no external C/C++ runtime DLL.
+using DWORD=unsigned long; using UINT=unsigned; using BOOL=int; using WCHAR=wchar_t;
+using HANDLE=void*; using HMODULE=void*; using HWND=void*; using SIZE_T=unsigned;
+using UINT_PTR=unsigned; using WPARAM=unsigned; using LPARAM=long;
+using WindowProc=long(__stdcall*)(HWND,UINT,WPARAM,LPARAM);
+#define WIN_API extern "C" __declspec(dllimport)
+WIN_API HMODULE __stdcall GetModuleHandleW(const WCHAR*);
+WIN_API DWORD __stdcall GetModuleFileNameW(HMODULE,WCHAR*,DWORD);
+WIN_API void* __stdcall GetProcAddress(HMODULE,const char*);
+WIN_API BOOL __stdcall GetModuleHandleExW(DWORD,const WCHAR*,HMODULE*);
+WIN_API BOOL __stdcall DisableThreadLibraryCalls(HMODULE);
+WIN_API DWORD __stdcall GetTickCount();
+WIN_API DWORD __stdcall GetEnvironmentVariableW(const WCHAR*,WCHAR*,DWORD);
+WIN_API DWORD __stdcall GetCurrentThreadId();
+WIN_API DWORD __stdcall GetCurrentProcessId();
+WIN_API DWORD __stdcall GetWindowThreadProcessId(HWND,DWORD*);
+WIN_API BOOL __stdcall IsWindow(HWND);
+WIN_API BOOL __stdcall IsWindowVisible(HWND);
+WIN_API BOOL __stdcall EnumWindows(BOOL(__stdcall*)(HWND,LPARAM),LPARAM);
+WIN_API HWND __stdcall GetForegroundWindow();
+WIN_API short __stdcall GetAsyncKeyState(int);
+WIN_API short __stdcall GetKeyState(int);
+WIN_API long __stdcall GetWindowLongW(HWND,int);
+WIN_API long __stdcall SetWindowLongW(HWND,int,long);
+WIN_API long __stdcall CallWindowProcW(WindowProc,HWND,UINT,WPARAM,LPARAM);
+using TimerProc=void(__stdcall*)(HWND,UINT,UINT_PTR,DWORD);
+WIN_API UINT_PTR __stdcall SetTimer(HWND,UINT_PTR,UINT,TimerProc);
+WIN_API BOOL __stdcall KillTimer(HWND,UINT_PTR);
+WIN_API BOOL __stdcall VirtualProtect(void*,SIZE_T,DWORD,DWORD*);
+struct MemoryInfo {void* base;void* allocation;DWORD allocationProtect;SIZE_T size;DWORD state,protect,type;};
+WIN_API SIZE_T __stdcall VirtualQuery(const void*,MemoryInfo*,SIZE_T);
+WIN_API BOOL __stdcall CreateDirectoryW(const WCHAR*,void*);
+WIN_API DWORD __stdcall GetFileAttributesW(const WCHAR*);
+WIN_API UINT __stdcall GetPrivateProfileIntW(const WCHAR*,const WCHAR*,int,const WCHAR*);
+WIN_API DWORD __stdcall GetPrivateProfileStringW(const WCHAR*,const WCHAR*,const WCHAR*,WCHAR*,DWORD,const WCHAR*);
+WIN_API int __stdcall MultiByteToWideChar(UINT,DWORD,const char*,int,WCHAR*,int);
+WIN_API int __stdcall WideCharToMultiByte(UINT,DWORD,const WCHAR*,int,char*,int,const char*,BOOL*);
+WIN_API BOOL __stdcall WritePrivateProfileStringW(const WCHAR*,const WCHAR*,const WCHAR*,const WCHAR*);
+WIN_API int __cdecl wsprintfW(WCHAR*,const WCHAR*,...);
+WIN_API HANDLE __stdcall CreateFileW(const WCHAR*,DWORD,DWORD,void*,DWORD,DWORD,HANDLE);
+WIN_API BOOL __stdcall WriteFile(HANDLE,const void*,DWORD,DWORD*,void*);
+WIN_API BOOL __stdcall CloseHandle(HANDLE);
+WIN_API void __stdcall ExitProcess(UINT);
+inline void* operator new(SIZE_T,void* place) noexcept{return place;}
+void operator delete(void*) noexcept;
+WIN_API HANDLE __stdcall GetProcessHeap();
+WIN_API void* __stdcall HeapAlloc(HANDLE,DWORD,SIZE_T);
+WIN_API void* __stdcall HeapReAlloc(HANDLE,DWORD,void*,SIZE_T);
+WIN_API BOOL __stdcall HeapFree(HANDLE,DWORD,void*);
+WIN_API DWORD __stdcall GetFileSize(HANDLE,DWORD*);
+WIN_API BOOL __stdcall ReadFile(HANDLE,void*,DWORD,DWORD*,void*);
+WIN_API HMODULE __stdcall LoadLibraryW(const WCHAR*);
+WIN_API BOOL __stdcall FreeLibrary(HMODULE);
+WIN_API WCHAR* __stdcall GetCommandLineW();
+WIN_API BOOL __stdcall QueryPerformanceCounter(long long*);
+WIN_API BOOL __stdcall QueryPerformanceFrequency(long long*);

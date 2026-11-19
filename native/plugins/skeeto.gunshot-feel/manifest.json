@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.gunshot-feel",
+  "name": "枪声听感增强",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "保留原版开火声，叠加四种听感处理与独立强度",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source 帧、实体和声音 SDK 检测本地单发弹匣减少并读取原枪声路径"
+      ],
+      "memoryModification": [
+        "由 SDK 管理本模块声音 GUID，关闭时停止所属叠层声音"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "preset",
+      "label": "处理方式（0 冲击 / 1 低频 / 2 短尾 / 3 亮瞬态）",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 3,
+      "apply": "immediate"
+    },
+    {
+      "id": "gain",
+      "label": "叠层强度（%）",
+      "type": "integer",
+      "default": 55,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取枪声状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看当前开火监听、资源互斥与声音入口状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存枪声设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "preset": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "gain": {
+          "type": "integer",
+          "default": 55,
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "description": "保存独立设置，下一游戏帧应用。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "保留原版开火声，叠加四种听感处理与独立强度",
+    "description": "在原版开火声上叠加一层额外声音，提供冲击、低频、短尾、亮瞬态四种处理，强度 0–100%，默认 55%。短尾在 90 毫秒后再跟一声。\n\n检测本地武器弹匣变化，跳过换弹、多发累计下降、长时间停顿及武器切换；霰弹枪打断换弹时仍保留反馈。优先复用最近 120 毫秒内的原枪声路径，等待超时采用原作步枪后备音色。\n\n与「优化听声辨位」共享互斥组，先应用的功能保留控制；关闭占用者后另一功能接续，独立保存设置保持。与枪声房间混响共同开启时叠层音量乘 0.75。来源 Skeeto 2.2.19 GunFeel；实际游戏效果待实测。",
+    "tags": [
+      "外观与音效",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

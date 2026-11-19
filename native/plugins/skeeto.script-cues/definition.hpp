@@ -1,0 +1,3 @@
+// Generated from manifest.json by scripts/generate-skeeto-features.mjs
+#pragma once
+static constexpr char kFields[] = R"fields({"active":{"type":"boolean","default":true},"low-health":{"type":"boolean","default":false},"heal":{"type":"boolean","default":false},"empty":{"type":"boolean","default":false},"low-ammo":{"type":"boolean","default":false},"shell":{"type":"boolean","default":false},"magazine":{"type":"boolean","default":false},"incap-roll":{"type":"boolean","default":false},"ladder":{"type":"boolean","default":false},"scorch":{"type":"boolean","default":false},"reverb":{"type":"boolean","default":false},"shell-volume":{"type":"integer","minimum":0,"maximum":100,"default":100}})fields";

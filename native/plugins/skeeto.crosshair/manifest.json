@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.crosshair",
+  "name": "静态窗口准星",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Skeeto contributors · Flare 移植",
+    "purpose": "独立的窗口中心静态准星，20 种原作 GDI+ 样式。",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "仅写本模组 config.json，保存准星设置"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [],
+      "memoryModification": []
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [],
+  "config": [
+    {
+      "id": "style",
+      "label": "样式编号",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 19,
+      "apply": "immediate"
+    },
+    {
+      "id": "color",
+      "label": "颜色编号",
+      "type": "integer",
+      "default": 2,
+      "minimum": 0,
+      "maximum": 5,
+      "apply": "immediate"
+    },
+    {
+      "id": "size",
+      "label": "大小 %",
+      "type": "integer",
+      "default": 100,
+      "minimum": 25,
+      "maximum": 300,
+      "apply": "immediate"
+    },
+    {
+      "id": "alpha",
+      "label": "不透明度 %",
+      "type": "integer",
+      "default": 100,
+      "minimum": 10,
+      "maximum": 100,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取准星状态",
+      "description": "读取当前设置与窗口显示状态。",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {}
+    },
+    {
+      "id": "configure",
+      "label": "保存准星设置",
+      "description": "样式 0–19：十字、十字点、点、圆环、圆环点、圆环十字、T、T点、方框、方框点、菱形、人字、四角、双环、横线、三角、X、X点、X圆环、X圆环点。颜色 0–5：白、红、绿、蓝、黄、紫。",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "style": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 19
+        },
+        "color": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 5
+        },
+        "size": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 25,
+          "maximum": 300
+        },
+        "alpha": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 100
+        }
+      }
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "20 种静态样式 · 窗口中心绘制 · 可调颜色、大小与透明度",
+    "description": "从 Skeeto 2.2.19 的 GDI+ 绘制代码移植。支持十字、圆环、T 字、方框、菱形、人字、四角、双环、横线、三角与 X 字组合。\n显示位置固定在当前游戏窗口中心，切换到其他窗口后自动隐藏。窗口化和无边框窗口为目标环境；独占全屏、游戏内菜单及实际对局表现待游戏实测。\n当前已迁移静态几何绘制。动态散布、贴图准星、第三人称准星另列迁移项。源码、构建说明和 GPL 许可证随 DLL 提供。",
+    "tags": [
+      "外观",
+      "准星",
+      "源码移植",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 的源码移植大合集。开发者按用途组织小合集，每个具体功能有独立的说明、设置和启停开关。\n当前收录静态窗口准星、生涯档案和过关执行 CFG，其他功能按源码移植进度陆续加入。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "把原作的视觉与音效功能逐项接入 Beacon，独立安装、独立启停。",
+        "description": "以 regoists/Skeeto 2.2.19 公开源码为基础的 Flare 移植合集。每项功能编译为独立 Beacon DLL，按需安装。\n当前提供静态窗口准星。命中反馈、持枪视角、音效与菜单背景等功能继续按源码依赖拆分；完整进度见「功能分类与移植进度」。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+/* 设置页共用样式：Settings.svelte 和 src/lib/settings/*.svelte 里的分节都用这些类，统一挂在 .settings 下。
+   一节 = h2 + 一句说明 + 一张或几张卡；卡里每行左边标题和说明、右边控件。控件只用这里定义的一套。 */
+.settings { height: 100%; display: flex; }
+.settings ::selection { background: color-mix(in srgb, var(--md-primary) 34%, transparent); color: var(--fg); }
+
+/* ---------- 左侧目录 ---------- */
+.settings .toc { width: 216px; flex: none; display: flex; flex-direction: column; gap: 1px; padding: 22px 12px 20px; border-right: 1px solid var(--line-soft); overflow-y: auto; }
+.settings .toc h1 { margin: 0 0 12px; padding: 0 10px; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.settings .toc .tg { margin: 16px 0 4px; padding: 0 10px; font-size: 11.5px; font-weight: 600; color: var(--fg-3); }
+.settings .toc button { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 10px; font-size: 13px; color: var(--fg-2); text-align: left; transition: background var(--dur), color var(--dur); }
+.settings .toc button:hover { background: var(--hover); color: var(--fg); }
+.settings .toc button.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); font-weight: 600; }
+.settings .toc button:focus-visible { outline: 2px solid var(--md-primary); outline-offset: -2px; }
+
+/* ---------- 右侧内容 ---------- */
+.settings .scroll { flex: 1; min-width: 0; overflow-y: auto; }
+.settings .inner { max-width: 760px; margin: 0 auto; padding: 30px 36px 120px; }
+.settings section { padding-bottom: 52px; scroll-margin-top: 24px; }
+.settings h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
+.settings h3 { display: flex; align-items: center; gap: 8px; margin: 28px 0 10px; font-size: 13px; font-weight: 600; color: var(--fg-2); }
+.settings .lead { margin: 0 0 16px; max-width: 62ch; font-size: 12.5px; line-height: 1.75; color: var(--fg-3); }
+.settings h2 + .card, .settings h2 + fieldset, .settings h2 + .stack { margin-top: 16px; }
+.settings .hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 10px 0 0; font-size: 12px; line-height: 1.7; color: var(--fg-3); }
+
+/* ---------- 卡片与行 ---------- */
+.settings .card { border: 1px solid var(--line); border-radius: 14px; background: var(--bg-1); overflow: hidden; }
+.settings .card + .card, .settings .card + .stack, .settings .stack + .card { margin-top: 12px; }
+.settings .line { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 58px; padding: 11px 18px; }
+.settings .line + .line, .settings .line + .rows, .settings .rows + .line { border-top: 1px solid var(--line-soft); }
+.settings .lt { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-width: 0; }
+.settings .lt b { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13.5px; font-weight: 550; color: var(--fg); }
+.settings .sub { font-size: 12px; line-height: 1.6; color: var(--fg-3); overflow-wrap: anywhere; }
+.settings .path { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-2); user-select: text; }
+/* 卡里的说明段落（空状态、引导） */
+.settings .note { margin: 0; padding: 16px 18px; font-size: 12.5px; line-height: 1.75; color: var(--fg-2); }
+.settings .note + .line, .settings .line + .note, .settings .specimen + .line { border-top: 1px solid var(--line-soft); }
+
+/* 按钮组 */
+.settings .row { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; flex: none; }
+.settings .btn:disabled, .settings .icon-btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
+.settings .btn:focus-visible, .settings .icon-btn:focus-visible, .settings .link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+.settings .link { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg-2); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+.settings .link:hover { color: var(--fg); }
+
+/* 分段选择：设置页只用这一种 */
+.settings .seg { display: inline-flex; flex: none; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 11px; background: color-mix(in srgb, var(--md-on-surface) 6%, transparent); }
+.settings .seg button { height: 28px; padding: 0 13px; border-radius: 8px; font-size: 12.5px; color: var(--fg-2); transition: background var(--dur), color var(--dur); }
+.settings .seg button:hover:not(:disabled):not(.on) { background: var(--hover); color: var(--fg); }
+.settings .seg button.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); font-weight: 600; }
+.settings .seg button:disabled { opacity: .4; cursor: default; }
+.settings .seg button:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 1px; }
+.settings .seg.sm button { height: 26px; padding: 0 11px; }
+
+/* 小标签：数量、「写入」等用 .w；还没开放的项用 .soon */
+.settings .w, .settings .soon { display: inline-flex; align-items: center; flex: none; height: 19px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap; }
+.settings .w { color: var(--fg-3); background: color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+.settings .soon { color: var(--md-primary); background: color-mix(in srgb, var(--md-primary) 13%, transparent); }
+
+/* 滑条 */
+.settings .vol { display: flex; align-items: center; gap: 10px; width: 232px; flex: none; }
+.settings .vol input[type='range'] { flex: 1; min-width: 0; padding: 0; border: 0; background: none; accent-color: var(--md-primary); }
+.settings .vol .val { width: 34px; text-align: right; font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--fg-3); }
+
+@media (max-width: 900px) {
+  .settings .toc { width: 176px; padding-inline: 8px; }
+  .settings .inner { padding: 24px 22px 96px; }
+}

@@ -1,0 +1,95 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {transfer,tree} from '../desktop/storage-files.mjs';
+import {DesktopService} from '../desktop/service.mjs';
+import {createPlatform} from '../core.mjs';
+import {createFixture} from './fixtures.mjs';
+import {zipFixture} from './browser-fixtures.mjs';
+import {vpkFixture,addonInfo} from './mods-fixtures.mjs';
+import {stamp,writeJson,exists} from '../mods/files.mjs';
+const yes={approved:true,source:'user'};
+test('storage: legacy ZIP → imported receipt → cross-volume move/retry → confirmed cleanup; login profile moves on restart',async t=>{
+  const data=await fs.mkdtemp(path.join(os.tmpdir(),'matcha-storage-test-'));
+  const base=await fs.mkdtemp(path.resolve('checks/.artifacts/storage-'));
+  const fixture=await createFixture(base), game=fixture.gameRoot;
+  const core=createPlatform({getProcesses:async()=>[]});core.discover=async()=>({games:[{gameRoot:game}]});
+  let service=new DesktopService({core,dataDir:data});const call=(cmd,p={},c)=>service.dispatch(cmd,p,c);
+  t.after(async()=>{await service.close();await fs.rm(data,{recursive:true,force:true});await fs.rm(base,{recursive:true,force:true});});
+  await service.ready;const start=await call('storage-get');
+  const external=path.parse(game).root!==path.parse(process.env.SystemRoot||game).root;
+  assert.equal(start.location.path,external?path.join(game,'left4dead2','.matcha-data'):data);
+  assert.equal(start.deleteArchivesAfterImport,true);await call('storage-set',{deleteArchivesAfterImport:false});
+  const sample=await vpkFixture(path.join(base,'input','map.vpk'),{'addoninfo.txt':addonInfo('Storage test'),'maps/a.txt':'ok'});
+  const payload=await fs.readFile(sample),legacy=path.join(data,'browser','downloads'),id='345-0';
+  const zip=path.join(legacy,id,'test.zip'),keep=path.join(legacy,'345-1','keep.zip');await fs.mkdir(path.dirname(zip),{recursive:true});await fs.mkdir(path.dirname(keep),{recursive:true});
+  await fs.writeFile(zip,zipFixture({'my-map.vpk':payload}));await fs.writeFile(keep,zipFixture({'other.vpk':payload}));
+  const iid='00000000-0000-4abc-8abc-000000000123',draft=path.join(data,'dll-intake',iid),candidate=path.join(draft,'original');
+  await fs.mkdir(candidate,{recursive:true});await writeJson(path.join(draft,'state.json'),{owner:'flare-dll-intake',id:iid,source:keep,candidate:{directory:candidate}});
+  assert.equal((await service.dllIntake.record(iid)).candidate.directory,candidate);
+  const idx=path.join(data,'browser','downloads.json');
+  await writeJson(idx,[{id,name:'test.zip',path:zip,state:'done',url:'https://example.org/test.zip'}, {id:'345-1',name:'keep.zip',path:keep,state:'done'}]);
+  assert.deepEqual((await call('browser-import',{id,selected:['my-map.vpk']},yes)).errors,[]);
+  assert.equal(await exists(zip),true);assert.deepEqual(await fs.readdir(path.dirname(zip)),['test.zip']);
+  const preview=await call('storage-clean-preview',{kinds:['imported-downloads']});assert.equal(preview.items[0].files,1);assert.equal(preview.totalBytes,(await fs.stat(zip)).size);
+  await assert.rejects(call('storage-clean',{kinds:['imported-downloads']}),{code:'confirmation_required'});
+  const dest=path.join(base,'chosen');await fs.mkdir(dest);await fs.writeFile(path.join(dest,'my-file.txt'),'keep');
+  await assert.rejects(call('storage-move',{path:path.join(data,'sub')},yes),{code:'invalid_path'});
+  await assert.rejects(call('storage-move',{path:dest}),{code:'confirmation_required'});
+  const oldProfile=service.storage.cfg.profileRoot;
+  const cookieDir=path.join(oldProfile===data?path.join(data,'browser','profile'):path.join(oldProfile,'profiles','browser'),'EBWebView','Default','Network');
+  await fs.mkdir(cookieDir,{recursive:true});await fs.writeFile(path.join(cookieDir,'Cookies'),'fixture session');
+  const targetZip=path.join(dest,'downloads','browser',id,'test.zip');
+  await service.storage.claim(dest);await fs.mkdir(path.dirname(targetZip),{recursive:true});await fs.writeFile(targetZip,'other owner');
+  assert.equal((await call('storage-move',{path:dest},yes)).status,'started');await service.storage.worker;
+  assert.equal((await call('storage-get')).move.state,'failed');assert.equal(await exists(zip),true);assert.equal(await fs.readFile(targetZip,'utf8'),'other owner');
+  await fs.unlink(targetZip);await fs.rmdir(path.dirname(targetZip));
+  await call('storage-move',{path:dest},yes);await service.storage.worker;
+  const status=await call('storage-get');assert.equal(status.move,undefined,status.move?.error);assert.equal(status.location.path,dest);assert.equal(status.location.pendingBytes,0);
+  assert.equal(await exists(zip),false);assert.equal(await exists(targetZip),true);assert.equal((JSON.parse(await fs.readFile(idx)))[0].path,targetZip);
+  assert.equal(await exists(path.join(cookieDir,'Cookies')),true);assert.equal(await exists(path.join(dest,'my-file.txt')),true);
+  const movedDraft=await service.dllIntake.record(iid);assert.equal(movedDraft.candidate.directory,path.join(dest,'cache/dll-intake',iid,'original'));
+  assert.equal(movedDraft.source,path.join(dest,'downloads/browser/345-1/keep.zip'));
+  const result=await call('storage-clean',{kinds:['imported-downloads']},yes);assert.equal(result.freedBytes,preview.totalBytes);
+  assert.equal(await exists(targetZip),false);assert.equal(await exists(path.join(dest,'downloads/browser/345-1/keep.zip')),true);
+  let rows=JSON.parse(await fs.readFile(idx));assert.equal(rows[0].cleaned,true);assert.equal(rows[0].name,'test.zip');
+  await call('storage-set',{deleteArchivesAfterImport:true});await call('browser-import',{id:'345-1',selected:['other.vpk']},yes);
+  rows=JSON.parse(await fs.readFile(idx));assert.equal(rows[1].cleaned,true);assert.equal(await exists(rows[1].path),false);
+  await service.close();service=new DesktopService({core,dataDir:data});await service.ready;
+  assert.equal(await fs.readFile(path.join(dest,'profiles/browser/EBWebView/Default/Network/Cookies'),'utf8'),'fixture session');assert.equal(await exists(path.join(cookieDir,'Cookies')),false);
+});
+test('storage: hardlinked deployment, owned old copy conversion and external change protection',async t=>{
+  const base=await fs.mkdtemp(path.resolve('checks/.artifacts/storage-links-')),fixture=await createFixture(base),game=fixture.gameRoot;
+  let running=false;const core=createPlatform({getProcesses:async()=>running?[{pid:1,name:'left4dead2.exe',executablePath:path.join(game,'left4dead2.exe')}]:[]});
+  core.discover=async()=>({games:[{gameRoot:game}]});
+  const s=new DesktopService({core,dataDir:path.join(base,'data')});t.after(async()=>{await s.close();await fs.rm(base,{recursive:true,force:true})});await s.ready;
+  const c={root:game,content:path.join(game,'left4dead2')},lib=s.modManager.library,folder=await lib.folder(game,'123',true),item={id:'library:workshop:123',version:1,workshopId:'123'};
+  const src=path.join(folder,'mod.vpk'),file='flare_ws_123.vpk',dest=path.join(c.content,'addons',file);await fs.writeFile(src,'abcdefgh');await lib.write(game,item);
+  // 新部署叫 matcha_ws_；下面再用改名前的 flare_ws_ 记录验证旧部署照样认。
+  const fresh=path.join(c.content,'addons','matcha_ws_123.vpk');
+  await lib.deploy(c,item.id,true,()=>s.modManager.idle(game));assert.equal((await fs.stat(src,{bigint:true})).ino,(await fs.stat(fresh,{bigint:true})).ino);
+  assert.equal((await s.dispatch('storage-get')).usage.find(x=>x.id==='deployed').bytes,0);
+  await lib.deploy(c,item.id,false,()=>s.modManager.idle(game));assert.equal(await fs.readFile(src,'utf8'),'abcdefgh');await fs.copyFile(src,dest);
+  item.deployment={file,stamp:stamp(await fs.stat(dest))};await lib.write(game,item);
+  const k={kinds:['relink-deployed']};assert.equal((await s.dispatch('storage-clean-preview',k)).totalBytes,8);
+  running=true;await assert.rejects(s.dispatch('storage-clean',k,yes),{code:'game_running'});running=false;
+  assert.equal((await s.dispatch('storage-clean',k,yes)).freedBytes,8);
+  await fs.unlink(dest);await fs.writeFile(dest,'external');await assert.rejects(lib.deploy(c,item.id,false,()=>s.modManager.idle(game)),{code:'deployment_conflict'});assert.equal(await fs.readFile(dest,'utf8'),'external');
+  await fs.unlink(dest);
+  const link=fs.link,unsupported=t.mock.method(fs,'link',(a,b)=>{if(a===src)throw Object.assign(Error('no hardlinks'),{code:'EPERM'});return link(a,b)});
+  try{await lib.deploy(c,item.id,true,()=>s.modManager.idle(game));assert.notEqual((await fs.stat(src,{bigint:true})).ino,(await fs.stat(dest,{bigint:true})).ino);assert.equal(await fs.readFile(dest,'utf8'),'abcdefgh');}
+  finally{unsupported.mock.restore()}
+});
+
+test('cross-volume recovery verifies the published copy before removing remaining originals',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'matcha-storage-recovery-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));const a=path.join(root,'from'),b=path.join(root,'to'),log=path.join(root,'journal.json');
+  await fs.mkdir(a);await fs.mkdir(b);for(const n of ['a','b']){await fs.writeFile(path.join(a,n),n);await fs.copyFile(path.join(a,n),path.join(b,n));}
+  const src=await tree(a),dst=await tree(b);
+  const receipt={...src,from:a,to:b,phase:'remove',tmp:'.matcha-moving-00000000-0000-0000-0000-000000000123',published:Object.fromEntries(dst.files.map(f=>[f.r,f.stamp]))};
+  await writeJson(log,receipt);await fs.unlink(path.join(a,'a'));await fs.rename(path.join(b,'b'),path.join(root,'verified'));
+  await fs.writeFile(path.join(b,'b'),'x');await assert.rejects(transfer(a,b,log),{code:'storage_changed'});assert.equal(await fs.readFile(path.join(a,'b'),'utf8'),'b');
+  await fs.unlink(path.join(b,'b'));await fs.rename(path.join(root,'verified'),path.join(b,'b'));await transfer(a,b,log);assert.equal(await exists(a),false);assert.equal(await exists(log),false);
+});

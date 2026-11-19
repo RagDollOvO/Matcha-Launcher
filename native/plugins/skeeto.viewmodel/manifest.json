@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.viewmodel",
+  "name": "持枪视角与镜像",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "按持枪模型分别调整位置、旋转、旋转原点、整体比例和镜像",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模块 config.json",
+        "读写 left4dead2/skeeto/viewmodel/profiles.ini 原 v2 模型配置"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "Source Viewmodel API 1：原生姿态完成后叠加、骨骼完成后变换"
+      ],
+      "memoryModification": [
+        "仅修改本人第一人称持枪模型姿态、骨骼与所属镜像剔除标记；关闭恢复所属原值"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "持枪视角调整",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "global-mirror",
+      "label": "全局镜像",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "per-model-mirror",
+      "label": "按模型应用镜像",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "move-step",
+      "label": "移动与旋转原点步长",
+      "type": "number",
+      "default": 0.1,
+      "apply": "immediate",
+      "minimum": 0.001,
+      "maximum": 5
+    },
+    {
+      "id": "angle-step",
+      "label": "旋转步长（度）",
+      "type": "number",
+      "default": 1,
+      "apply": "immediate",
+      "minimum": 0.01,
+      "maximum": 15
+    },
+    {
+      "id": "edit-slot",
+      "label": "编辑模型槽（0 或 1）",
+      "type": "integer",
+      "default": 0,
+      "apply": "immediate",
+      "minimum": 0,
+      "maximum": 1
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "查看当前模型与调整",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示两个模型槽、当前数值、已保存模型数和原生接口状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存持枪视角设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": false
+        },
+        "global-mirror": {
+          "type": "boolean",
+          "default": false
+        },
+        "per-model-mirror": {
+          "type": "boolean",
+          "default": false
+        },
+        "move-step": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0.001,
+          "maximum": 5
+        },
+        "angle-step": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.01,
+          "maximum": 15
+        },
+        "edit-slot": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "description": "总开关、全局 / 逐模型镜像、步长和编辑模型槽；下一游戏帧应用。"
+    },
+    {
+      "id": "set-axis",
+      "label": "设置当前模型数值",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "axis": {
+          "type": "enum",
+          "options": [
+            "position-x",
+            "position-y",
+            "position-z",
+            "pitch",
+            "yaw",
+            "roll",
+            "pivot-x",
+            "pivot-y",
+            "pivot-z",
+            "scale"
+          ],
+          "default": "position-x"
+        },
+        "value": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "required": true
+        }
+      },
+      "description": "编辑当前槽：位置 / 旋转原点 ±100，旋转 ±180 度，比例 0.1–5。按模型路径与校验值保存。"
+    },
+    {
+      "id": "adjust",
+      "label": "微调当前模型",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "axis": {
+          "type": "enum",
+          "options": [
+            "position-x",
+            "position-y",
+            "position-z",
+            "pitch",
+            "yaw",
+            "roll",
+            "pivot-x",
+            "pivot-y",
+            "pivot-z",
+            "scale"
+          ],
+          "default": "position-x"
+        },
+        "direction": {
+          "type": "enum",
+          "options": [
+            "increase",
+            "decrease"
+          ],
+          "default": "increase"
+        },
+        "fine": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "使用移动 / 旋转步长；比例每步 0.05。精调使用十分之一步长。"
+    },
+    {
+      "id": "reset-current",
+      "label": "重置当前模型",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "part": {
+          "type": "enum",
+          "options": [
+            "position",
+            "rotation",
+            "all"
+          ],
+          "default": "all"
+        }
+      },
+      "description": "分别重置位置、旋转，或重置全部（含旋转原点、比例与模型镜像）。其他模型保持。"
+    },
+    {
+      "id": "model-mirror",
+      "label": "编辑当前模型镜像",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "mode": {
+          "type": "enum",
+          "options": [
+            "toggle",
+            "on",
+            "off"
+          ],
+          "default": "toggle"
+        }
+      },
+      "description": "保存当前模型的镜像开关；在设置中开启「持枪视角调整」和「按模型应用镜像」后生效。"
+    },
+    {
+      "id": "global-mirror",
+      "label": "切换全局镜像",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "mode": {
+          "type": "enum",
+          "options": [
+            "toggle",
+            "on",
+            "off"
+          ],
+          "default": "toggle"
+        }
+      },
+      "description": "切到全局镜像模式；打开时同时开启持枪视角调整。保留各模型的镜像草稿。"
+    },
+    {
+      "id": "cycle-step",
+      "label": "轮换调整步长",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "kind": {
+          "type": "enum",
+          "options": [
+            "move",
+            "angle"
+          ],
+          "default": "move"
+        }
+      },
+      "description": "移动按 0.001、0.002、0.01、0.02、0.1、0.5、1、5 轮换；旋转按 0.01、0.04、0.1、0.4、1、5、15 轮换。"
+    },
+    {
+      "id": "profiles",
+      "label": "查看全部模型配置",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示最多 256 个模型记录，包含路径、MDL 校验值及全部调整。"
+    },
+    {
+      "id": "reload-profiles",
+      "label": "重新读取模型配置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "读取原 profiles.ini；格式错误时保留文件和当前副本，修正后可重新读取。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "按武器模型保存持枪位置、旋转、比例与镜像",
+    "description": "进入对局并拿起需要调整的武器，先查看当前模型。两个模型槽分别可选；在功能设置里开启调整，然后用设置数值、微调和重置动作编辑。位置 X 为左右、Y 为前后、Z 为上下；旋转使用 Pitch / Yaw / Roll，旋转原点可单独调整。\n\n移动步长为 0.001–5，旋转步长为 0.01–15 度。精调使用十分之一步长；模型比例为 0.1–5，普通调整每步 0.05。位置与旋转在原生姿态完成后叠加，兼容既有模型调整。\n\n全局镜像应用到两个模型；逐模型模式使用每个模型保存的镜像开关。编辑模型镜像后，打开「按模型应用镜像」即可采用。两个模型共用武器脚本且镜像开关不同，会暂停这对模型的镜像，保留位置、旋转与缩放。\n\n沿用 Skeeto 的 left4dead2/skeeto/viewmodel/profiles.ini，按模型路径和 MDL 校验值保存，最多 256 项。Necola 的 _nclN 后缀合并到同一模型。旧文件格式错误或外部发生修改时保留原文件，修正 / 确认后重新读取。关闭保留配置并释放所属修改。\n\n来源 Skeeto 2.2.19。原生接口与完整功能已通过真实 x86 DLL 离线检查，实际游戏效果待实测。",
+    "tags": [
+      "持枪模型",
+      "外观",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

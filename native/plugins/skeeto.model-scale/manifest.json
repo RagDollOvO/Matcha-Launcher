@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.model-scale",
+  "name": "感染者模型缩放",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "本地服分别调整特感和普通感染者模型显示比例",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source Model SDK 管理模型比例 RecvProxy 和 BuildTransformations"
+      ],
+      "memoryModification": [
+        "本地服模型显示比例与骨骼矩阵；停用恢复所持有的原值，碰撞数据保持原样"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "special",
+      "label": "特殊感染者 / Witch 比例",
+      "type": "number",
+      "default": 1,
+      "minimum": 0.1,
+      "maximum": 5,
+      "apply": "immediate"
+    },
+    {
+      "id": "common",
+      "label": "普通感染者比例",
+      "type": "number",
+      "default": 1,
+      "minimum": 0.1,
+      "maximum": 5,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取模型缩放状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看本地服模型缩放和原生入口状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存模型比例",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": false
+        },
+        "special": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.1,
+          "maximum": 5
+        },
+        "common": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.1,
+          "maximum": 5
+        }
+      },
+      "description": "下一游戏帧应用。关闭、恢复 1 倍或离开本地服后恢复原值。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "特感与普通感染者分别缩放，按原生模型路径处理",
+    "description": "本地服可分别设置特殊感染者（含 Witch）与普通感染者的显示比例，范围 0.10–5.00 倍，默认关闭且两类均为 1 倍。玩家感染者使用模型比例字段；AI 特感、Witch 和普通感染者按原生骨骼构建结果绕实体原点缩放。幸存者和第一人称持枪模型保持原样。\n\n比例为 1、关闭功能或离开本地服时恢复本功能持有的原始值。接收服务器模型比例更新时保存最新原值；实体句柄换代后重新识别对象。碰撞数据保持原样。\n\n来源 Skeeto 2.2.19 WModelScale。联机范围仍待评估，当前在本地服提供。实际游戏显示待实测。",
+    "tags": [
+      "本地服",
+      "模型",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.local",
+        "title": "本地实验室",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "本地服设置与调试"
+      }
+    ]
+  }
+}

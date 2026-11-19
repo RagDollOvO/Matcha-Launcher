@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.auto-reload",
+  "name": "霰弹枪自动换弹",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "本地服单喷和连喷分别自动换弹，保留当前键位与射击/推击时机",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [
+        "前台游戏内使用 SendInput 合成换弹键边沿；只释放本模组持有的输入"
+      ],
+      "hooks": [
+        "Source 游戏帧、当前键位及本地武器脚本容量读取"
+      ],
+      "memoryModification": []
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "pump",
+      "label": "单喷自动换弹（Pump / Chrome）",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "auto",
+      "label": "连喷自动换弹（Auto / SPAS）",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取自动换弹状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看本地服门禁、当前输入和换弹时机。"
+    },
+    {
+      "id": "configure",
+      "label": "保存自动换弹设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "pump": {
+          "type": "boolean",
+          "default": false
+        },
+        "auto": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "下一游戏帧应用；关闭与范围退出释放本模组持有的换弹键。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "单喷与连喷独立开关，跟随当前换弹键位",
+    "description": "手持霰弹枪且弹匣未满时，每 200–300 毫秒随机间隔按一次当前绑定的换弹键，按下至少 24 毫秒后释放。正在换弹时等待；弹匣容量优先读取本地武器脚本，接口缺失时采用原作后备值：单喷 8 发、连喷 10 发。\n\n单喷额外等待开火键、推击键、武器开火冷却和玩家推击冷却结束，保护射推节奏。单喷与连喷可分别启停，连发功能关闭时仍可单独使用。\n\n游戏保持前台、菜单关闭且进入本地服时工作。离开范围、打开菜单、切换前台或关闭功能会释放本模块的合成输入；玩家已按住换弹键时等待。支持原作键盘扫描码、扩展键及五个鼠标按钮绑定，沿用游戏已有键位。\n\n来源 Skeeto 2.2.19；联机范围待定，当前本地服。实际游戏效果待实测。",
+    "tags": [
+      "换弹",
+      "本地服",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.review",
+        "title": "待定联机功能",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "保留待定分类，当前仅在本地服工作"
+      }
+    ]
+  }
+}

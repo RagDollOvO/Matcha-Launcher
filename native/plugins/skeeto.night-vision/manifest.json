@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.night-vision",
+  "name": "聚光灯夜视",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "本地服的独立环境照明，亮度、半径、预设和 RGB 可调",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source 帧、实体和效果 SDK 更新 keyed dlight"
+      ],
+      "memoryModification": [
+        "由 SDK 分配独立灯光 key，关闭和离开范围时熄灭"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "brightness",
+      "label": "亮度（%）",
+      "type": "integer",
+      "default": 115,
+      "minimum": 20,
+      "maximum": 200,
+      "apply": "immediate"
+    },
+    {
+      "id": "radius",
+      "label": "照明半径（Source 单位）",
+      "type": "integer",
+      "default": 350,
+      "minimum": 250,
+      "maximum": 1200,
+      "apply": "immediate"
+    },
+    {
+      "id": "preset",
+      "label": "色温（natural 自然 / warm 暖色 / cool 冷色 / custom 自定义）",
+      "type": "enum",
+      "default": "natural",
+      "options": [
+        "natural",
+        "warm",
+        "cool",
+        "custom"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "red",
+      "label": "自定义红色",
+      "type": "integer",
+      "default": 235,
+      "minimum": 0,
+      "maximum": 255,
+      "apply": "immediate"
+    },
+    {
+      "id": "green",
+      "label": "自定义绿色",
+      "type": "integer",
+      "default": 240,
+      "minimum": 0,
+      "maximum": 255,
+      "apply": "immediate"
+    },
+    {
+      "id": "blue",
+      "label": "自定义蓝色",
+      "type": "integer",
+      "default": 230,
+      "minimum": 0,
+      "maximum": 255,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取照明状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看当前照明状态、亮度与半径。"
+    },
+    {
+      "id": "configure",
+      "label": "保存照明设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "brightness": {
+          "type": "integer",
+          "default": 115,
+          "minimum": 20,
+          "maximum": 200
+        },
+        "radius": {
+          "type": "integer",
+          "default": 350,
+          "minimum": 250,
+          "maximum": 1200
+        },
+        "preset": {
+          "type": "enum",
+          "default": "natural",
+          "options": [
+            "natural",
+            "warm",
+            "cool",
+            "custom"
+          ]
+        },
+        "red": {
+          "type": "integer",
+          "default": 235,
+          "minimum": 0,
+          "maximum": 255
+        },
+        "green": {
+          "type": "integer",
+          "default": 240,
+          "minimum": 0,
+          "maximum": 255
+        },
+        "blue": {
+          "type": "integer",
+          "default": 230,
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "description": "保存独立设置，下一游戏帧更新照明；关闭后熄灭灯光。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "本地服的独立环境照明，亮度、半径、预设和 RGB 可调",
+    "description": "照亮存活幸存者附近的场景。亮度 20–200%，照明半径 250–1200 Source 单位；自然、暖色、冷色和自定义 RGB 分别可选。默认亮度 115%、半径 350，沿用原作数值。\n\n光源位于眼睛上方，低天花板处自动降低高度；每约 33 毫秒刷新一次。死亡、观察模式、离开本地服或关闭功能时熄灭，换图后重新获取灯光。各模块由 SDK 分配自己的灯光，保留其他模组照明。\n\n联机范围沿用待定标记，当前仅在本地服生效。来源 Skeeto 2.2.19 的 SpotlightVision；具体游戏表现待实测。",
+    "tags": [
+      "本地服",
+      "联机范围待定",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.review",
+        "title": "待定联机功能",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "保留待定分类，当前仅在本地服工作"
+      }
+    ]
+  }
+}

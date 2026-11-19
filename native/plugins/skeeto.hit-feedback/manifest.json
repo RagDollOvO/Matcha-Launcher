@@ -1,0 +1,391 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.hit-feedback",
+  "name": "命中反馈",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "普感、特感、友伤与特殊击杀的独立视觉 / 声音反馈",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模块 config.json",
+        "读取原 skeeto 目录与 GAME / VPK 中的 skeeto_*.json 素材"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source 订阅击杀 / 命中事件与玩家血量变化"
+      ],
+      "memoryModification": [
+        "通过 Source SDK 发送原生粒子、声音与全屏叠图；关闭清理所属效果"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "particle-platform",
+      "label": "加载粒子素材清单",
+      "type": "boolean",
+      "default": false,
+      "apply": "next-launch"
+    },
+    {
+      "id": "sound",
+      "label": "声音反馈",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "icon",
+      "label": "图像与普通粒子反馈",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "volume",
+      "label": "反馈声音音量",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "streak-window",
+      "label": "连杀累计秒数（0 为原样式循环）",
+      "type": "enum",
+      "default": "0",
+      "options": [
+        "0",
+        "3",
+        "5",
+        "8",
+        "10",
+        "20",
+        "30",
+        "60"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "ci-style",
+      "label": "普感样式 ID（off 关闭）",
+      "type": "string",
+      "default": "off",
+      "maxLength": 40,
+      "apply": "immediate"
+    },
+    {
+      "id": "si-style",
+      "label": "特感样式 ID（off 关闭）",
+      "type": "string",
+      "default": "off",
+      "maxLength": 40,
+      "apply": "immediate"
+    },
+    {
+      "id": "ff-style",
+      "label": "友伤样式 ID（off 关闭）",
+      "type": "string",
+      "default": "off",
+      "maxLength": 40,
+      "apply": "immediate"
+    },
+    {
+      "id": "fx-style",
+      "label": "特殊击杀样式 ID（off 关闭）",
+      "type": "string",
+      "default": "off",
+      "maxLength": 40,
+      "apply": "immediate"
+    },
+    {
+      "id": "si-visual",
+      "label": "特感使用独立视觉",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "si-sound",
+      "label": "特感使用独立声音",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "special-kill",
+      "label": "特殊击杀特效",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "hit-mode",
+      "label": "命中反馈：0 关 / 1 特感 / 2 普感与特感",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 2,
+      "apply": "immediate"
+    },
+    {
+      "id": "boss-active-only",
+      "label": "Boss 命中仅响应主动射击 / 近战",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "blood-splat",
+      "label": "血肉补充音效",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "friendly-fire",
+      "label": "友伤反馈",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "workshop-recovery",
+      "label": "工坊素材延后恢复",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "json-limit",
+      "label": "素材样式容量",
+      "type": "enum",
+      "default": "64",
+      "options": [
+        "64",
+        "96",
+        "128"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "manifest-limit",
+      "label": "启动粒子清单上限",
+      "type": "enum",
+      "default": "32",
+      "options": [
+        "16",
+        "32",
+        "48"
+      ],
+      "apply": "next-launch"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取运行状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "读取当前功能和素材状态。"
+    },
+    {
+      "id": "styles",
+      "label": "查看可选样式 ID",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "按普感、特感、友伤与特殊击杀列出可用样式 ID。"
+    },
+    {
+      "id": "reload-styles",
+      "label": "刷新素材目录",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "在下一游戏帧刷新已挂载素材，保留所选样式。"
+    },
+    {
+      "id": "configure",
+      "label": "保存命中反馈设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "particle-platform": {
+          "type": "boolean",
+          "default": false
+        },
+        "sound": {
+          "type": "boolean",
+          "default": false
+        },
+        "icon": {
+          "type": "boolean",
+          "default": false
+        },
+        "volume": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "streak-window": {
+          "type": "enum",
+          "default": "0",
+          "options": [
+            "0",
+            "3",
+            "5",
+            "8",
+            "10",
+            "20",
+            "30",
+            "60"
+          ]
+        },
+        "ci-style": {
+          "type": "string",
+          "default": "off",
+          "maxLength": 40
+        },
+        "si-style": {
+          "type": "string",
+          "default": "off",
+          "maxLength": 40
+        },
+        "ff-style": {
+          "type": "string",
+          "default": "off",
+          "maxLength": 40
+        },
+        "fx-style": {
+          "type": "string",
+          "default": "off",
+          "maxLength": 40
+        },
+        "si-visual": {
+          "type": "boolean",
+          "default": false
+        },
+        "si-sound": {
+          "type": "boolean",
+          "default": false
+        },
+        "special-kill": {
+          "type": "boolean",
+          "default": false
+        },
+        "hit-mode": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "boss-active-only": {
+          "type": "boolean",
+          "default": true
+        },
+        "blood-splat": {
+          "type": "boolean",
+          "default": false
+        },
+        "friendly-fire": {
+          "type": "boolean",
+          "default": false
+        },
+        "workshop-recovery": {
+          "type": "boolean",
+          "default": false
+        },
+        "json-limit": {
+          "type": "enum",
+          "default": "64",
+          "options": [
+            "64",
+            "96",
+            "128"
+          ]
+        },
+        "manifest-limit": {
+          "type": "enum",
+          "default": "32",
+          "options": [
+            "16",
+            "32",
+            "48"
+          ]
+        }
+      },
+      "description": "保存独立设置；启动参数在下一次游戏启动应用。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "分别选择普感、特感、友伤和特殊击杀的声音、叠图与粒子素材。",
+    "description": "先点「查看可选样式 ID」，将对应 ID 填入四个通道；off 关闭通道。图像、声音、特感独立视觉 / 声音、命中与击杀可以分别选择。保留原 JSON 素材的连杀优先级、声音池和最多 30 帧的全屏叠图序列。\n\n粒子平台和清单数量在下一次游戏启动时应用。素材来自原 skeeto 目录与已挂载的工坊 / 本地 VPK。功能配置独立保存在本 DLL 的 config.json，原 Skeeto 用户文件保留。\n\n工作区候选已通过编译、正常加载 / 独立启停与配置保留检查；游戏效果待实测。",
+    "tags": [
+      "外观",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

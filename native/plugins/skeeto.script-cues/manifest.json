@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.script-cues",
+  "name": "屏幕与音效提示",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "独立选择生命淡出、射击与换弹声音、爬梯脚步、倒地视角、焦痕和房间混响",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模块 config.json",
+        "按需将包内 assets 挂入 GAME 搜索尾部，关闭时移除自己的挂载"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "Source 游戏帧、事件、实体、只读射线、原生 Surface 和本地声音"
+      ],
+      "memoryModification": [
+        "通过 Source 租约设置倒地视角和焦痕，关停恢复原值；受限参数遵守本地服门禁"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "low-health",
+      "label": "低血量红屏提示",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "heal",
+      "label": "吃药绿屏提示",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "empty",
+      "label": "空仓射击提示音",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "low-ammo",
+      "label": "低弹药射击提示音",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "shell",
+      "label": "弹壳落地音效",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "magazine",
+      "label": "换弹弹匣落地音",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "incap-roll",
+      "label": "倒地视角倾斜",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "ladder",
+      "label": "第一人称爬梯脚步",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "scorch",
+      "label": "燃烧瓶地面焦痕",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "reverb",
+      "label": "枪声房间混响",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "shell-volume",
+      "label": "弹壳声音音量（%）",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 100,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取提示状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示素材、声音、参数和混响协调状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存提示设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "low-health": {
+          "type": "boolean",
+          "default": false
+        },
+        "heal": {
+          "type": "boolean",
+          "default": false
+        },
+        "empty": {
+          "type": "boolean",
+          "default": false
+        },
+        "low-ammo": {
+          "type": "boolean",
+          "default": false
+        },
+        "shell": {
+          "type": "boolean",
+          "default": false
+        },
+        "magazine": {
+          "type": "boolean",
+          "default": false
+        },
+        "incap-roll": {
+          "type": "boolean",
+          "default": false
+        },
+        "ladder": {
+          "type": "boolean",
+          "default": false
+        },
+        "scorch": {
+          "type": "boolean",
+          "default": false
+        },
+        "reverb": {
+          "type": "boolean",
+          "default": false
+        },
+        "shell-volume": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 100
+        }
+      },
+      "description": "下一游戏帧应用，各子项独立启停；总开关关闭时恢复参数、停止声音并移除自己的素材挂载。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "生命红绿淡出、弹壳与弹匣声、爬梯和房间混响",
+    "description": "十项提示与视觉细节各自开关。站立血量降到 39% 触发红色淡出，回升到 41% 以上后可再次触发；倒地以 72 血为阈值。计入临时血衰减，复活和闲置切换保留触发状态。吃药或打针显示半秒绿色淡出。\n\n空仓与低弹药声按实际弹匣减少触发，保护装填与换枪；弹壳、弹匣声音使用原作武器分类和延迟。支持单 / 双持容量，本地服优先武器脚本，远端使用原版容量。\n\n爬梯时按速度播放四种轮换脚步；房间混响根据九方向射线选择四种声音。混响与关闭 DSP 先占用者优先，保留各自设置；可与枪声听感一起使用。倒地视角与焦痕通过参数租约生效，关闭后恢复原值。\n\n可选声音使用游戏或已装 Mod 提供的同路径素材。实际游戏效果待实测。",
+    "tags": [
+      "提示",
+      "声音",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

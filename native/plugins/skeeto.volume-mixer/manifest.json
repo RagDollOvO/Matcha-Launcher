@@ -1,0 +1,365 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.volume-mixer",
+  "name": "分类音量",
+  "version": "0.1.1",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "按 17 类声音分别调整音量，独立保存设置与恢复原声",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Beacon Sound SDK 订阅引擎 S_StartSound，分类修改本次音量"
+      ],
+      "memoryModification": [
+        "仅修改本次声音参数的音量字段"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "gunfire",
+      "label": "枪声（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "weapon_handling",
+      "label": "换弹与武器操作（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "melee",
+      "label": "近战与推击（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "chainsaw",
+      "label": "电锯（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "footsteps",
+      "label": "脚步（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "survivor_voice",
+      "label": "幸存者语音（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "special_infected",
+      "label": "特殊感染者（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "common_infected",
+      "label": "普通感染者（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "tank",
+      "label": "Tank（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "witch",
+      "label": "Witch（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "explosions",
+      "label": "爆炸（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "throwables",
+      "label": "投掷物（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "ambient",
+      "label": "环境（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "ui",
+      "label": "界面与按钮（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "vehicles",
+      "label": "载具（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "items",
+      "label": "道具（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    },
+    {
+      "id": "script_cue",
+      "label": "脚本提示音（%）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 0,
+      "maximum": 100,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取分类音量状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看 17 类音量、声音入口状态和本次运行统计。"
+    },
+    {
+      "id": "configure",
+      "label": "保存分类音量",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "gunfire": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "weapon_handling": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "melee": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "chainsaw": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "footsteps": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "survivor_voice": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "special_infected": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "common_infected": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "tank": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "witch": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "explosions": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "throwables": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "ambient": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "ui": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "vehicles": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "items": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "script_cue": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "description": "保存分类音量，0 为静音，100 为原始音量；关闭总开关恢复原声。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "按 17 类声音分别调整音量，独立保存设置与恢复原声",
+    "description": "枪声、武器操作、近战、电锯、脚步、幸存者语音、特殊感染者、普通感染者、Tank、Witch、爆炸、投掷物、环境、界面、载具、道具与脚本提示音分别控制。每类范围 0–100%，默认全部保持 100%。\n\n打开本 DLL 后，在「保存分类音量」里调整对应类别。总开关关闭或全部恢复 100% 后，声音入口在下一游戏帧还原。未分类的自定义声音保持原值；音频文件和游戏原有音量设置保持原样。已开始的声音继续使用启动时音量，新的设置作用于后续声音。\n\n分类规则来自 Skeeto 2.2.19；Beacon 共用声音启动入口，覆盖客户端和服务器送来的声音。接口状态显示签名匹配与入口冲突，便于检查当前游戏构建。SDK 通过离线 x86 宿主验证，实际游戏表现待实测。",
+    "tags": [
+      "声音",
+      "源码移植",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

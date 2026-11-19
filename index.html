@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/matcha.png" />
+    <title>Matcha</title>
+    <script>
+      try {
+        const p = JSON.parse(localStorage.getItem('flare.theme') || 'null');
+        const dark = !p || p.look === 'matcha-dark' || (p.look !== 'matcha-light' &&
+          (p.mode === 'dark' || (p.mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)));
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch {}
+    </script>
+    <style>html,body{margin:0;min-height:100%;font-family:'荆南麦圆体','Kingnam Maiyuan','Microsoft YaHei UI',sans-serif}#boot-status{position:fixed;inset:0;display:grid;place-items:center;place-content:center;gap:10px;padding:32px;background:#0a1611;color:#d8e6de}html[data-theme=light] #boot-status{background:#effdf4;color:#121e19}#boot-status strong{font-family:var(--font-sans,inherit);font-size:26px;font-weight:650}#boot-status p{margin:0;max-width:600px;line-height:1.7;white-space:pre-wrap}</style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="boot-status" role="status"><img src="/matcha.png" width="64" height="64" alt="" /><strong>Matcha</strong><p>正在加载启动器…</p></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.crosshair-tps",
+  "name": "第三人称准星",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "在第三人称肩后视角绘制玩家视线的落点",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source 视角、实体、TraceRay 与 Surface SDK 绘制落点"
+      ],
+      "memoryModification": [
+        "第三人称显示期间持有 crosshair 参数，退出时恢复原值"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "style",
+      "label": "样式（0 十字 / 1 十字点 / 2 点 / 3 四角）",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 3,
+      "apply": "immediate"
+    },
+    {
+      "id": "color",
+      "label": "颜色（0 白 / 1 绿 / 2 青 / 3 红 / 4 黄 / 5 橙 / 6 粉 / 7 蓝 / 8 黄绿 / 9 水绿）",
+      "type": "integer",
+      "default": 2,
+      "minimum": 0,
+      "maximum": 9,
+      "apply": "immediate"
+    },
+    {
+      "id": "size",
+      "label": "大小 %",
+      "type": "integer",
+      "default": 100,
+      "minimum": 60,
+      "maximum": 320,
+      "apply": "immediate"
+    },
+    {
+      "id": "opacity",
+      "label": "不透明度 %",
+      "type": "integer",
+      "default": 70,
+      "minimum": 10,
+      "maximum": 100,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取准星状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看肩后视角、场景门禁和绘制状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存准星设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "style": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "color": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 9
+        },
+        "size": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 60,
+          "maximum": 320
+        },
+        "opacity": {
+          "type": "integer",
+          "default": 70,
+          "minimum": 10,
+          "maximum": 100
+        }
+      },
+      "description": "保存本模块设置，下一游戏帧应用；关闭恢复所持有的原版准星参数。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "在第三人称肩后视角绘制玩家视线的落点",
+    "description": "在第三人称肩后视角沿玩家眼睛的方向进行 8192 单位射线检测，将落点投影到画面上。提供十字、十字点、点、四角四种样式，原作十色，以及 60–320% 大小和 10–100% 透明度。形状随屏幕分辨率等比例调整，保留暗色描边。\n\n只改变显示；切回第一人称、打开游戏菜单、过图、结算或关闭功能时，恢复本模块持有的原版准星参数。声音与其他功能独立。\n\n来源 Skeeto 2.2.19。第三人称弹道修正和准星动画隐藏的跨模块联动随对应功能接入补齐；实际游戏表现待实测。",
+    "tags": [
+      "第三人称",
+      "外观",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

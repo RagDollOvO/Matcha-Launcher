@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.client-perf",
+  "name": "客户端性能预设",
+  "version": "0.1.2",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "粒子、骨骼、渲染、声音、本地网络五组性能参数。",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Beacon Source 服务订阅游戏帧"
+      ],
+      "memoryModification": [
+        "通过独占租约设置声明的游戏参数，关闭或离开允许环境时恢复原值"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "particles",
+      "label": "粒子与特效",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "bones",
+      "label": "骨骼、物理与动画",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "render",
+      "label": "渲染",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "sound",
+      "label": "声音优化",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "local_net",
+      "label": "本地服网络与服端",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取功能状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示每项参数的应用、等待、缺失或冲突状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存功能设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "particles": {
+          "type": "boolean",
+          "default": false
+        },
+        "bones": {
+          "type": "boolean",
+          "default": false
+        },
+        "render": {
+          "type": "boolean",
+          "default": false
+        },
+        "sound": {
+          "type": "boolean",
+          "default": false
+        },
+        "local_net": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "保存独立设置；下一游戏帧应用，关闭选项后恢复所持有的原值。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "粒子、骨骼、渲染、声音、本地网络五组性能参数。",
+    "description": "保留原作五组、29 个参数和目标值，各组默认关闭。粒子与骨骼组降低效果负载；声音异步设置可能影响听感。本地网络组仅对自己运行的本地服生效。受限参数在本地服应用，远端会显示等待状态。关闭任一组恢复该组参数；资源加载参数继续交给资源加载模块。\n\n每个选项关闭后，SDK 恢复启用前的游戏参数。游戏内切服会重新检查适用环境，冲突与缺失参数可在功能状态里查看。配置存入本 DLL 的 config.json。实际游戏效果待实测。",
+    "tags": [
+      "源码移植",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.system",
+        "title": "配置与运行",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "独立配置、性能与运行功能"
+      }
+    ]
+  }
+}

@@ -1,0 +1,862 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.team-glow-style",
+  "name": "队友描边配色",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "八角色与五组状态配色、亮度与柔化；本地服提供常亮和激光升级包描边",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "Source Glow SDK 管理队友原生颜色回调"
+      ],
+      "memoryModification": [
+        "原生描边 RGB 与 Cvar 租约；本地服常亮及激光升级包原生描边，停用恢复持有值"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "always",
+      "label": "队友描边常亮（本地服）",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "laser",
+      "label": "激光红点升级包描边（本地服）",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "brightness",
+      "label": "描边亮度（原值百分比）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 50,
+      "maximum": 200,
+      "apply": "immediate"
+    },
+    {
+      "id": "blur",
+      "label": "描边柔化（原值百分比）",
+      "type": "integer",
+      "default": 100,
+      "minimum": 50,
+      "maximum": 200,
+      "apply": "immediate"
+    },
+    {
+      "id": "nick",
+      "label": "Nick 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "nick-rgb",
+      "label": "Nick 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#B9E6FF",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "rochelle",
+      "label": "Rochelle 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "rochelle-rgb",
+      "label": "Rochelle 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#B45CFF",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "coach",
+      "label": "Coach 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "coach-rgb",
+      "label": "Coach 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#FFC928",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "ellis",
+      "label": "Ellis 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "ellis-rgb",
+      "label": "Ellis 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#24E0A3",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "bill",
+      "label": "Bill 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "bill-rgb",
+      "label": "Bill 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#6FAF45",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "zoey",
+      "label": "Zoey 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "zoey-rgb",
+      "label": "Zoey 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#F04F64",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "francis",
+      "label": "Francis 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "francis-rgb",
+      "label": "Francis 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#FF7A22",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "louis",
+      "label": "Louis 颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "角色预设",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "louis-rgb",
+      "label": "Louis 自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#39A9FF",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "infected-vomit",
+      "label": "胆汁感染者颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "infected-vomit-rgb",
+      "label": "胆汁感染者自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#F5F5F5",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "item",
+      "label": "近处物资颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "item-rgb",
+      "label": "近处物资自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#F5F5F5",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "survivor-vomit",
+      "label": "胆汁队友颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "survivor-vomit-rgb",
+      "label": "胆汁队友自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#F5F5F5",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "item-far",
+      "label": "远处物资颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "item-far-rgb",
+      "label": "远处物资自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#F5F5F5",
+      "maxLength": 7,
+      "apply": "immediate"
+    },
+    {
+      "id": "critical",
+      "label": "濒死队友颜色",
+      "type": "enum",
+      "default": "原版",
+      "options": [
+        "原版",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫",
+        "粉",
+        "白",
+        "自定义"
+      ],
+      "apply": "immediate"
+    },
+    {
+      "id": "critical-rgb",
+      "label": "濒死队友自定义色 #RRGGBB",
+      "type": "string",
+      "default": "#F5F5F5",
+      "maxLength": 7,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取描边状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看队友颜色、激光描边和当前范围。"
+    },
+    {
+      "id": "configure",
+      "label": "保存描边设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "always": {
+          "type": "boolean",
+          "default": false
+        },
+        "laser": {
+          "type": "boolean",
+          "default": false
+        },
+        "brightness": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 50,
+          "maximum": 200
+        },
+        "blur": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 50,
+          "maximum": 200
+        },
+        "nick": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "nick-rgb": {
+          "type": "string",
+          "default": "#B9E6FF",
+          "maxLength": 7
+        },
+        "rochelle": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "rochelle-rgb": {
+          "type": "string",
+          "default": "#B45CFF",
+          "maxLength": 7
+        },
+        "coach": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "coach-rgb": {
+          "type": "string",
+          "default": "#FFC928",
+          "maxLength": 7
+        },
+        "ellis": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "ellis-rgb": {
+          "type": "string",
+          "default": "#24E0A3",
+          "maxLength": 7
+        },
+        "bill": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "bill-rgb": {
+          "type": "string",
+          "default": "#6FAF45",
+          "maxLength": 7
+        },
+        "zoey": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "zoey-rgb": {
+          "type": "string",
+          "default": "#F04F64",
+          "maxLength": 7
+        },
+        "francis": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "francis-rgb": {
+          "type": "string",
+          "default": "#FF7A22",
+          "maxLength": 7
+        },
+        "louis": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "角色预设",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "louis-rgb": {
+          "type": "string",
+          "default": "#39A9FF",
+          "maxLength": 7
+        },
+        "infected-vomit": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "infected-vomit-rgb": {
+          "type": "string",
+          "default": "#F5F5F5",
+          "maxLength": 7
+        },
+        "item": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "item-rgb": {
+          "type": "string",
+          "default": "#F5F5F5",
+          "maxLength": 7
+        },
+        "survivor-vomit": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "survivor-vomit-rgb": {
+          "type": "string",
+          "default": "#F5F5F5",
+          "maxLength": 7
+        },
+        "item-far": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "item-far-rgb": {
+          "type": "string",
+          "default": "#F5F5F5",
+          "maxLength": 7
+        },
+        "critical": {
+          "type": "enum",
+          "default": "原版",
+          "options": [
+            "原版",
+            "红",
+            "橙",
+            "黄",
+            "绿",
+            "青",
+            "蓝",
+            "紫",
+            "粉",
+            "白",
+            "自定义"
+          ]
+        },
+        "critical-rgb": {
+          "type": "string",
+          "default": "#F5F5F5",
+          "maxLength": 7
+        }
+      },
+      "description": "下一游戏帧应用；选择原版、停用或离开适用范围后恢复原值。"
+    },
+    {
+      "id": "role-presets",
+      "label": "应用八角色预设",
+      "description": "一次为八名角色选择 Skeeto 原作配色。",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {}
+    },
+    {
+      "id": "reset-roles",
+      "label": "恢复角色原版配色",
+      "description": "恢复八名角色的服务器默认颜色，自定义色草稿保留。",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {}
+    },
+    {
+      "id": "reset-states",
+      "label": "恢复状态原版配色",
+      "description": "恢复五组状态颜色的启用前值，自定义色草稿保留。",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {}
+    },
+    {
+      "id": "reset-render",
+      "label": "恢复描边渲染",
+      "description": "亮度和柔化恢复 100%，关闭常亮。",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {}
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "为八名角色与五类原生描边配色，分别调整亮度和柔化",
+    "description": "八名角色分别选择原版、角色预设、九种颜色或自定义 #RRGGBB。角色身份按原作优先级识别：显式角色编号、人物模型、默认 BOT 名，最后按地图人物组解释编号。倒地队友继续显示，死亡队友和本地自己保持原生处理。\n\n五组状态颜色独立控制胆汁感染者、近处物资、胆汁队友、远处物资与濒死队友。亮度和柔化范围为启用前原值的 50–200%，在提供角色颜色或常亮时应用。写实模式保持原生队友描边，状态颜色仍可选择。\n\n常亮固定原生透明度，会移除视线和距离淡出；激光红点升级包使用红色隔墙描边。两项在本地服提供；远程服务器保留设置，只应用普通配色。激光升级包每 200 毫秒扫描最多 128 个索引、同时最多 8 处，拾取、死亡、结算、隐藏世界 HUD 或暂停采样时撤销。\n\n停用与范围退出恢复所持有的原值，其他模块已有的原生描边保持。源码来自 Skeeto 2.2.19，随包提供；实际游戏显示待实测。",
+    "tags": [
+      "描边",
+      "配色",
+      "局部本地服",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "把原作的视觉与音效功能逐项接入 Beacon，独立安装、独立启停。",
+        "description": "以 regoists/Skeeto 2.2.19 公开源码为基础的 Flare 移植合集。每项功能编译为独立 Beacon DLL，按需安装。\n当前提供静态窗口准星。命中反馈、持枪视角、音效与菜单背景等功能继续按源码依赖拆分；完整进度见「功能分类与移植进度」。"
+      }
+    ]
+  }
+}

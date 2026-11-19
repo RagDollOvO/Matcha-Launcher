@@ -1,0 +1,18 @@
+{
+  "version": "3.2.0",
+  "repository": "https://github.com/BeyondDimension/SteamTools",
+  "release": "https://github.com/BeyondDimension/SteamTools/releases/tag/3.2.0",
+  "download": "https://github.com/BeyondDimension/SteamTools/releases/download/3.2.0/Steam%2B%2B_v3.2.0_win_x64.7z",
+  "archiveBytes": 98363079,
+  "archiveSha256": "A48CBBF7E58C92FD8C82514FF968766D85DA882743A90EF8AAED1312E8ED4404",
+  "license": "GPL-3.0",
+  "projects": [
+    "bbd6dafa-c295-eb11-abaa-a0d3c1f2a15d",
+    "e21aeaca-1641-4b53-a738-b49864b53c02",
+    "abd6dafa-c295-eb11-abaa-a0d3c1f2a15d",
+    "43059edf-6291-4ac6-8d69-8446a3469b20",
+    "163eb6b7-9be6-4b62-86c8-90a981ac151b",
+    "379bf61c-398c-444e-968a-1dccc3202e55",
+    "bdd6dafa-c295-eb11-abaa-a0d3c1f2a15d"
+  ]
+}

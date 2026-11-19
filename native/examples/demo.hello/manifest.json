@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "demo.hello",
+  "name": "Hello Platform",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Beacon demo maintainers",
+    "purpose": "Read-only SDK hello example",
+    "license": "MIT",
+    "source": { "visibility": "private", "url": null, "commit": null },
+    "modes": ["offline-fixture"],
+    "gameBuilds": ["untested"],
+    "capabilities": { "filesystem": [], "network": [], "externalPrograms": [], "hooks": [], "memoryModification": [] },
+    "prohibited": { "credentialTheft": false, "hiddenDownloadExecution": false, "crossProcessInjection": false, "antiCheatBypass": false, "unfairAdvantage": false }
+  },
+  "dependencies": [],
+  "config": [],
+  "actions": [{
+    "id": "hello",
+    "label": "Say hello",
+    "description": "Read-only example",
+    "effect": "read",
+    "requiresConfirmation": false,
+    "parameters": {"name": {"type": "string", "required": false, "default": "survivor", "maxLength": 80}}
+  }]
+}

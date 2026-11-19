@@ -1,0 +1,3 @@
+// Generated from manifest.json by scripts/generate-skeeto-features.mjs
+#pragma once
+static constexpr char kFields[] = R"fields({"active":{"type":"boolean","default":true},"brightness":{"type":"integer","default":115,"minimum":20,"maximum":200},"radius":{"type":"integer","default":350,"minimum":250,"maximum":1200},"preset":{"type":"enum","default":"natural","options":["natural","warm","cool","custom"]},"red":{"type":"integer","default":235,"minimum":0,"maximum":255},"green":{"type":"integer","default":240,"minimum":0,"maximum":255},"blue":{"type":"integer","default":230,"minimum":0,"maximum":255}})fields";

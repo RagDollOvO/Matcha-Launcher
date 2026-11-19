@@ -1,0 +1,41 @@
+{
+  "name": "matcha",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "sfx:import": "node scripts/import-sfx.mjs",
+    "steam-friends:build": "node scripts/build-steam-friends.mjs",
+    "predesktop": "npm run steam-friends:build",
+    "predesktop:build": "npm run steam-friends:build",
+    "predesktop:build:beta": "npm run steam-friends:build",
+    "desktop": "tauri dev",
+    "audio:build": "node scripts/build-mod-audio.mjs",
+    "desktop:build": "node scripts/build-mod-audio.mjs --desktop && tauri build --no-bundle",
+    "desktop:build:beta": "node scripts/build-mod-audio.mjs --desktop && tauri build --no-bundle --config src-tauri/tauri.beta.conf.json",
+    "desktop:package": "npm run desktop:build && node scripts/package-desktop.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "@fontsource/oswald": "5.3.0",
+    "@lucide/svelte": "1.73.0",
+    "@material/material-color-utilities": "0.4.0",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "@tauri-apps/plugin-notification": "^2.8.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@tauri-apps/cli": "^2.12.4",
+    "@tsconfig/svelte": "5.0.9",
+    "svelte": "5.57.3",
+    "svelte-check": "4.7.8",
+    "typescript": "5.9.3",
+    "vite": "8.3.8"
+  }
+}

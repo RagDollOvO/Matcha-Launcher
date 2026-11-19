@@ -1,0 +1,36 @@
+node_modules
+dist
+
+# Local workspaces, recovery copies, and generated release candidates
+/.backup/
+/.tools/
+/.claude/
+/.playwright-mcp/
+/.release-prep/
+/release/
+/promo-video/
+/proto/
+/图标方案-*/
+*.log
+*.dmp
+*.mdmp
+/backend/servers/matcha-steam-friends.exe
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+auth.json
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Third-party application payloads; keep manifests, notices and fetch scripts.
+/vendor/l4n/
+/vendor/steampp/
+/vendor/dxvk/**/*.dll
+/vendor/dxvk/**/*.gz
+
+# Keep third-party game cue recordings out of source snapshots.
+/native/plugins/skeeto.script-cues/assets/sound/

@@ -1,0 +1,27 @@
+[package]
+name = "flare"
+version = "1.0.0"
+edition = "2021"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["unstable", "protocol-asset", "tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2.8.1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "time", "macros"] }
+dunce = "1"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+base64 = "0.23"
+mime = "0.3"
+percent-encoding = "2"
+webview2-com = "0.39.1"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_DataExchange", "Win32_UI_Shell", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_WindowsAndMessaging"] }

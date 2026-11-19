@@ -1,0 +1,12 @@
+{
+  "identifier": "local.matcha.storagefixture",
+  "build": {
+    "beforeBuildCommand": "",
+    "frontendDist": "../checks/storage-shell"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:*"
+    }
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.silent-si-fix",
+  "name": "无声特感补发提示音",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "在本地服补充特感出生与近距离的方向提示音",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source 事件、实体和本地音频 SDK 检查特感出生及距离"
+      ],
+      "memoryModification": [
+        "SDK 通过原生 IEngineSound 仅向本地玩家发声，按本模块 GUID 停止"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "proximity",
+      "label": "近距离补声（300 单位触发，400 单位重新准备）",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "source",
+      "label": "声音来源（alert 原版警示 / music 原版出场音乐）",
+      "type": "enum",
+      "default": "alert",
+      "options": [
+        "alert",
+        "music"
+      ],
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取补声状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看本地环境、玩家状态与音频资源状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存补声设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "proximity": {
+          "type": "boolean",
+          "default": true
+        },
+        "source": {
+          "type": "enum",
+          "default": "alert",
+          "options": [
+            "alert",
+            "music"
+          ]
+        }
+      },
+      "description": "保存独立设置，下一游戏帧应用；关闭时停止本模块的声音。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "在本地服补充特感出生与近距离的方向提示音",
+    "description": "为 Smoker、Boomer、Hunter、Spitter、Jockey、Charger 补充出生提示与近距离提示。每 100 毫秒检查一次，每轮最多发出一条提示；300 Source 单位内触发，退出至 400 单位后重新准备，同个特感近距离提示间隔至少 4 秒。存活幸存者可听到来自该特感位置的衰减声音。\n\n可以选择原版 alert 声或原版出场音乐；女 Boomer 使用对应音色。开启时保留已有特感的静默状态，新出生时正常提醒；在功能设置中重新开启或切换来源后，会播放一声 Smoker 检查音。声音读取游戏已挂载资源，保留原版声音。\n\n联机范围待定，当前仅在本地服生效。来源 Skeeto 2.2.19 SilentSi；屏幕情报提示归于局内情报 HUD。游戏表现待实测。",
+    "tags": [
+      "本地服",
+      "联机范围待定",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.review",
+        "title": "待定联机功能",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "保留待定分类，当前仅在本地服工作"
+      }
+    ]
+  }
+}

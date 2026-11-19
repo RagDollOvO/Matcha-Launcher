@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.auto-semiauto",
+  "name": "半自动武器按住连发",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "本地服物理按住左键连发半自动武器，逐次检查物理按住、前台、菜单与武器状态",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [
+        "前台本地游戏内 SendInput 鼠标左键边沿"
+      ],
+      "hooks": [
+        "Source 游戏帧与只读实体信息",
+        "独立消息线程上的 WH_MOUSE_LL 只读物理左键监听，原样传递输入"
+      ],
+      "memoryModification": []
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "按住左键连发",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "rate",
+      "label": "连发节奏（0 最快，5 最慢）",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "default": 2,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取连发状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看物理鼠标监听、武器门禁和连发状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存连发设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": false
+        },
+        "rate": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "default": 2
+        }
+      },
+      "description": "下一游戏帧应用；关闭时结束合成输入并撤销鼠标监听。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "手枪、霰弹枪、狙击枪与榴弹按住连发，六档节奏",
+    "description": "在本地服物理按住鼠标左键，自动重复半自动武器所需的松开 / 按下边沿。支持单持与双持手枪、Magnum、四种霰弹枪、猎枪、军狙、Scout、AWP 和榴弹发射器。自动武器、近战、投掷物、医疗包与搬运物品保留正常长按操作。\n\n六档按下间隔基数 / 抖动范围依次为 50–60、90–110、130–170、160–200、200–260、250–300 毫秒，每轮另有至少 16 毫秒松开窗口；默认档位 2（130–170 毫秒）。实际射速仍受武器本身冷却与游戏帧率影响。\n\n物理鼠标监听区分玩家输入和合成输入，每次合成按下前复查实际左键、前台、菜单与本地服状态。关闭时撤销监听，松开左键后结束合成输入；正在物理长按时把控制权交回玩家。霰弹枪自动换弹有独立 DLL 和开关。\n\n来源 Skeeto 2.2.19，仅本地服。实际游戏效果待实测。",
+    "tags": [
+      "连发",
+      "本地服",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.local",
+        "title": "本地实验室",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "本地服设置与调试"
+      }
+    ]
+  }
+}

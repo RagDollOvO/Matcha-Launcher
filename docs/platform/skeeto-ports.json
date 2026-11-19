@@ -1,0 +1,501 @@
+{
+  "schema": 1,
+  "upstream": {
+    "repo": "https://github.com/regoists/Skeeto",
+    "version": "2.2.19",
+    "revision": "7a18b4988d089fdf6cc7e857560cf82a9609a32c"
+  },
+  "basis": "49 项沿用原分类。21 项源码接入完成、4 项部分接入，20 项功能待实施（含 1 项联机范围待定），另有 1 项剔除和 3 项平台承接。工作区候选与游戏安装状态分别记录，各项游戏表现待实测。",
+  "ports": [
+    {
+      "id": "hit-feedback",
+      "name": "命中反馈",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.hit-feedback",
+      "status": "implemented",
+      "note": "独立 DLL 已接入四通道素材、声音 / 图像、连杀 / 特殊击杀、血量与子弹命中、Boss 主动攻击门禁、友伤、血肉音效和工坊恢复。20 项设置 / 4 个动作；原样式解析直接复用。最小 x86 消费者路径与合集发现通过，游戏效果待实测。",
+      "source": "src/skeeto/core/skeeto_style.cpp / skeeto_style.h；skeeto_proxy.cpp :: FireParticle / PrecacheSelectedParticles / SkeetoParticleManifest"
+    },
+    {
+      "id": "crosshair",
+      "name": "准星",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.crosshair",
+      "status": "partial",
+      "note": "已接入静态几何准星 20 种样式；动态、贴图、第三人称与实际游戏显示待后续。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: XhairDrawAll / XhairTune"
+    },
+    {
+      "id": "crosshair-tps",
+      "name": "第三人称准星",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.crosshair-tps",
+      "status": "partial",
+      "note": "四种原作形状、十色、大小/透明度、原生视角和 8192 单位射线、投影、场景隐藏与 crosshair 恢复已通过真实 x86 DLL 离线检查。待准星/HUD 提供动画隐藏、TPS 弹道修正提供输入方向，联动完成后验收；游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: SurfDrawThirdPersonAimMarker / XhairTpFactory / XhairSyncEngineHud；skeeto_host.h 十色表"
+    },
+    {
+      "id": "viewmodel",
+      "name": "持枪视角与镜像",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.viewmodel",
+      "status": "implemented",
+      "note": "原 20 项菜单功能已接入独立 DLL：双模型槽、位置 / 旋转 / 旋转原点、比例、全局 / 逐模型镜像、步长 / 精调 / 重置与原 v2 文件。真实 x86 原生接口、SEH、身份 / 归属、配置保留和独立关闭检查通过；骨骼标尺已查看，游戏效果待实测。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: skviewmodel / ViewModelMenu* / ViewModelBind / Calc / Mirror / Scale / GamePump"
+    },
+    {
+      "id": "volume-mixer",
+      "name": "分类音量",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.volume-mixer",
+      "status": "implemented",
+      "note": "已接入原作 17 类声音、0–100% 独立设置、总开关和状态统计；共用 S_StartSound 声音入口。离线 x86 启停与恢复通过，游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClassifySoundVolumeSample / InstallSoundStartVolumeHook / SfxObjectName"
+    },
+    {
+      "id": "audio-positional",
+      "name": "优化听声辨位",
+      "kind": "intel",
+      "online": "review",
+      "target": "skeeto.audio-positional",
+      "status": "implemented",
+      "note": "两项 DSP 参数、原生浮点 setter 即时锁定、250 毫秒漂移修正与恢复已接入。联机范围待定，当前本地服；游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: DspLockWriteVal / DspLockVerify / DspLockRestore"
+    },
+    {
+      "id": "gunshot-feel",
+      "name": "枪声听感增强",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.gunshot-feel",
+      "status": "implemented",
+      "note": "已接入四种音高、强度、短尾、本地弹匣检测、换弹抑制、路径匹配和后备音。与听声辨位按共享资源互斥，保留保存设置；房间混响提供者接入后复用已预留的增益联动。真实 x86 DLL 离线检查通过，游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: GunFeel* / ClientUxLowAmmoPaintTick；HUD 武器分类"
+    },
+    {
+      "id": "endgame-music",
+      "name": "结算与氛围音乐",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.endgame-music",
+      "status": "implemented",
+      "note": "安全屋随机/指定曲目、每章一次替换、菜单试听/重扫、两类音量/步进、最后生还者五种触发、自动停止和五秒提示已接入。真实 x86 DLL、挂载素材、MF/waveOut、队伍数组与独立清理离线检查通过；游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: SafeMusic* / LastMusic*；skeeto_background.cpp 原生媒体线程"
+    },
+    {
+      "id": "menu-background",
+      "name": "主菜单背景",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.menu-background",
+      "status": "queued",
+      "note": "需要对应 Source 事件、渲染或音频接口拆分",
+      "source": "src/skeeto/core/skeeto_background.cpp"
+    },
+    {
+      "id": "game-ui",
+      "name": "自定义游戏界面",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.game-ui",
+      "status": "queued",
+      "note": "需要对应 Source 事件、渲染或音频接口拆分",
+      "source": null
+    },
+    {
+      "id": "script-cues",
+      "name": "屏幕与音效提示",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.script-cues",
+      "status": "implemented",
+      "note": "十项子开关与独立弹壳音量；红绿淡出、生命/弹匣状态、15 类换弹声、爬梯、房间混响、倒地与焦痕已接入。随包100个原素材，Source File API 2 所属挂载/清理，DSP与枪声听感双向协调。真实x86离线检查及淡出图像已核对；游戏实测待执行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxHealthCuePaintTick / ClientUxLowAmmoPaintTick / ClientUxOnWeaponReloadClank；skeeto_script_extras.h :: ScriptExtrasPaintLadder / RoomBand"
+    },
+    {
+      "id": "view-tilt",
+      "name": "视角倾斜",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.view-tilt",
+      "status": "implemented",
+      "note": "完整移植角度与速度阈值，独立 DLL、配置与原值恢复；游戏实测待执行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxApplyViewRoll / ClampLocalViewRollAngle / ClampLocalViewRollSpeed"
+    },
+    {
+      "id": "corpse-dissolve",
+      "name": "尸体粒子消散",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.corpse-dissolve",
+      "status": "implemented",
+      "note": "五项原设置与独立总开关、完整死亡队列 / 命中锚点 / 有界布偶后备、原生 C_EntityDissolve、类型 / 时长 / 关闭恢复已接入。真实 x86 离线检查通过，含玩家生命、实体归属、故障清理、类别互斥与独立清理节奏；游戏效果待实测。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxDissolve / DissApply / DissCiHurt / ClientUxOnZombieDeath"
+    },
+    {
+      "id": "hide-back-items",
+      "name": "隐藏背部挂件",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.hide-back-items",
+      "status": "implemented",
+      "note": "四类挂件、原作武器 ID 与位过滤已接入独立 DLL。Source 精确入口和字段校验，原生更新期间临时修改，正常返回及原生异常展开时恢复。真实 x86 离线分类、SEH、门禁和启停恢复通过；游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxBackItemCategory / ClientUxFilterAddonBits / ClientUxBackItemsPump"
+    },
+    {
+      "id": "team-glow-style",
+      "name": "队友描边样式",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.team-glow-style",
+      "status": "implemented",
+      "note": "八角色身份/预设/九色/自定义色、五组状态颜色、相对亮度/柔化、常亮与激光升级包完整接入。31 项设置、四个批量动作及启停恢复已通过真实 x86 DLL 离线检查；常亮/激光采用本地门禁，实际游戏显示待实测。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: SurvivorGlow* / GlowState* / ClientUxApplyForceCvars / CampaignOutlineLaserSight；skeeto_hud.cpp :: TeamHudResolveAvatarProp / TeamHudDedupRecs"
+    },
+    {
+      "id": "combat-declutter",
+      "name": "减少画面干扰",
+      "kind": "cosmetic",
+      "online": "review",
+      "target": "skeeto.combat-declutter",
+      "status": "implemented",
+      "note": "五项原设置 / 参数及事件定位尸体隐藏已接入；64 项 / 2.5 秒追踪、有限布偶脉冲、尾部探测、类型互斥、逐字段恢复和独立关闭通过真实 x86 离线检查。玩家槽位保持可见；联机范围待定，当前本地服，游戏效果待实测。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxApplyCorpseLimit / ClientUxApplyNoCorpseCvars / ClientUxOnZombieDeath / ClientUxPaintNoCorpse / ClientUxNoCorpseDestroyPump"
+    },
+    {
+      "id": "hud-self",
+      "name": "自身状态 HUD",
+      "kind": "self-info",
+      "online": "any",
+      "target": "skeeto.hud-self",
+      "status": "queued",
+      "note": "需要 Source 状态快照或 Steam 统计接口",
+      "source": null
+    },
+    {
+      "id": "hud-team",
+      "name": "队友信息 HUD",
+      "kind": "self-info",
+      "online": "any",
+      "target": "skeeto.hud-team",
+      "status": "queued",
+      "note": "需要 Source 状态快照或 Steam 统计接口",
+      "source": null
+    },
+    {
+      "id": "hud-stats",
+      "name": "统计与结算 HUD",
+      "kind": "self-info",
+      "online": "any",
+      "target": "skeeto.hud-stats",
+      "status": "queued",
+      "note": "需要 Source 状态快照或 Steam 统计接口",
+      "source": null
+    },
+    {
+      "id": "world-hud-feedback",
+      "name": "世界 HUD：伤害与击杀",
+      "kind": "cosmetic",
+      "online": "any",
+      "target": "skeeto.world-hud-feedback",
+      "status": "queued",
+      "note": "需要对应 Source 事件、渲染或音频接口拆分",
+      "source": null
+    },
+    {
+      "id": "hud-intel",
+      "name": "局内情报 HUD",
+      "kind": "intel",
+      "online": "no-versus",
+      "target": "skeeto.hud-intel",
+      "status": "queued",
+      "note": "需要实体快照、渲染和运行时服务器模式约束",
+      "source": null
+    },
+    {
+      "id": "world-hud-intel",
+      "name": "世界 HUD：敌方情报",
+      "kind": "intel",
+      "online": "no-versus",
+      "target": "skeeto.world-hud-intel",
+      "status": "queued",
+      "note": "需要实体快照、渲染和运行时服务器模式约束",
+      "source": null
+    },
+    {
+      "id": "timing-trainers",
+      "name": "时机提示",
+      "kind": "intel",
+      "online": "no-versus",
+      "target": "skeeto.timing-trainers",
+      "status": "queued",
+      "note": "需要实体快照、渲染和运行时服务器模式约束",
+      "source": null
+    },
+    {
+      "id": "hazard-outlines",
+      "name": "危险与目标描边",
+      "kind": "intel",
+      "online": "no-versus",
+      "target": "skeeto.hazard-outlines",
+      "status": "queued",
+      "note": "需要实体快照、渲染和运行时服务器模式约束",
+      "source": null
+    },
+    {
+      "id": "item-scan",
+      "name": "物资与可交互物扫描",
+      "kind": "intel",
+      "online": "no-versus",
+      "target": "skeeto.item-scan",
+      "status": "queued",
+      "note": "需要实体快照、渲染和运行时服务器模式约束",
+      "source": null
+    },
+    {
+      "id": "supply-radar",
+      "name": "物资雷达",
+      "kind": "intel",
+      "online": "no-versus",
+      "target": "skeeto.supply-radar",
+      "status": "queued",
+      "note": "需要实体快照、渲染和运行时服务器模式约束",
+      "source": null
+    },
+    {
+      "id": "minimap-nav",
+      "name": "小地图与路线导航",
+      "kind": "intel",
+      "online": "no-versus",
+      "target": "skeeto.minimap-nav",
+      "status": "queued",
+      "note": "需要实体快照、渲染和运行时服务器模式约束",
+      "source": null
+    },
+    {
+      "id": "campaign-progress",
+      "name": "战役完成度",
+      "kind": "self-info",
+      "online": "any",
+      "target": "skeeto.campaign-progress",
+      "status": "queued",
+      "note": "需要 Source 状态快照或 Steam 统计接口",
+      "source": null
+    },
+    {
+      "id": "night-vision",
+      "name": "聚光灯夜视",
+      "kind": "intel",
+      "online": "review",
+      "target": "skeeto.night-vision",
+      "status": "implemented",
+      "note": "已接入独立 keyed 灯光、亮度/半径/色温与 RGB、天花板检测和关闭恢复；工作区候选，离线 x86 检查通过，待统一安装及游戏实测。联机范围待定，当前本地服。",
+      "source": "src/skeeto/core/skeeto_spotlight.cpp/.h :: SpotlightVisionTick / SpotlightClampedOffset"
+    },
+    {
+      "id": "model-scale",
+      "name": "感染者模型缩放",
+      "kind": "intel",
+      "online": "review",
+      "target": "skeeto.model-scale",
+      "status": "implemented",
+      "note": "已接入三个原作设置、玩家特感字段/RecvProxy、AI 特感/Witch/普通感染者骨骼路径，保留原点、骨骼掩码与碰撞数据。离线真实 x86 DLL 检查通过，工作区候选待统一安装和游戏实测。联机范围待定，当前本地服。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: WModelScale* / Hooked_WModelBuild / HookedModelScaleProxy"
+    },
+    {
+      "id": "silent-si-fix",
+      "name": "无声特感补发提示音",
+      "kind": "intel",
+      "online": "review",
+      "target": "skeeto.silent-si-fix",
+      "status": "implemented",
+      "note": "已接入出生事件队列、近距离迟滞/冷却、六种特感音色和女 Boomer、音乐来源、独立音频清理；工作区候选，离线检查通过，待统一安装及游戏实测。联机范围待定，当前本地服。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: SilentSi* / EngEmitLocalSpatialVoice"
+    },
+    {
+      "id": "auto-semiauto",
+      "name": "半自动武器按住连发",
+      "kind": "input",
+      "online": "local-only",
+      "target": "skeeto.auto-semiauto",
+      "status": "implemented",
+      "note": "独立 DLL 保留六档连发节奏、16 毫秒松开窗口、半自动白名单和猎枪模型修正。Source Input API 2 记录真实左键、共享输入归属，每次按下复查物理持有/前台/菜单/本地服；关闭撤销监听并交回人工长按。真实 x86 DLL 离线检查通过，游戏效果待实测。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: HoldSemiWeaponState / HoldSemiMouseProc / ClientUxHoldSemiPump；skeeto_hud.cpp 武器分类"
+    },
+    {
+      "id": "auto-reload",
+      "name": "霰弹枪自动换弹",
+      "kind": "input",
+      "online": "review",
+      "target": "skeeto.auto-reload",
+      "status": "implemented",
+      "note": "单喷/连喷独立开关、当前绑定键、200–300 毫秒间隔/24 毫秒按下、原生弹匣容量与原版后备、射击/推击时机、前台/菜单/范围退出和输入归属清理已接入。真实 x86 DLL 与内存输入夹具通过；联机范围待定，当前本地服，游戏效果待实测。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: HoldSemiAutoReloadTick / HoldSemiReloadNeeded / HoldSemiPumpReloadActionReady / WeaponCapacityResolve"
+    },
+    {
+      "id": "tps-aim",
+      "name": "第三人称弹道修正",
+      "kind": "input",
+      "online": "local-only",
+      "target": "skeeto.tps-aim",
+      "status": "queued",
+      "note": "需要输入边界与运行时本地服门禁",
+      "source": null
+    },
+    {
+      "id": "anti-anti-cheat",
+      "name": "反作弊对抗（AAC）",
+      "kind": "bypass",
+      "online": "blocked",
+      "target": null,
+      "status": "excluded",
+      "note": "反作弊对抗从移植构建中剔除。",
+      "source": null
+    },
+    {
+      "id": "forced-cvars",
+      "name": "强制修改受限 Cvar",
+      "kind": "bypass",
+      "online": "local-only",
+      "target": "skeeto.forced-cvars",
+      "status": "partial",
+      "note": "11 个本地画面参数预设已接入；自定义命令、手电组合与导演面板待移植。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxApplyForceCvars"
+    },
+    {
+      "id": "local-server",
+      "name": "本地服设置",
+      "kind": "local",
+      "online": "local-only",
+      "target": "skeeto.local-server",
+      "status": "queued",
+      "note": "需要运行时本地服识别与受控命令接口",
+      "source": null
+    },
+    {
+      "id": "local-debug",
+      "name": "本地调试与传送",
+      "kind": "local",
+      "online": "local-only",
+      "target": "skeeto.local-debug",
+      "status": "partial",
+      "note": "11 项数值型调试参数已接入；碰撞箱命令、无敌点与传送待移植。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxApplyForceCvars localDebug"
+    },
+    {
+      "id": "client-perf",
+      "name": "客户端性能预设",
+      "kind": "system",
+      "online": "any",
+      "target": "skeeto.client-perf",
+      "status": "implemented",
+      "note": "五组 29 个原作参数完整接入；引擎受限项限本地服，普通客户端项按原范围；游戏实测待执行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: kClientPerfEntries / ClientPerfPump"
+    },
+    {
+      "id": "idle-restore",
+      "name": "闲置恢复与便利",
+      "kind": "self-info",
+      "online": "any",
+      "target": "skeeto.idle-restore",
+      "status": "implemented",
+      "note": "四类闲置状态恢复与八角色 BOT 名称已接入；保持一次手电切换、两次武器槽 / 朝向上限、原超时 / 鼠标交还和原生人称精确版本校验。受限手电亮度压暗限本地服，其余按原范围。真实 x86 DLL、原生异常 / 指令不符、名称生命周期和独立关闭离线通过；游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: IdleFlashlight* / IdleViewRestore* / IdlePersonRestore* / IdleWepRestore* / BotName*"
+    },
+    {
+      "id": "config-override",
+      "name": "过关自动执行 CFG",
+      "kind": "system",
+      "online": "any",
+      "target": "skeeto.config-override",
+      "status": "implemented",
+      "note": "章节执行、16 套松散预设扫描 / 轮换 / 选择、64 行预览、可选 96 项数值基线与章节 / 关闭恢复已接入。保留旧任意相对 CFG 原生 exec，身份 / 范围 / 失败重试与独立关闭通过真实 x86 离线检查；游戏实测待进行。",
+      "source": "src/skeeto/core/skeeto_proxy.cpp :: CfgOvScan / CfgOvLoad / CfgOvExtract / CfgOvApply / CfgOvCycle / ClientUxApplyMapStableCvars"
+    },
+    {
+      "id": "crash-guard",
+      "name": "防闪退",
+      "kind": "system",
+      "online": "any",
+      "target": "skeeto.crash-guard",
+      "status": "queued",
+      "note": "需要源码依赖审查、版本匹配与恢复路径",
+      "source": null
+    },
+    {
+      "id": "cache-offload",
+      "name": "缓存搬运",
+      "kind": "system",
+      "online": "any",
+      "target": "skeeto.cache-offload",
+      "status": "queued",
+      "note": "需要源码依赖审查、版本匹配与恢复路径",
+      "source": "src/skeeto/core/skeeto_cache_offload.cpp"
+    },
+    {
+      "id": "fast-load",
+      "name": "资源加载提速（Beta）",
+      "kind": "system",
+      "online": "any",
+      "target": "skeeto.fast-load",
+      "status": "queued",
+      "note": "需要源码依赖审查、版本匹配与恢复路径",
+      "source": "src/skeeto/core/skeeto_fast_load.h"
+    },
+    {
+      "id": "career",
+      "name": "生涯档案",
+      "kind": "self-info",
+      "online": "any",
+      "target": "skeeto.career",
+      "status": "implemented",
+      "note": "独立 DLL 已接入 23 项通用统计与 37 项武器击杀、前 6 排名和统一报表；离线读取与生命周期检查通过，游戏内 Steam 数据待实测。",
+      "source": "src/skeeto/core/skeeto_career.cpp"
+    },
+    {
+      "id": "necola-loader",
+      "name": "Necola 启动联动",
+      "kind": "loader",
+      "online": "review",
+      "target": "skeeto.necola-loader",
+      "status": "decision",
+      "note": "保留原分类，等待用户确定联机范围。",
+      "source": null
+    },
+    {
+      "id": "plugin-platform",
+      "name": "插件平台",
+      "kind": "loader",
+      "online": "review",
+      "target": null,
+      "status": "platform",
+      "note": "使用 Flare 的模组页面、Beacon 加载与用户确认更新。",
+      "source": null
+    },
+    {
+      "id": "menu-core",
+      "name": "Skeeto 菜单与帮助",
+      "kind": "system",
+      "online": "any",
+      "target": null,
+      "status": "platform",
+      "note": "使用 Flare 的模组页面、Beacon 加载与用户确认更新。",
+      "source": null
+    },
+    {
+      "id": "workshop-updater",
+      "name": "创意工坊自更新",
+      "kind": "update",
+      "online": "any",
+      "target": null,
+      "status": "platform",
+      "note": "使用 Flare 的模组页面、Beacon 加载与用户确认更新。",
+      "source": null
+    }
+  ]
+}

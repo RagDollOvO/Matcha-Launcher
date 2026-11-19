@@ -1,0 +1,112 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import * as core from '../core.mjs';
+import { createFixture } from '../tests/fixtures.mjs';
+import { vpkFixture, addonInfo } from '../tests/mods-fixtures.mjs';
+import { DesktopService } from '../desktop/service.mjs';
+import { modHost } from './mod-host.mjs';
+import { platformTools } from './platform-extension.mjs';
+import { PiTransport } from './transport.mjs';
+import { MOD_SKILL, readSkill } from './skill-files.mjs';
+
+const approval = { approved: true, source: 'user' };
+async function fixture(t) {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'flare-mod-skill-'));
+  const game = await createFixture(base), addons = path.join(game.gameRoot, 'left4dead2/addons');
+  await vpkFixture(path.join(addons, 'weapon_dir.vpk'), { 'addoninfo.txt': addonInfo('测试武器'), 'models/weapons/rifle.mdl': 'fixture weapon' }, { split: true });
+  await vpkFixture(path.join(addons, 'music.vpk'), { 'addoninfo.txt': addonInfo('测试音乐'), 'sound/music/test.mp3': 'fixture music' });
+  const list = path.join(game.gameRoot, 'left4dead2/addonlist.txt');
+  await fs.writeFile(list, '"AddonList" { "weapon_dir.vpk" "1" "music.vpk" "0" }');
+  let running = [];
+  const api = { ...core, ...core.createPlatform({ getProcesses: async () => running }), discover: async () => ({ games: [], warnings: [] }) };
+  const service = new DesktopService({ dataDir: path.join(base, 'data'), core: api });
+  t.after(() => service.close());
+  await service.dispatch('select-game', { gameRoot: game.gameRoot });
+  await service.dispatch('save-profile', { profile: { ...service.settings.profiles[0], modIds: ['weapon_dir.vpk'], modsInitialized: true, modsGameRoot: game.gameRoot } });
+  await service.dispatch('save-mod-meta', { patch: { 'weapon_dir.vpk': { favorite: true }, 'music.vpk': { inbox: true } } });
+  const host = modHost(service, game.gameRoot);
+  const tools = new Map(platformTools(game.gameRoot, { modRequest: host }).map(tool => [tool.name, tool]));
+  const run = (name, params, confirm = async () => true, signal = new AbortController().signal) => tools.get(name).execute('fixture-call', params, signal, undefined, { hasUI: true, ui: { confirm } });
+  return { base, ...game, addons, list, service, host, run, setRunning: value => { running = value; } };
+}
+
+test('Mod skill: read scope, enriched inventory, confirmed classification and stale-plan guard', async t => {
+  const f = await fixture(t);
+  assert.match((await readSkill({ path: MOD_SKILL })).content[0].text, /matcha-mod-organizer/);
+  await assert.rejects(readSkill({ path: f.service.settingsFile }), { code: 'SKILL_SCOPE' });
+  const inventory = (await f.run('mod_inventory', {})).details;
+  assert.equal(inventory.mods.find(m => m.id === 'weapon_dir.vpk').favorite, true);
+  assert(inventory.mods.find(m => m.id === 'weapon_dir.vpk').dirs.includes('models/weapons'));
+  assert.deepEqual(inventory.profiles[0].modIds, ['weapon_dir.vpk']);
+  const before = await fs.readFile(f.list, 'utf8');
+  const moves = [{ modId: 'music.vpk', categoryName: '声音' }];
+  assert.equal((await f.run('mod_organize', { moves }, async () => false)).details.applied, false);
+  assert.equal(f.service.settings.categories.length, 1);
+  const organized = (await f.run('mod_organize', { moves })).details;
+  assert.equal(organized.count, 1);
+  const category = f.service.settings.categories.find(c => c.name === '声音');
+  assert.equal(f.service.settings.assignments['music.vpk'], category.id);
+  assert.equal(f.service.settings.modMeta['music.vpk'].inbox, false);
+  assert.equal(await fs.readFile(f.list, 'utf8'), before);
+  assert.deepEqual(f.service.settings.profiles[0].modIds, ['weapon_dir.vpk']);
+  const pending = await f.host('organize-preview', { moves: [{ modId: 'weapon_dir.vpk', categoryId: category.id }] });
+  await f.service.dispatch('save-mod-meta', { patch: { 'weapon_dir.vpk': { favorite: false } } });
+  await assert.rejects(f.host('organize', { moves: [{ modId: 'weapon_dir.vpk', categoryId: category.id }], expected: pending.expected }, approval), { code: 'mod_plan_changed' });
+  const signal = new AbortController(); signal.abort();
+  await assert.rejects(f.run('mod_organize', { moves }, undefined, signal.signal), /取消/);
+});
+
+test('Mod skill: decline, game-running guard, split-file recycling, draft restoration and purge', async t => {
+  const f = await fixture(t);
+  const params = { modIds: ['weapon_dir.vpk'] };
+  assert.equal((await f.run('mod_delete', params, async () => false)).details.applied, false);
+  assert.equal((await f.host('trash-list')).entries.length, 0);
+  f.setRunning([{ pid: 91, path: path.join(f.gameRoot, 'left4dead2.exe') }]);
+  await assert.rejects(f.run('mod_delete', params), { code: 'game_running' });
+  f.setRunning([]);
+  const filesBefore = await Promise.all(['weapon_dir.vpk', 'weapon_000.vpk'].map(file => fs.readFile(path.join(f.addons, file))));
+  let prompt;
+  const deleted = (await f.run('mod_delete', params, async (_title, message) => { prompt = message; return true; })).details;
+  assert.match(prompt, /已收藏/); assert.match(prompt, /weapon_000.vpk/); assert.match(prompt, /默认方案/);
+  assert.equal(deleted.trashed.length, 1);
+  assert.deepEqual(f.service.settings.profiles[0].modIds, []);
+  const trashIds = [deleted.trashed[0].trashId];
+  const restored = (await f.run('mod_restore', { trashIds })).details;
+  assert.deepEqual(restored.restored, ['weapon_dir.vpk']);
+  assert.equal(f.service.settings.modMeta['weapon_dir.vpk'].favorite, true);
+  assert.deepEqual(f.service.settings.profiles[0].modIds, ['weapon_dir.vpk']);
+  for (const [i, file] of ['weapon_dir.vpk', 'weapon_000.vpk'].entries()) assert.deepEqual(await fs.readFile(path.join(f.addons, file)), filesBefore[i]);
+  assert.equal((await f.host('inventory')).mods.find(m => m.id === 'weapon_dir.vpk').enabled, false);
+  const again = (await f.run('mod_delete', params)).details;
+  const next = { trashIds: [again.trashed[0].trashId] };
+  assert.equal((await f.run('mod_purge', next, async () => false)).details.applied, false);
+  const purged = (await f.run('mod_purge', next)).details;
+  assert.deepEqual(purged.purged, next.trashIds);
+  assert.equal((await f.host('trash-list')).entries.length, 0);
+});
+
+test('Mod skill: actual child IPC uses the desktop owner and cancels queued writes', async t => {
+  const f = await fixture(t);
+  const pi = new PiTransport({ configDir: path.join(f.base, 'pi'), gameRoot: f.gameRoot,
+    piEntry: fileURLToPath(new URL('./fixtures/fake-mod-pi.mjs', import.meta.url)), modRequest: f.host });
+  t.after(() => pi.close());
+  assert(pi.buildArgs().includes(MOD_SKILL));
+  await pi.start();
+  const inventory = await pi.request('get_session_stats', { operation: 'inventory' });
+  assert.equal(inventory.mods.length, 2); assert.equal(inventory.mods.find(m => m.id === 'music.vpk').inbox, true);
+  const moves = [{ modId: 'music.vpk', categoryName: '声音' }], plan = await f.host('organize-preview', { moves });
+  let release; const hold = new Promise(resolve => { release = resolve; });
+  const blocked = f.service.serial(() => hold);
+  let queued;
+  pi.modRequest = (...args) => { queued?.(); return f.host(...args); };
+  const received = new Promise(resolve => { queued = resolve; });
+  const request = pi.request('get_session_stats', { operation: 'organize', params: { moves, expected: plan.expected }, confirmation: approval });
+  const rejected = assert.rejects(request, /取消/);
+  await received; await pi.cancel(); release(); await blocked; await rejected;
+  assert.equal(f.service.settings.assignments['music.vpk'], undefined);
+  await pi.close();
+});

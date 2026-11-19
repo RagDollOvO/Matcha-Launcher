@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.idle-restore",
+  "name": "闲置恢复与便利",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "闲置接管后恢复自己的手电、朝向、武器槽与人称，编辑八角色 BOT 的本地显示名",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模块 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "Source 游戏帧、闲置事件、实体、原生玩家操作、声音过滤与 VGUI 本地化 SDK"
+      ],
+      "memoryModification": [
+        "受限手电亮度压暗仅在本地服生效，释放租约时恢复原值",
+        "按归属恢复本地玩家视角与人称；BOT 显示名通过本地化读取覆盖，原生表保持"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "flashlight",
+      "label": "恢复手电开关状态",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "look",
+      "label": "恢复闲置前朝向",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "weapon",
+      "label": "恢复闲置前武器槽",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "person",
+      "label": "恢复第一 / 第三人称",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "bot-names",
+      "label": "自定义 BOT 显示名",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "name-nick",
+      "label": "Nick 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    },
+    {
+      "id": "name-rochelle",
+      "label": "Rochelle 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    },
+    {
+      "id": "name-coach",
+      "label": "Coach 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    },
+    {
+      "id": "name-ellis",
+      "label": "Ellis 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    },
+    {
+      "id": "name-bill",
+      "label": "Bill 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    },
+    {
+      "id": "name-zoey",
+      "label": "Zoey 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    },
+    {
+      "id": "name-francis",
+      "label": "Francis 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    },
+    {
+      "id": "name-louis",
+      "label": "Louis 显示名（留空跟随游戏）",
+      "type": "string",
+      "maxLength": 23,
+      "default": "",
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取提示状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示闲置恢复与 BOT 名称接口状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存便利功能设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "flashlight": {
+          "type": "boolean",
+          "default": false
+        },
+        "look": {
+          "type": "boolean",
+          "default": false
+        },
+        "weapon": {
+          "type": "boolean",
+          "default": false
+        },
+        "person": {
+          "type": "boolean",
+          "default": false
+        },
+        "bot-names": {
+          "type": "boolean",
+          "default": false
+        },
+        "name-nick": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        },
+        "name-rochelle": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        },
+        "name-coach": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        },
+        "name-ellis": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        },
+        "name-bill": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        },
+        "name-zoey": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        },
+        "name-francis": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        },
+        "name-louis": {
+          "type": "string",
+          "maxLength": 23,
+          "default": ""
+        }
+      },
+      "description": "每项独立开关，下一游戏帧应用；名称最多 23 个 UTF-16 单位，空值恢复游戏 / Mod 的名字。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "恢复闲置前的个人状态，为八角色 BOT 起本地名字",
+    "description": "手电、朝向、武器槽、人称和 BOT 名称五项独立开关。进入闲置时保留最后的玩家状态，接管回来后再恢复。\n\n手电等待 150 毫秒后核对，只发送一次普通切换，最多等待 4 秒服务器同步；恢复窗口静音手电点击。原先关闭时压暗本地手电，受限亮度参数仅在本地服生效。\n\n朝向等待 100 毫秒，650 毫秒内最多纠正两次服务器回弹，玩家移动视角就交还控制。武器槽最多发送两次，倒地时只恢复副武器。人称每 100 毫秒读取，使用与原作一致的精确客户端接口，版本不匹配时显示待适配。\n\n八角色 BOT 名字只改变本机面板中的本地化文字。留空跟随游戏和现有 Mod，保存后实时生效；关闭保留名字草稿并恢复原生显示。最多 23 个 UTF-16 单位。实际游戏表现待实测。",
+    "tags": [
+      "闲置",
+      "BOT 名称",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.personal",
+        "title": "个人档案",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "个人记录、信息与便利功能，逐项选择和设置。",
+        "description": "查看生涯记录，设置闲置恢复与 BOT 显示名。每项功能拥有自己的说明、配置和启停开关。"
+      }
+    ]
+  }
+}

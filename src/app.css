@@ -1,0 +1,202 @@
+/* 设计 token：壁纸取色（M3）+ 氛围底 + 悬浮岛。
+   --md-* 由 src/lib/theme/theme.svelte.ts 运行时从壁纸派生并写到 <html> 上；这里的值只是首帧兜底（深色、蓝紫种子）。
+   旧组件读的 --bg / --fg / --accent 等全部映射到 --md-*，不要再写死颜色。 */
+@font-face {
+  font-family: 'Matcha Maiyuan';
+  src: local('荆南麦圆体'), local('Kingnam Maiyuan'), local('KingnamMaiyuan'), local('KN Maiyuan'),
+       url('/fonts/maiyuan/KNMaiyuan-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+:root {
+  --md-primary: #c9bfff; --md-on-primary: #31285f; --md-primary-container: #483f77; --md-on-primary-container: #e5deff;
+  --md-secondary: #c9c3dc; --md-on-secondary: #312e41; --md-secondary-container: #484459; --md-on-secondary-container: #e5dff9;
+  --md-tertiary: #edb8cd; --md-on-tertiary: #482536; --md-tertiary-container: #613b4c; --md-on-tertiary-container: #ffd8e7;
+  --md-error: #ffb4ab; --md-on-error: #690005; --md-error-container: #93000a; --md-on-error-container: #ffdad6;
+  --md-surface: #141318; --md-surface-dim: #141318; --md-surface-bright: #3a383e;
+  --md-surface-container-lowest: #0e0e13; --md-surface-container-low: #1c1b20; --md-surface-container: #201f24;
+  --md-surface-container-high: #2b292f; --md-surface-container-highest: #36343a;
+  --md-on-surface: #e5e1e9; --md-on-surface-variant: #c9c5d0; --md-outline: #938f99; --md-outline-variant: #48454e;
+  --md-inverse-surface: #e5e1e9; --md-inverse-on-surface: #312f36; --md-inverse-primary: #605790; --md-scrim: #000; --md-shadow: #000;
+  /* 非主页页面壁纸上的底色浓度，设置页可调 */
+  --veil: 0.55;
+
+  /* 旧名字 → M3 角色 */
+  --bg: var(--md-surface-container-low);
+  --bg-1: var(--md-surface-container);
+  --bg-2: var(--md-surface-container-high);
+  --bg-3: var(--md-surface-container-highest);
+  --line: color-mix(in srgb, var(--md-outline-variant) 70%, transparent);
+  --line-soft: color-mix(in srgb, var(--md-outline-variant) 40%, transparent);
+  --line-strong: var(--md-outline-variant);
+
+  --fg: var(--md-on-surface);
+  --fg-2: var(--md-on-surface-variant);
+  --fg-3: color-mix(in srgb, var(--md-on-surface-variant) 78%, var(--md-surface));
+  --fg-4: var(--md-outline);
+
+  --accent: var(--md-primary);
+  --accent-hover: color-mix(in srgb, var(--md-primary) 86%, var(--md-on-primary));
+  --on-accent: var(--md-on-primary);
+  --danger: var(--md-error);
+
+  /* 悬浮岛：标题栏、导航、内容区、助手面板 */
+  --island: color-mix(in srgb, var(--md-surface) 62%, transparent);
+  --island-line: color-mix(in srgb, var(--md-outline-variant) 50%, transparent);
+  --r-island: 18px;
+  --hover: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
+
+  --font-fallback: 'Geist Variable', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+  --font-sans: 'Matcha Maiyuan', var(--font-fallback);
+  --font-mono: 'Geist Mono Variable', 'Cascadia Mono', 'Microsoft YaHei UI', monospace;
+  --font-display: var(--font-sans);
+
+  --r-sm: 6px;
+  --r: 10px;
+  --dur: 150ms;
+  /* 动效曲线：进出场用强 ease-out，屏内移动用 ease-in-out */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  color-scheme: dark;
+  background: var(--md-surface);
+}
+:root[data-ui-font='system'] { --font-sans: system-ui, 'Microsoft YaHei UI', sans-serif; }
+:root[data-ui-font='custom'] { --font-sans: 'Matcha Imported', 'Matcha Maiyuan', var(--font-fallback); }
+
+* { box-sizing: border-box; }
+
+/* 设置页「减弱动效」：CSS 过渡和动画几乎瞬间完成（系统「减少动画」各组件自己处理） */
+:root[data-reduce-motion] *, :root[data-reduce-motion] *::before, :root[data-reduce-motion] *::after {
+  animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important;
+  transition-duration: 1ms !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+}
+
+html, body, #app { height: 100%; margin: 0; }
+
+body {
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+input, textarea, select {
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  padding: 6px 10px;
+  outline: none;
+  user-select: text;
+  transition: border-color var(--dur);
+}
+input:focus, textarea:focus, select:focus { border-color: var(--fg-3); }
+input::placeholder, textarea::placeholder { color: var(--fg-4); }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--md-on-surface) 18%, transparent); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--md-on-surface) 30%, transparent); }
+::-webkit-scrollbar-track { background: transparent; }
+
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--fg-3); }
+.dim { color: var(--fg-2); }
+.danger { color: var(--danger); }
+
+/* 按钮三档：主按钮（暗红，仅启动等关键动作）、次按钮（描边）、幽灵按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  white-space: nowrap;
+  transition: background var(--dur), border-color var(--dur), color var(--dur), transform 160ms var(--ease-out);
+}
+.btn:hover { background: var(--bg-2); border-color: var(--fg-4); }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.ghost { border-color: transparent; color: var(--fg-2); }
+.btn.ghost:hover { background: var(--bg-2); color: var(--fg); }
+.btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r);
+  color: var(--fg-3);
+  transition: background var(--dur), color var(--dur);
+}
+.icon-btn:hover { background: var(--bg-2); color: var(--fg); }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  color: var(--fg-2);
+  font-size: 12px;
+  transition: all var(--dur);
+}
+.chip:hover { color: var(--fg); border-color: var(--fg-4); background: var(--hover); }
+/* 选中：M3 筛选 chip 的选中态（次级容器色），不再是黑白反色 */
+.chip.on { background: var(--md-secondary-container); border-color: transparent; color: var(--md-on-secondary-container); }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  color: var(--fg-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.tag.danger { border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes fade-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: fade-in var(--dur) ease-out; }
+
+/* 骨架屏扫光 */
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+/* 卡片入场：轻微上浮 */
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active:not(:disabled) { transform: none; }
+}

@@ -1,0 +1,4 @@
+#pragma once
+namespace std {
+using uintptr_t = unsigned int;
+}

@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.config-override",
+  "name": "过关自动执行 CFG",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "原生执行章节 CFG、切换松散预设、预览文件，并按需在过关前恢复旧参数",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "读取游戏 left4dead2/cfg 内所选文件与 skeeto_*.cfg 预设，保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 beacon.source 订阅帧和换图事件"
+      ],
+      "memoryModification": [
+        "通过 Source Cvar API 4 保存数值基线并恢复，受限参数按本地服范围，原 CFG 内容交给游戏解释器"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "file",
+      "label": "CFG 相对路径",
+      "type": "string",
+      "default": "autoexec.cfg",
+      "maxLength": 160,
+      "apply": "immediate"
+    },
+    {
+      "id": "automatic",
+      "label": "过关自动执行",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "restore",
+      "label": "过关前恢复旧预设参数",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取执行状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "读取执行队列、当前选择、基线数量和跳过的参数。"
+    },
+    {
+      "id": "configure",
+      "label": "保存 CFG 选择",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "file": {
+          "type": "string",
+          "default": "autoexec.cfg",
+          "maxLength": 160
+        },
+        "automatic": {
+          "type": "boolean",
+          "default": true
+        },
+        "restore": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "保存所选 CFG、自动执行和过关恢复设置。关闭恢复保留现有参数；开启恢复时，关闭自动执行会先归还已跟踪参数。"
+    },
+    {
+      "id": "apply",
+      "label": "执行所选 CFG",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "在游戏线程排队执行已选择的 CFG，加载期间等待。"
+    },
+    {
+      "id": "presets",
+      "label": "扫描预设列表",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "读取 cfg/skeeto_*.cfg 松散预设，按名称排序，最多 16 套。"
+    },
+    {
+      "id": "preview",
+      "label": "预览当前 CFG",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "显示文件前 64 KiB 中最多 64 个非空行，每行最多 239 字节。完整文件保持原样。"
+    },
+    {
+      "id": "next-preset",
+      "label": "切换下一套并执行",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "循环选择下一套，启用章节自动执行并排队应用。同章切换保留之前的参数效果。"
+    },
+    {
+      "id": "previous-preset",
+      "label": "切换上一套并执行",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {},
+      "description": "循环选择上一套，启用章节自动执行并排队应用。"
+    },
+    {
+      "id": "select-preset",
+      "label": "选择预设并执行",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "id": {
+          "type": "string",
+          "maxLength": 51,
+          "default": "skeeto_preset1"
+        }
+      },
+      "description": "选择列表中的预设名，可附 .cfg；启用章节自动执行并排队应用。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "章节执行、预设切换、文件预览与可选的旧参数恢复",
+    "description": "把 CFG 放在游戏 left4dead2/cfg 下，保存相对路径后，每次进入章节会通过游戏原生解释器执行当前文件。任意合法相对 CFG 路径和原有手动执行入口继续可用。\n\n预设列表发现最多 16 个 skeeto_*.cfg 松散文件，按名称排序；上一套、下一套和按名称选择会启用章节自动执行并立即排队，同章切换保持叠加。预览显示前 64 KiB 中最多 64 个非空行，每行 239 字节，执行仍使用完整文件。\n\n「过关前恢复旧预设参数」默认关闭。开启后记录执行前的数值基线，最多 96 个参数；新章节执行前先恢复旧项，关闭自动执行或退出当前环境时归还。关闭恢复选项则保留当前数值并清空记录。跟踪沿用原作的物理行首命令及 skt_cvar / skeeto_cvar 参数名规则，别名、嵌套 exec 和同一行后续命令继续交给游戏处理。\n\n受限参数的基线管理在本地服生效；其他功能已持有的参数显示跳过原因。变量更换时保留新变量值，恢复失败保留基线并等待下一游戏帧。实际游戏执行待实测。",
+    "tags": [
+      "配置",
+      "源码移植",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.system",
+        "title": "配置与运行",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按需启用的配置与运行功能"
+      }
+    ]
+  }
+}

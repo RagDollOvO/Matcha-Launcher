@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "beacon.source",
+  "name": "Source 游戏接口服务",
+  "version": "0.4.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "共享游戏帧、事件、实体、参数租约、灯光与声音接口",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "通过 VFileSystem018 只读 GAME 挂载文件与目录枚举；按订阅持有有界句柄",
+        "按所属插件目录将 assets 挂到 GAME 搜索尾部，关闭移除自己的挂载"
+      ],
+      "network": [],
+      "externalPrograms": [
+        "仅在本地服前台游戏合成绑定按键，按订阅持有；退订/关闭即时释放"
+      ],
+      "hooks": [
+        "同进程 VEngineVGui001::Paint 槽 14，IGameEventManager2 原生监听",
+        "所持有 IConVar 的浮点 setter；S_StartSound 精确签名入口，由 MinHook 1.3.4 管理",
+        "UpdateAddonModels 精确签名入口，过滤挂件显示位，由 MinHook 管理",
+        "模型比例 RecvProxy 与 BuildTransformations 槽 175，按实体身份与本地范围管理",
+        "生还者 GetGlowColor 槽 239，按实体句柄替换颜色；常亮限本地服",
+        "按需 WH_MOUSE_LL 物理左键监听，独立消息线程原样传递输入",
+        "VGUI_Localize005::Find 槽 2 的所属 token 文字覆盖，保留原生表和外部 hook",
+        "第一人称持枪模型 CalcViewModelView 槽 222 与 BuildTransformations 槽 175，保留原生先执行",
+        "原生粒子清单入口，先执行引擎清单，再按所属前缀有界追加 PCF 清单；关闭停止后续追加",
+        "玩家 m_iHealth 接收回调的只读观察，按订阅复制有界队列并在关闭时恢复入口"
+      ],
+      "memoryModification": [
+        "有界 ConVar 租约，通过原生 setter 修改并恢复原值；受限参数仅限本地服，原作 sv_rollangle/sv_rollspeed 视觉参数采用客户端路径",
+        "声音过滤器只调整本次音量，停用后恢复原始声音入口",
+        "按独立灯光 key 和声音 GUID 管理本模块创建的效果，离开范围或退订后清理",
+        "原生挂件更新调用内临时使用过滤位，正常返回或原生异常展开时恢复接收值",
+        "本地服模型比例字段与骨骼矩阵；恢复仍由本服务持有的最新原生值，保留碰撞数据",
+        "本地服 type-3 描边，原生 SetGlowType 与颜色 RecvProxy 同步缓存，逐字段归属恢复",
+        "本地玩家普通操作、人称与视角恢复，核对本人 / 存活 / 观察和菜单状态；人称使用精确原生版本检查",
+        "本地服尸体绘制字段租约与固定布偶清理命令，按实体身份及逐字段归属恢复",
+        "本人持枪模型姿态、骨骼与镜像剔除标记；完整绑定身份、关闭恢复和同帧失败清理",
+        "原生 C_EntityDissolve 创建与回收，按完整实体 / 玩家生命代次恢复所属绘制字段；原生故障停止创建",
+        "原生粒子预载与限流发送；已注册粒子库随引擎保留至进程退出",
+        "所属 r_screenoverlay 全屏叠图及命令标志，清除后归还自有标志位"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [],
+  "config": [],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取游戏线程服务状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "读取当前连接、订阅或 CFG 队列状态。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "共享游戏帧、事件、实体、参数租约、灯光与声音接口",
+    "description": "为独立功能 DLL 提供游戏线程回调、事件和连接状态快照。按 API 1 作为依赖加载；关闭功能后退订该功能回调。运行状态中可查看实际帧数、订阅者和事件注册结果。\n游戏接口来自 Skeeto 2.2.19 源码。离线接口检查与实际游戏兼容分别记录。\n0.3.0 增加 Cvar API 2 即时锁定和 Sound API 1 声音过滤。完整源码与 MinHook 许可证随包提供。\n0.4.0 增加实体引用与字段、视线检测、独立灯光和本地音频 SDK。实体句柄与地图代次共同识别对象；效果按订阅者归属清理。\n0.4.0 同时提供原生 Surface 绘制、只读视角和命名资源协调。绘制上下文按归属成对使用，功能自行选择 UI / GAME 阶段。\nAddon API 1 提供角色挂件过滤，原生异常与正常返回均恢复临时位。共享服务构建使用 LLVM-MinGW / MSVC。\nModel API 1 提供本地服模型比例与骨骼缩放租约，按句柄和地图代次识别对象，关闭和范围退出恢复所持有原值。\nFile API 1 提供只读 GAME 挂载素材和有界枚举；Entity API 2 增加队伍数组与 PVS 外玩家信息。\nGlow API 1 管理原生生还者颜色与本地描边，保留逐字段恢复和第三方入口。加载/换图时清除旧引用。\nCvar API 3 提供基线相对倍数；Entity 明确支持两字节 SHORT 字段和模型索引。\nInput API 1 管理本地服前台游戏的绑定按键与释放；Weapon API 1 读取本地脚本弹匣容量，元数据故障停用后由消费者选择原版后备值。\nInput API 2 提供可信物理左键与合成输入周期：逐次检查本地服、前台和菜单，关闭撤销监听并交还物理长按。\nFile API 2 为插件自带素材提供所属包内挂载与清理；Entity API 3 封装移动类型，现有 API 版本保持。\nPlayer API 1 提供有本人状态门禁的普通动作与原生人称；Localize API 1 管理所属文字覆盖和有效文字读取，保留原生表与借用指针。\nCvar API 4 提供数值恢复点：保留首次基线与原生身份，按所属订阅恢复或主动丢弃；失败保留记录等待 Paint 重试。\nCorpse API 1 为事件确认的本地尸体提供绘制隐藏、原值恢复和类型化布偶清理；玩家槽位保持，身份复用、范围退出和失败重试由服务处理。\nViewmodel API 1 返回两个持枪模型的复制身份，并统一管理姿态、整体缩放和镜像；共用脚本的相反镜像暂停，关闭归还所属字段与入口。\nDissolve API 1 为死亡事件确认的目标创建原生消散效果，保留类型、时长和父对象，按类别释放并保留失败恢复点；玩家出生事件更新生命代次。\nFile API 3 提供 GAME 挂载变化标识；Particle API 1 提供原生粒子预载、查找、发送和启动清单追加。\nSource API 2 返回复制事件文字；Feedback API 1 提供血量变化队列、独占全屏叠图与只读工坊加载状态。",
+    "catalog": {
+      "id": "beacon",
+      "title": "Beacon",
+      "author": "Flare",
+      "summary": "游戏运行时服务与开发工具"
+    },
+    "collections": [
+      {
+        "id": "beacon.services",
+        "title": "运行时服务",
+        "author": "Flare",
+        "summary": "独立功能使用的共享 SDK 服务"
+      }
+    ]
+  }
+}

@@ -1,0 +1,78 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {createPlatform} from '../core.mjs';
+import {createFixture,pluginFixture,manifest,peFixture} from './fixtures.mjs';
+import {DesktopService} from '../desktop/service.mjs';
+import {L4nPlugins} from '../l4n-plugins.mjs';
+import {checkUpdate} from '../desktop/settings.mjs';
+
+const ok={approved:true,source:'user'};
+async function fixture(t){
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'matcha-maint-'));
+  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+  return {dir,...await createFixture(dir,{l4n:true})};
+}
+test('confirmed uninstall and rollback stay bound to the live package; staging cleanup spares drafts',async t=>{
+  const f=await fixture(t); let running=[];
+  const core=createPlatform({getProcesses:async()=>running});
+  await core.applyInstall(await core.planInstall(f),{confirmation:ok});
+  const svc=new DesktopService({core,dataDir:path.join(f.dir,'data'),distRoot:f.distRoot});
+  t.after(()=>svc.close()); await svc.ready; await svc.save({...svc.settings,gameRoot:f.gameRoot});
+  const call=(cmd,p,confirm)=>svc.dispatch(cmd,p,confirm), id='local.sample';
+  const source=await pluginFixture(path.join(f.dir,'sample'),id);
+  const draft=await svc.inspectDllIntake(source);
+  const intake=await svc.inspectDllIntake(source);
+  await call('install-plugin',{pluginDirectory:intake.preparedDirectory},ok);
+  const cache=await call('cache-status',{});
+  assert(cache.items.some(i=>i.id==='dll-intake' && i.bytes>0));
+  await assert.rejects(call('cache-clear',{ids:['dll-intake']}),{code:'confirmation_required'});
+  const cleared=await call('cache-clear',{ids:['dll-intake']},ok);
+  assert(cleared.freedBytes>0); await fs.access(draft.preparedDirectory);await fs.access(source);
+  const folder=path.join(f.runtime,'plugins',id), cfg=path.join(folder,'config.json');
+  await fs.writeFile(cfg,'{"greeting":"my current preference"}');
+  await call('set-plugin-enabled',{pluginId:id,enabled:true},ok);
+  await fs.writeFile(path.join(source,'manifest.json'),JSON.stringify({...manifest(id),version:'0.2.0'}));
+  await call('update-plugin',{pluginDirectory:source},ok);
+  const preview=operation=>call('plugin-maintenance-preview',{pluginId:id,operation});
+  const apply=(p,confirm=ok)=>call('plugin-maintenance-apply',{planId:p.planId},confirm);
+  let p=await preview('rollback'); assert.equal(p.targetVersion,'0.1.0');
+  await assert.rejects(apply(p,{}),{code:'confirmation_required'});
+  running=[{pid:1,name:'left4dead2'}]; await assert.rejects(apply(p),{code:'game_running'});running=[];
+  await fs.writeFile(cfg,'{"greeting":"edited after preview"}');
+  await assert.rejects(apply(p),{code:'plugin_update_stale'});p=await preview('rollback');
+  let result=await apply(p);assert.equal(result.version,'0.1.0');assert(result.enabled);
+  assert.equal(JSON.parse(await fs.readFile(cfg)).greeting,'edited after preview');
+  const dependent=await pluginFixture(path.join(f.dir,'dependent'),'sample.child',[{id,version:'0.1.0'}]);
+  await call('install-plugin',{pluginDirectory:dependent},ok);
+  await assert.rejects(preview('uninstall'),{code:'plugin_required'});
+  await apply(await call('plugin-maintenance-preview',{pluginId:'sample.child',operation:'uninstall'}));
+  result=await apply(await preview('uninstall'));
+  assert.equal(JSON.parse(await fs.readFile(path.join(result.previousDirectory,'config.json'))).greeting,'edited after preview');
+  assert(!(await core.listPlugins(f.gameRoot)).some(p=>p.manifest.id===id));
+  assert.equal((await fs.readFile(path.join(f.runtime,'enabled.txt'),'utf8')).trim(),'demo.hello');
+});
+test('L4N update, toggle, rollback and uninstall preserve independent configuration',async t=>{
+  const f=await fixture(t),core=createPlatform({getProcesses:async()=>[]});
+  const plugins=new L4nPlugins({dataDir:path.join(f.dir,'data'),inspectGame:core.inspectGame});
+  const file=path.join(f.dir,'sample.dll'),original=peFixture(['GetL4NPluginInstance']);
+  await fs.writeFile(file,original);
+  const op=async req=>plugins.apply(f.gameRoot,(await plugins.preview(f.gameRoot,req)).planId,ok);
+  const {pluginId}=await op({operation:'import',file});
+  await fs.writeFile(file,Buffer.concat([original,Buffer.from('second build')]));
+  await op({operation:'update',pluginId,file}); await op({operation:'set-enabled',pluginId,enabled:true});
+  const live=path.join(f.bin,'neko/plugins/sample.dll');
+  await fs.writeFile(live+'.ini','custom');
+  await op({operation:'rollback',pluginId});assert.deepEqual(await fs.readFile(live),original);
+  await op({operation:'uninstall',pluginId});assert.equal(await fs.readFile(live+'.ini','utf8'),'custom');
+  await assert.rejects(fs.access(live),{code:'ENOENT'});
+});
+test('checks a stable GitHub release and reports an unpublished channel distinctly',async()=>{
+  const fake=async url=>{assert.equal(url,'https://api.github.com/repos/org/Matcha/releases/latest');
+    return Response.json({tag_name:'v0.10.0',body:'notes',published_at:'2026-11-17T00:00:00Z'});};
+  assert((await checkUpdate('0.2.0','org/Matcha',fake)).hasUpdate);
+  assert.equal((await checkUpdate('0.10.0','org/Matcha',fake)).hasUpdate,false);
+  await assert.rejects(checkUpdate('0.1.0','org/Matcha',()=>new Response(null,{status:404})),{code:'update_http'});
+});

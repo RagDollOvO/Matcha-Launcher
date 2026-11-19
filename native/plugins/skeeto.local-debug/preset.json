@@ -1,0 +1,151 @@
+{
+  "id": "skeeto.local-debug",
+  "name": "本地调试",
+  "summary": "显示本地服的噪声、生成区域、近战与特感调试信息。",
+  "description": "仅在本地服应用。已接入原作的 11 项数值型调试开关。碰撞箱命令、无敌点标记与传送继续待移植。各项默认关闭；换到远端服务器时恢复已修改的参数。",
+  "source": "src/skeeto/core/skeeto_proxy.cpp :: ClientUxApplyForceCvars localDebug",
+  "collections": [
+    {
+      "id": "skeeto.local",
+      "title": "本地实验室",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "本地服设置与调试"
+    }
+  ],
+  "tags": [
+    "本地服",
+    "待游戏实测"
+  ],
+  "localOnly": true,
+  "fields": {
+    "active": {
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true
+    },
+    "melee": {
+      "label": "近战挥击范围",
+      "type": "boolean",
+      "default": false
+    },
+    "noise": {
+      "label": "噪声等级",
+      "type": "boolean",
+      "default": false
+    },
+    "spawn": {
+      "label": "生成区域",
+      "type": "boolean",
+      "default": false
+    },
+    "footsteps": {
+      "label": "脚步显示等级（0 关闭）",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 3
+    },
+    "inferno": {
+      "label": "燃烧范围",
+      "type": "boolean",
+      "default": false
+    },
+    "chainsaw": {
+      "label": "电锯调试",
+      "type": "boolean",
+      "default": false
+    },
+    "swings": {
+      "label": "感染者攻击范围",
+      "type": "boolean",
+      "default": false
+    },
+    "explosive": {
+      "label": "高爆弹范围",
+      "type": "boolean",
+      "default": false
+    },
+    "tongue": {
+      "label": "舌头调试",
+      "type": "boolean",
+      "default": false
+    },
+    "rock": {
+      "label": "Tank 石头调试",
+      "type": "boolean",
+      "default": false
+    },
+    "vomit": {
+      "label": "呕吐调试",
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "entries": [
+    {
+      "option": "melee",
+      "name": "melee_show_swing",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "noise",
+      "name": "z_noise_level_display",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "spawn",
+      "name": "z_debug_spawnable_areas",
+      "value": 1,
+      "local": false
+    },
+    {
+      "name": "sv_showfootsteps",
+      "setting": "footsteps",
+      "zeroDisables": true
+    },
+    {
+      "option": "inferno",
+      "name": "inferno_debug",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "chainsaw",
+      "name": "chainsaw_debug",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "swings",
+      "name": "z_show_swings",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "explosive",
+      "name": "upgrade_show_explosive_ammo_radius",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "tongue",
+      "name": "tongue_debug",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "rock",
+      "name": "z_tank_rock_debug",
+      "value": 1,
+      "local": false
+    },
+    {
+      "option": "vomit",
+      "name": "z_vomit_debug",
+      "value": 1,
+      "local": false
+    }
+  ]
+}

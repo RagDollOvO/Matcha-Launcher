@@ -1,0 +1,26 @@
+{
+  "name": "l4p-platform-core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/core.test.mjs",
+    "start": "node cli.mjs"
+  },
+  "dependencies": {
+    "cheerio": "1.2.0",
+    "entities": "9.0.0",
+    "gamedig": "5.3.3",
+    "iconv-lite": "0.7.2",
+    "proper-lockfile": "4.1.2",
+    "sharp": "0.35.5",
+    "undici": "7.30.2",
+    "yauzl": "3.4.0"
+  },
+  "optionalDependencies": {
+    "@vscode/ripgrep-win32-x64": "1.18.0"
+  }
+}

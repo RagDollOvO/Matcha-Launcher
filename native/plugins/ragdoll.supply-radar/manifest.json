@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "ragdoll.supply-radar",
+  "name": "物资雷达",
+  "author": "RagDoll",
+  "version": "1.5.9",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "dependencies": [{ "id": "flare.game-ui", "version": "0.1.0" }],
+  "config": [],
+  "actions": [],
+  "presentation": {
+    "schema": 1,
+    "summary": "用 HUD 读出物资方向、距离、数量和高差，支持逐项调节与位置编辑。",
+    "description": "开启后，用「L4N 平台启动」启动游戏。在游戏里按 Ctrl + F7，选择「物资雷达」即可调整图标透明度、探测范围、物品发光和 HUD 布局。\n\n适用于本地战役、写实与生还者模式。烟花盒沿用蓝底火箭图标，单盒支持独立识别；可乐、侏儒、高爆弹和燃烧弹保留对齐布局。\n\n原作：RagDoll。雷达素材 GLOBAL RADAR 2020 – By Ellie；HUD 与字体素材由 20Cat 提供。",
+    "cover": "cover.png",
+    "tags": ["HUD", "本地合作", "游戏内设置"],
+    "hero": { "layout": "split", "accent": "#d4b86a", "tagline": "一眼看清附近的补给" },
+    "modes": ["coop", "realism", "survival"],
+    "page": [
+      { "type": "heading", "eyebrow": "WHAT IT DOES", "text": "补给信息直接画在 HUD 上" },
+      { "type": "text", "text": "雷达持续读出附近物资的**方向、距离、数量和高差**，按分类显示在 HUD 上。\n\n- 医疗、投掷、武器等分类可以逐项开关\n- 物品发光可单独调颜色、距离和亮度\n- 图标位置可以在地图里直接拖到顺手的地方\n\n烟花盒沿用蓝底火箭图标，单盒支持独立识别；可乐、侏儒、高爆弹和燃烧弹保留对齐布局。" },
+      { "type": "gallery", "title": "特殊物资图标", "columns": 2, "aspect": "1:1", "items": [
+        { "src": "source/radar/assets/supply-radar-icons.png", "caption": "可乐、侏儒、高爆弹、燃烧弹" },
+        { "src": "source/radar/assets/fireworks.jpg", "caption": "烟花盒 · 蓝底火箭图标" }
+      ] },
+      { "type": "steps", "title": "上手三步", "items": [
+        { "title": "启用物资雷达", "text": "在这里打开开关。「抹茶模组设置」会一起启用。" },
+        { "title": "用「L4N 平台启动」进入游戏", "text": "开关在下次完整启动游戏时生效。" },
+        { "title": "按 Ctrl + F7 打开设置", "text": "选择「物资雷达」，用方向键选择和调节，Enter 确认，Esc 返回。" }
+      ] },
+      { "type": "callout", "tone": "tip", "title": "本地地图专用", "text": "物品发光和位置编辑只在本地地图可用；适用于本地战役、写实与生还者模式。" },
+      { "type": "hotkeys", "title": "位置编辑按键", "items": [
+        { "keys": "↑ ↓ ← →", "label": "移动选中的图标" },
+        { "keys": "Shift", "label": "按住加快移动" },
+        { "keys": "Alt", "label": "按住自由移动" },
+        { "keys": "＋ / －", "label": "缩放" },
+        { "keys": "Enter", "label": "保存位置" },
+        { "keys": "Esc", "label": "撤销并退出" }
+      ] },
+      { "type": "specs", "title": "设置一览", "rows": [
+        { "label": "显示与数字", "value": "不透明度、距离、数量、高差、字体" },
+        { "label": "选择显示的物资", "value": "按分类逐项开关" },
+        { "label": "物品发光", "value": "逐项颜色、距离、亮度" },
+        { "label": "位置编辑", "value": "在本地地图里拖放" },
+        { "label": "设置文件", "value": "bin/l4p/data/ragdoll.supply-radar/settings.ini" }
+      ] },
+      { "type": "text", "text": "沿用旧布局：退出游戏后，把 L4N 版原来的 `settings.ini` 复制到上面的设置文件位置。停用或更新雷达都会保留这个目录。" },
+      { "type": "changelog", "items": [
+        { "version": "1.5.9", "date": "2026-11-17", "notes": ["随「L4N 平台启动」加载，不再要求 -insecure"] },
+        { "version": "1.5.8", "notes": ["Flare 版首发：沿用原版物资识别与 HUD", "设置迁入 Ctrl + F7 游戏内菜单，独立写入 settings.ini"] }
+      ] },
+      { "type": "credits", "items": [
+        { "name": "RagDoll", "role": "原作" },
+        { "name": "Ellie", "role": "雷达素材 GLOBAL RADAR 2020" },
+        { "name": "20Cat", "role": "HUD 与字体素材" }
+      ] }
+    ],
+    "catalog": {
+      "id": "ragdoll",
+      "title": "RagDoll 自制模组",
+      "author": "RagDoll",
+      "summary": "自主制作的独立功能，按需加载。"
+    },
+    "collections": [{
+      "id": "ragdoll.hud",
+      "title": "战役 HUD",
+      "author": "RagDoll",
+      "summary": "为本地战役提供物资、距离和方向信息。"
+    }]
+  }
+}

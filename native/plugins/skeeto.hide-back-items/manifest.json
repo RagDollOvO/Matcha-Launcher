@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "id": "skeeto.hide-back-items",
+  "name": "隐藏背部挂件",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "architecture": "x86",
+  "phase": "render-init",
+  "entry": "plugin.dll",
+  "developer": {
+    "author": "Flare · Skeeto 源码接入",
+    "purpose": "按分类隐藏角色背部挂件，保留手持物和游戏库存",
+    "license": "GPL-3.0",
+    "source": {
+      "visibility": "private",
+      "url": null,
+      "commit": null
+    },
+    "modes": [
+      "untested"
+    ],
+    "gameBuilds": [
+      "untested"
+    ],
+    "capabilities": {
+      "filesystem": [
+        "保存本模组 config.json"
+      ],
+      "network": [],
+      "externalPrograms": [],
+      "hooks": [
+        "通过 Source Addon SDK 过滤原生 UpdateAddonModels 的挂件位"
+      ],
+      "memoryModification": [
+        "原生挂件更新调用期间暂存显示位；正常返回或原生异常展开时恢复原接收值"
+      ]
+    },
+    "prohibited": {
+      "credentialTheft": false,
+      "hiddenDownloadExecution": false,
+      "crossProcessInjection": false,
+      "antiCheatBypass": false,
+      "unfairAdvantage": false
+    }
+  },
+  "dependencies": [
+    {
+      "id": "beacon.source",
+      "version": "0.4.0"
+    }
+  ],
+  "config": [
+    {
+      "id": "active",
+      "label": "功能总开关",
+      "type": "boolean",
+      "default": true,
+      "apply": "immediate"
+    },
+    {
+      "id": "medicine",
+      "label": "隐藏药丸 / 肾上腺素针",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "medical",
+      "label": "隐藏医疗包 / 电击器",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "throwables",
+      "label": "隐藏投掷物",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    },
+    {
+      "id": "tongue",
+      "label": "隐藏 Smoker 舌头挂件",
+      "type": "boolean",
+      "default": false,
+      "apply": "immediate"
+    }
+  ],
+  "actions": [
+    {
+      "id": "status",
+      "label": "读取挂件状态",
+      "effect": "read",
+      "requiresConfirmation": false,
+      "parameters": {},
+      "description": "查看原生挂件入口和隐藏状态。"
+    },
+    {
+      "id": "configure",
+      "label": "保存挂件设置",
+      "effect": "write",
+      "requiresConfirmation": true,
+      "parameters": {
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "medicine": {
+          "type": "boolean",
+          "default": false
+        },
+        "medical": {
+          "type": "boolean",
+          "default": false
+        },
+        "throwables": {
+          "type": "boolean",
+          "default": false
+        },
+        "tongue": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "下一游戏帧应用，后续原生挂件更新按所选分类创建或恢复显示。"
+    }
+  ],
+  "presentation": {
+    "schema": 1,
+    "summary": "按分类隐藏角色背部挂件，保留手持物和游戏库存",
+    "description": "分别选择隐藏药丸与肾上腺素、医疗包与电击器、投掷物、Smoker 舌头挂件。默认四类均保留显示。幸存者按物品分类处理，感染者只应用舌头选项，未知物品和手持模型保留原样。\n\n使用原生挂件更新，让引擎创建或移除相应显示模型。暂时调整的显示位在调用结束后恢复，库存和物品使用保持原样。关闭后，下一次原生更新恢复显示；离开对局时退出过滤。\n\n来源 Skeeto 2.2.19 ClientUxBackItems。入口使用精确签名和字段偏移检查，实际游戏表现待实测。",
+    "tags": [
+      "外观",
+      "角色挂件",
+      "待游戏实测"
+    ],
+    "catalog": {
+      "id": "skeeto",
+      "title": "Skeeto",
+      "author": "Skeeto contributors · Flare 移植",
+      "summary": "按合集挑选功能，为自己的游戏搭配独立模组。",
+      "description": "Skeeto 源码移植大合集。按用途进入小合集，选择具有独立说明、设置和启停开关的功能。完整移植进度见合集页面。",
+      "cover": "catalog.png"
+    },
+    "collections": [
+      {
+        "id": "skeeto.visuals",
+        "title": "视觉与声音",
+        "author": "Skeeto contributors · Flare 移植",
+        "summary": "按喜好调整画面和声音"
+      }
+    ]
+  }
+}

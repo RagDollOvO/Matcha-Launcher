@@ -1,0 +1,5 @@
+{
+  "source": "images.steamusercontent.com",
+  "target": "steamuserimages-a.akamaihd.net",
+  "pathPrefix": "/ugc/"
+}
