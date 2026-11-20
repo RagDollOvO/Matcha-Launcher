@@ -85,6 +85,9 @@ export const api = {
   /** 按 id 替换记录；值为 null 表示删除该 id 的记录 */
   saveModMeta: (patch: Record<string, ModMeta | null>) => call('save-mod-meta', { patch }),
   editFavoriteCollection: (edit: FavoriteEdit) => call<{id: string; favoriteCollections: FavoriteCollection[]}>('edit-favorite-collection', edit),
+  packFavoriteFolder:(id:string)=>call<{taskId:string}>('pack-favorite-folder',{id},true),
+  previewRecycleFavorites:(ids:string[])=>call<{file:string;stamp:string;folder:boolean}[]>('preview-recycle-favorites',{ids}),
+  recycleFavoriteFiles:(ids:string[],plan:{file:string;stamp:string;folder:boolean}[])=>call('recycle-favorite-files',{ids,plan},true),
   bookmarkFiles: (paths: string[], collectionId?: string) => call<{count:number; skipped:string[]}>('bookmark-files', {paths, collectionId}),
   favoriteToProfiles: (favoriteIds:string[],profileIds:string[],gameRoot:string) => call<{added:number;lines:string[]}>('favorite-to-profiles',{favoriteIds,profileIds,gameRoot},true),
   /** 只读：删除确认框用。预览里的 trashId 不是最终值 */

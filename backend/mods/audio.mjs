@@ -28,16 +28,16 @@ async function decode(executable, input) {
 }
 export class ModAudio {
   constructor(manager, executable) { this.manager = manager; this.executable = executable; this.cache = new Map(); this.bytes = 0; }
-  async list(root, id) {
+  async list(root, id, source) {
     return this.manager.reading(root, async () => {
-      const vpk = await readVpk(await this.manager.resolve(root, id), { includeEntries: true });
+      const vpk = await readVpk(source ?? await this.manager.resolve(root, id), { includeEntries: true });
       return [...vpk.entries].filter(([p]) => /^sound\/.+\.(wav|mp3)$/.test(p)).map(([path, e]) => ({ path, bytes: e.size })).sort((a, b) => a.path.localeCompare(b.path));
     });
   }
-  async sound(root, id, resource) {
+  async sound(root, id, resource, source) {
     if (typeof resource !== 'string' || !/^sound\/.+\.(wav|mp3)$/i.test(resource)) fail('invalid_argument', '请选择包内 WAV / MP3 声音。');
     return this.manager.reading(root, async () => {
-      const file = await this.manager.resolve(root, id), vpk = await readVpk(file, { includeEntries: true });
+      const file = source ?? await this.manager.resolve(root, id), vpk = await readVpk(file, { includeEntries: true });
       const entry = vpk.entries.get(resource.toLowerCase());
       if (!entry) fail('sound_missing', '包内声音已不存在。');
       const key = `${file}|${vpk.files.map(f => f.identity).join('|')}|${resource.toLowerCase()}`;

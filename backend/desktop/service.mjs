@@ -16,6 +16,7 @@ import { ModManager } from '../mods/manager.mjs';
 import { displayNames } from '../mods/display-names.mjs';
 import { planFavoriteCollection, withoutMembers } from '../mods/favorite-collections.mjs';
 import { bookmarkFiles } from '../mods/favorite-files.mjs';
+import { recycleSources, previewRecycleSources } from '../mods/favorite-recycle.mjs';
 import { favoriteProfilePlan } from '../mods/favorite-profiles.mjs';
 import { ModTrash } from '../mods/trash.mjs';
 import { TaskManager } from '../mods/tasks.mjs';
@@ -28,7 +29,7 @@ import { listBrowserArchive, browserImportFiles, creatorFields, releaseExtracted
 import { regular, identity } from '../mods/vpk.mjs';
 import { libraryId, workshopId } from '../mods/library.mjs';
 import { extractMod } from '../mods/extract.mjs';
-import { folderSource, packModFolder } from '../mods/pack.mjs';
+import { folderSource, packModFolder, packSource } from '../mods/pack.mjs';
 import { ServerManager } from '../servers/manager.mjs';
 import { savedGameSummary } from '../saved-game-settings.mjs';
 import { localL4n } from '../local-render.mjs';
@@ -695,7 +696,7 @@ export class DesktopService extends EventEmitter {
   }
   async dispatch(command,params={},confirmation){
     await this.ready;
-    const writing=/^(browser-import|browser-archive|gamemaps-download|workshop-download|task-(?:retry|resume)|select-game|pack-mod-folder|extract-mod|start-extract|import-mod|library-|plugin-|cache-clear|pi-command|set-mod|apply-profile)/.test(command);
+    const writing=/^(browser-import|browser-archive|gamemaps-download|workshop-download|task-(?:retry|resume)|recycle-favorite-files|pack-favorite-folder|select-game|pack-mod-folder|extract-mod|start-extract|import-mod|library-|plugin-|cache-clear|pi-command|set-mod|apply-profile)/.test(command);
     if(this.storage.error&&(command.startsWith('storage-')||writing&&command!=='select-game'))throw this.storage.error;
     if(command==='storage-move' && this.storage.busy())fail('storage_busy','传输或导入正在进行。');
     if(writing && this.storage.cfg?.move)fail('storage_busy','请先完成下载与缓存搬家。');
@@ -760,8 +761,11 @@ export class DesktopService extends EventEmitter {
       });
       return { status: 'opened' };
     }
-    if (command === 'mod-sounds') return this.audio.list(await this.requireRoot(), params.id);
-    if (command === 'mod-sound') return this.audio.sound(await this.requireRoot(), params.id, params.path);
+    if (command === 'mod-sounds' || command === 'mod-sound') {
+      const ref=this.settings.favoriteRefs?.[params.id], source=ref?.referenceKind==='vpk' ? ref.absolutePath : undefined;
+      const root=source ? this.settings.gameRoot || path.dirname(source) : await this.requireRoot();
+      return command==='mod-sounds' ? this.audio.list(root,params.id,source) : this.audio.sound(root,params.id,params.path,source);
+    }
     if (command === 'mod-thumbnail') {
       const ref = this.settings.favoriteRefs?.[params.id];
       if (ref?.referenceKind === 'vpk') return this.modManager.localThumbnail(ref.absolutePath);
@@ -838,6 +842,7 @@ export class DesktopService extends EventEmitter {
     });
     if (kind === 'extract') return extractMod(this.modManager, request, ctx);
     if (kind === 'pack') {
+      if(request.exportDir) return packModFolder(request,ctx);
       const checkRoot = async () => {
         if (!samePath(request.gameRoot, await this.requireRoot())) fail('game_changed', '游戏目录已切换，请在目标目录重新拖入。');
       };
@@ -1052,12 +1057,14 @@ export class DesktopService extends EventEmitter {
       case 'test-status': return this.quickTest.status(await this.requireRoot());
       case 'start-test': return this.quickTest.start(await this.requireRoot(), p.preset, confirmation);
       case 'extract-mod': {
-        this.confirm(confirmation); const gameRoot = await this.requireRoot();
-        const vpk = await this.modManager.cached(await this.modManager.resolve(gameRoot, p.id));
+        this.confirm(confirmation);
+        const ref=this.settings.favoriteRefs?.[p.id], source=ref?.referenceKind==='vpk'?ref.absolutePath:undefined;
+        const gameRoot=source ? this.settings.gameRoot || path.dirname(source) : await this.requireRoot();
+        const vpk = await this.modManager.cached(source ?? await this.modManager.resolve(gameRoot, p.id));
         const title = !vpk.hasTitle && p.id.startsWith('library:workshop:') ? (await this.modManager.library.read(gameRoot, p.id.slice('library:workshop:'.length))).title : vpk.title;
         const target = p.target ?? await this.getDesktop();
         if (typeof target !== 'string' || !path.isAbsolute(target)) fail('invalid_argument', '请选择绝对路径的输出父目录。');
-        return this.tasks.create('extract', { gameRoot, id: p.id, title, target, sourceVersion: vpk.files.map(f => f.identity) }, title);
+        return this.tasks.create('extract', { gameRoot, id: p.id, title, target, source, sourceVersion: vpk.files.map(f => f.identity) }, title);
       }
       case 'gamemaps-download': {
         this.confirm(confirmation); const id = gameMapsId(p.id), gameRoot = await this.requireRoot();
@@ -1140,6 +1147,21 @@ export class DesktopService extends EventEmitter {
         const plan=favoriteProfilePlan(this.settings,mods,this.profileViews(mods),root,p);
         if (plan.added) await this.save(plan.next);
         return {added:plan.added,lines:plan.lines};
+      }
+      case 'pack-favorite-folder': {
+        this.confirm(confirmation);
+        const ref=this.settings.favoriteRefs?.[p.id];
+        if(ref?.referenceKind!=='folder')fail('favorite_missing','请选择收藏的素材文件夹。');
+        const input=await packSource(ref.absolutePath), exportDir=await this.getDesktop();
+        return this.tasks.create('pack',{file:input.file,sourceStamp:input.sourceStamp,exportDir,gameRoot:this.settings.gameRoot||''},ref.title);
+      }
+      case 'preview-recycle-favorites':
+      case 'recycle-favorite-files': {
+        if(command==='recycle-favorite-files')this.confirm(confirmation);
+        const plan=await previewRecycleSources(this,p.ids,projectRoot);
+        if(command==='preview-recycle-favorites')return plan;
+        if(!isDeepStrictEqual(plan,p.plan))fail('file_changed','来源文件已变化，请重新核对删除清单。');
+        return recycleSources(plan,path.join(projectRoot,'native/build-x86/dist/tools/matcha_recycle.exe'));
       }
       case 'bookmark-files': {
         const root = await this.root();

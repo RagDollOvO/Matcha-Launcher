@@ -34,7 +34,7 @@ export async function bookmarkFiles(settings, mods, manager, { paths, collection
           await regular(file);
           if (!/\.vpk$/i.test(name) || /_\d{3}\.vpk$/i.test(name)) fail('invalid_argument', '请选择 VPK 主文件或素材文件夹。');
           const vpk = await manager.cached(file);
-          entry = { id, title:vpk.title, file:name, author:vpk.author, referenceKind:'vpk', absolutePath:file, dirs:vpk.dirs, sizeMB:vpk.sizeMB,
+          entry = { id, title:vpk.title, file:name, author:vpk.author, referenceKind:'vpk', absolutePath:file, dirs:vpk.dirs, sizeMB:vpk.sizeMB, soundCount:vpk.soundCount,
             updatedAt:vpk.updatedAt, hasThumbnail:!!vpk.thumbnail || !!await manager.sidecar(file) };
         }
         refs[id] = { ...refs[id], ...entry };

@@ -9,7 +9,7 @@
   import { errorText } from '../api/bridge';
   import type { Mod, ModSound } from '../types';
 
-  let { mod }: { mod: Mod } = $props();
+  let { mod }: { mod: Pick<Mod,'id'|'updatedAt'> } = $props();
 
   let list = $state<ModSound[] | null>(null);
   let error = $state('');

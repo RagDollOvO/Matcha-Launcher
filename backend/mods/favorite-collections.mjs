@@ -6,7 +6,7 @@ export function withoutMembers(collections = [], ids) {
 }
 
 /** One transaction for the Mod page and 茶茶. Collections reference favorites; they never own VPKs. */
-export function planFavoriteCollection(settings, { action, collectionId, name, modIds = [] }, mods) {
+export function planFavoriteCollection(settings, { action, collectionId, name, modIds = [], fromCollectionId }, mods) {
   const groups = settings.favoriteCollections ?? [];
   const creating = action === 'create', naming = creating || action === 'rename';
   if (!['create', 'rename', 'add', 'remove', 'delete'].includes(action)) fail('invalid_argument', '请选择收藏合集操作。');
@@ -28,11 +28,12 @@ export function planFavoriteCollection(settings, { action, collectionId, name, m
       if (!settings.favoriteRefs?.[id]) modMeta[id] = { ...modMeta[id], favorite: true };
     }
   }
+  if(fromCollectionId && (!['add','create'].includes(action) || fromCollectionId===group.id || !groups.some(c=>c.id===fromCollectionId && ids.every(id=>c.modIds.includes(id))))) fail('collection_changed','原合集成员已变化，请重新选择。');
   const updated = { ...group, name: title, modIds: [...members] };
   const favoriteCollections = creating ? [...groups, updated] : action === 'delete' ? groups.filter(c => c.id !== group.id) : groups.map(c => c.id === group.id ? updated : c);
   const label = ({create:'新建收藏合集', rename:'重命名收藏合集', add:'加入收藏合集', remove:'移出收藏合集', delete:'删除收藏合集'})[action] + '「' + (naming ? title : group.name) + '」';
   if (action === 'rename') lines.push(group.name + ' → ' + title);
   if (action === 'delete') lines.push('移除合集，保留其中 ' + members.size + ' 个 Mod 的收藏。');
   if (!lines.length) lines.push(creating ? '创建空合集。' : '所选成员已是目标状态。');
-  return { next: { ...settings, favoriteCollections, modMeta }, label, lines, collectionId: group.id };
+  return { next: { ...settings, favoriteCollections:fromCollectionId ? favoriteCollections.map(c=>c.id===fromCollectionId ? {...c,modIds:c.modIds.filter(id=>!ids.includes(id))}:c) : favoriteCollections, modMeta }, label, lines, collectionId: group.id };
 }

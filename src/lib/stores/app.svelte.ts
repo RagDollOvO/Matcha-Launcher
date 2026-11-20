@@ -776,7 +776,7 @@ class AppState {
     if (!prev || prev.state === t.state || ended(prev)) return;
     if (t.kind === 'platform-download' && t.sourceId?.startsWith('native:')) void this.onLibraryDownload(t);
     if (t.kind === 'pack' && t.state === 'done') {
-      this.notify({ kind: t.warning ? 'error' : 'ok', title: '打包完成', text: t.warning || (t.favoriteImport ? `${t.title} 已导入 Mod 库，可选择目标方案` : `${t.title} 已导入并启用，下次启动生效`) });
+      this.notify({ kind: t.warning ? 'error' : 'ok', title: '打包完成', text: t.output ? '已打包到桌面：'+t.output : t.warning || (t.favoriteImport ? `${t.title} 已导入 Mod 库，可选择目标方案` : `${t.title} 已导入并启用，下次启动生效`) });
     }
     if (t.state === 'done' && t.kind === 'extract') {
       const dir = t.dir;

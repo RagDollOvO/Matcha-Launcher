@@ -66,7 +66,7 @@ export function taskLine(t: ModTask): string {
       const redo = !t.resumable && t.done > 0 ? (t.kind === 'extract' ? '继续会重新解包' : '继续会重新下载') : '';
       return ['已暂停', progressText(t), redo].filter(Boolean).join(' · ') + other;
     }
-    case 'done': return t.kind === 'pack' ? (t.warning || `已打包并导入 · ${t.fileCount} 个资源`) + other
+    case 'done': return t.kind === 'pack' ? (t.output ? `已打包到桌面 · ${t.fileCount} 个资源` : t.warning || `已打包并导入 · ${t.fileCount} 个资源`) + other
       : t.kind === 'download' ? ['已下载', ...doneStats(t)].join(' · ') + other : `已解包到「${t.dir ? baseName(t.dir) : '桌面'}」${t.fileCount ? ` · ${t.fileCount} 个文件` : ''}${other}`;
     case 'failed': return `失败：${t.error?.message ?? '未知错误'}`;
     case 'canceled': return '已取消';

@@ -1,4 +1,11 @@
 <script lang="ts">
+  import PanelRight from '@lucide/svelte/icons/panel-right';
+  import Play from '@lucide/svelte/icons/play';
+  import PackageOpen from '@lucide/svelte/icons/package-open';
+  import PackagePlus from '@lucide/svelte/icons/package-plus';
+  import FolderSearch from '@lucide/svelte/icons/folder-search';
+  import Copy from '@lucide/svelte/icons/copy';
+  import {api} from '../api';
   import Star from '@lucide/svelte/icons/star';
   import Folder from '@lucide/svelte/icons/folder';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
@@ -23,11 +30,11 @@
   import FavoriteApplyDialog from './FavoriteApplyDialog.svelte';
   import ListChecks from '@lucide/svelte/icons/list-checks';
 
-  let {folderId=$bindable(''), view=$bindable('grid'), selected=$bindable([]), pathOpen=$bindable(false), dropping, over, press, clickable, locate}:
+  let {folderId=$bindable(''), view=$bindable('grid'), selected=$bindable([]), pathOpen=$bindable(false), dropping, over, press, clickable, locate, openTest}:
     {folderId:string;view:'grid'|'list';selected:string[];pathOpen:boolean;dropping:number|null;over?:string|null;
-      press:(e:PointerEvent,id:string)=>void;clickable:()=>boolean;locate:(id:string)=>void}=$props();
+      press:(e:PointerEvent,id:string)=>void;clickable:()=>boolean;locate:(id:string)=>void;openTest:(ids:string[])=>void}=$props();
   let q=$state(''), sort=$state('name'), path=$state(''), detailId=$state(''), anchor='';
-  let sheet=$state<{mode:'create'|'rename'|'add';group?:FavoriteCollection;seed?:string[]}|null>(null);
+  let sheet=$state<{mode:'create'|'rename'|'add';group?:FavoriteCollection;seed?:string[];fromCollectionId?:string}|null>(null);
   let menu=$state<MenuState>(null);
   let applyIds=$state<string[]|null>(null);
   const group=$derived(app.favoriteCollections.find(c=>c.id===folderId));
@@ -38,7 +45,8 @@
     .sort((a,b)=>sort==='size'?b.sizeMB-a.sizeMB:sort==='updated'?b.updatedAt.localeCompare(a.updatedAt):a.title.localeCompare(b.title,'zh')));
   const shelves=$derived(app.favoriteCollections.filter(c=>!query||c.name.toLowerCase().includes(query)).map(c=>({c,members:entries.filter(m=>c.modIds.includes(m.id))})));
   const detail=$derived(scope.find(m=>m.id===detailId));
-  const live=$derived(detail && app.mod(detail.id));
+  const live=$derived(detail && app.favoriteMod(detail.id));
+  const sound=$derived(detail && ('referenceKind' in detail ? (detail.referenceKind==='vpk' && (detail.soundCount || detail.dirs.some(d=>d==='sound'||d.startsWith('sound/'))) ? detail : live?.soundCount ? live : undefined) : detail.soundCount ? detail : undefined));
   const dropGroup=$derived(over==='fav' ? undefined : over?.startsWith('g:') ? app.favoriteCollections.find(c=>c.id===over.slice(2)) : group);
   const labels=(id:string)=>app.favoriteCollections.filter(c=>c.modIds.includes(id)).map(c=>c.name);
   const subtitle=(m:FavoriteEntry)=>'referenceKind' in m && m.referenceKind==='folder'?'素材文件夹':m.sizeMB.toFixed(1)+' MiB';
@@ -64,13 +72,62 @@
   }
   function unstar(ids:string[]){app.setFavorite(ids,false);selected=selected.filter(id=>!ids.includes(id));if(ids.includes(detailId))detailId='';}
   function remove(ids:string[]){if(group)void setFavoriteMembers(group,ids,false);else unstar(ids);}
+  async function testEntries(ids:string[]){
+    const missing=ids.filter(id=>!app.favoriteMod(id));
+    if(missing.length){
+      if(!await app.confirm('先导入 Mod 库，再实测',missing.map(id=>app.favoriteRefs[id]?.absolutePath??id).join('\n')+'\nVPK 会复制到库，素材文件夹会先打包。现有方案保持原样。','导入并打开实测'))return;
+      if(!await app.importFavoriteSources(missing))return;
+    }
+    const mods=ids.map(id=>app.favoriteMod(id));
+    if(mods.some(m=>!m||m.error||m.kind==='platform-package')){app.toast('所选项目需要可读取的游戏 Mod。');return;}
+    openTest([...new Set(mods.map(m=>m!.id))]);
+  }
+  async function exportEntries(ids:string[],pack:boolean){
+    try{for(const id of ids){if(pack)await api.packFavoriteFolder(id);else await api.extractMod(id);}}
+    catch(e){app.toast(errorText(e));}
+  }
+  async function deleteEntries(ids:string[]){
+    const external=ids.filter(id=>app.favoriteRefs[id] && id.startsWith('favorite-file:'));
+    const local=ids.filter(id=>app.mod(id));
+    if(external.length){
+      try{
+        const plan=await api.previewRecycleFavorites(external);
+        if(!await app.confirm('将外部原件移到 Windows 回收站？','从 Windows 回收站还原后，原收藏仍可使用。','移到系统回收站',{
+          lists:[{title:'原件位置',rows:plan.map(x=>({k:x.folder?'整个文件夹':'文件',v:x.file}))}]
+        }))return;
+        await api.recycleFavoriteFiles(external,plan);
+        app.toast('已移到 Windows 回收站');
+      }catch(e){app.toast(errorText(e));return;}
+    }
+    if(local.length)await app.deleteMods(local);
+  }
+  function moveOptions(ids:string[]):MenuItem[]{
+    const from=group?.id;
+    return [...app.favoriteCollections.filter(c=>c.id!==from).map((c):MenuItem=>({
+      label:c.name,disabled:!from && ids.every(id=>c.modIds.includes(id))?'已在合集中':false,
+      run:async()=>{if(await app.editFavoriteCollection({action:'add',collectionId:c.id,modIds:ids,fromCollectionId:from}))app.toast('已移到「'+c.name+'」');}
+    })),...(from?[{label:'移出当前合集',run:()=>remove(ids)}]:[]),
+      {label:'新建合集…',icon:Plus,run:()=>sheet={mode:'create',seed:ids,fromCollectionId:from}}];
+  }
   function itemMenu(m:FavoriteEntry):MenuItem[]{
-    const ids=selected.includes(m.id)?[...selected]:[m.id];
-    return [{label:'查看详情',icon:FolderOpen,run:()=>detailId=m.id},
-      {label:'应用到方案…',icon:ListChecks,run:()=>applyIds=ids},
-      {label:'整理到合集',icon:Folder,items:favoriteMenu(ids,create)},
-      ...(group?[{label:'移出当前合集',run:()=>void setFavoriteMembers(group!,ids,false)}]:[]),
-      {label:'取消收藏',icon:Star,run:()=>unstar(ids)}];
+    const ids=selected.includes(m.id)?[...selected]:[m.id], one=ids.length===1;
+    const folders=ids.filter(id=>app.favoriteRefs[id]?.referenceKind==='folder');
+    const vpks=ids.filter(id=>!folders.includes(id));
+    const gone=ids.some(id=>app.favoriteRefs[id]&&!id.startsWith('favorite-file:')&&!app.mod(id));
+    const busy=app.busy?'请等待当前操作完成':false;
+    const testBlock=busy||(!app.game.installed?'请先选择游戏目录':gone?'请先从 Matcha 回收站还原':ids.some(id=>app.favoriteMod(id)?.error||app.favoriteMod(id)?.kind==='platform-package')?'请选择可用于实测的 Mod':false);
+    return [...(one?[{label:'查看详情',icon:PanelRight,hint:'Enter',run:()=>detailId=m.id}]:[]),
+      {label:'快速实测',icon:Play,disabled:testBlock,run:()=>testEntries(ids)},
+      {label:'取消收藏',icon:Star,hint:'F',run:()=>unstar(ids)},
+      {kind:'sep'},
+      {label:'加入方案…',icon:ListChecks,run:()=>applyIds=ids},
+      {label:'移到合集',icon:Folder,items:moveOptions(ids)},
+      {kind:'sep'},
+      ...(vpks.length?[{label:'解包到桌面',icon:PackageOpen,disabled:busy||(gone?'请先还原':vpks.some(id=>app.mod(id)?.error)?'请先检查 VPK 文件':false),run:()=>exportEntries(vpks,false)} satisfies MenuItem]:[]),
+      ...(folders.length?[{label:'打包 VPK 到桌面',icon:PackagePlus,disabled:busy,run:()=>exportEntries(folders,true)} satisfies MenuItem]:[]),
+      ...(one&&m.absolutePath?[{label:'在资源管理器中显示',icon:FolderSearch,run:()=>app.reveal(m.absolutePath!)}]:[]),
+      {label:'复制完整路径',icon:Copy,run:async()=>{try{await navigator.clipboard.writeText(ids.map(id=>entries.find(v=>v.id===id)?.absolutePath).filter(Boolean).join('\n'));app.toast('已复制完整路径');}catch{app.toast('复制失败');}}},
+      {kind:'sep'},{label:'删除…',icon:Trash,danger:true,hint:'Del',disabled:busy|| (gone?'已在 Matcha 回收站':app.game.running&&ids.some(id=>app.mod(id))?'游戏运行中':false),run:()=>deleteEntries(ids)}];
   }
   function groupMenu(c:FavoriteCollection):MenuItem[]{return [
     {label:'应用到方案…',icon:ListChecks,disabled:c.modIds.length?false:'合集为空',run:()=>applyIds=[...c.modIds]},
@@ -85,7 +142,7 @@
     if(e.key==='Escape'){if(detailId)detailId='';else selected=[];return;}
     if(e.key==='Backspace'&&group){e.preventDefault();open();return;}
     const ids=selected.length?[...selected]:detail?[detail.id]:[];
-    if(ids.length && e.key==='Delete'){e.preventDefault();remove(ids);}
+    if(ids.length && e.key==='Delete'){e.preventDefault();void deleteEntries(ids);}
     if(ids.length && e.key.toLowerCase()==='f'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();unstar(ids);}
   }
 </script>
@@ -107,7 +164,7 @@
       {#if selected.length}
         <strong>已选 {selected.length} 项</strong>
         <button class="btn" onclick={()=>applyIds=[...selected]}><ListChecks size={14}/>应用到方案</button>
-        <button class="btn" onclick={e=>options(e,favoriteMenu([...selected],create),true)}><Folder size={14}/>整理到合集</button>
+        <button class="btn" onclick={e=>options(e,moveOptions([...selected]),true)}><Folder size={14}/>移到合集</button>
         {#if group}<button class="btn ghost" onclick={()=>remove([...selected])}>移出当前合集</button>{/if}
         <button class="btn ghost" onclick={()=>unstar([...selected])}>取消收藏</button><i></i>
         <button class="icon-btn" aria-label="取消选择" onclick={()=>selected=[]}><X size={15}/></button>
@@ -155,7 +212,7 @@
     <button class="btn" onclick={()=>applyIds=[detail!.id]}><ListChecks size={15}/>应用到方案…</button>
     <span class="field-name">所在合集</span><button class="assign" onclick={e=>options(e,favoriteMenu([detail!.id],create),true)}><Folder size={14}/>{labels(detail.id).join('、')||'加入合集'}<ChevronRight size={13}/></button>
     {#if detail.absolutePath}<span class="field-name">原位置</span><span class="path">{detail.absolutePath}</span><button class="btn ghost" onclick={()=>app.reveal(detail!.absolutePath!)}>在资源管理器中显示</button>{/if}
-    {#if live?.soundCount}<SoundList mod={live}/>{/if}
+    {#if sound}<SoundList mod={sound}/>{/if}
     {#if live}<button class="btn ghost" onclick={()=>locate(live!.id)}>在 Mod 库查看<ChevronRight size={13}/></button>{/if}
   </aside>{/if}
   {#if dropping!==null}<div class="dropzone" role="status"><div><Star size={18}/><b>{dropGroup?'松开以加入「'+dropGroup.name+'」':'松开以收藏'}</b><span>只记录原位置</span></div></div>{/if}

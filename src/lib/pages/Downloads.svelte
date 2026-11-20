@@ -254,6 +254,8 @@
       {#if t.state === 'done' && t.kind === 'extract' && t.dir}
         {@const dir = t.dir}
         <button class="btn sm ghost" onclick={() => app.reveal(dir)}><FolderOpen size={13} />打开文件夹</button>
+      {:else if t.state === 'done' && t.kind === 'pack' && t.output}
+        <button class="btn sm ghost" onclick={()=>app.reveal(t.output!)}><FolderOpen size={13}/>查看 VPK</button>
       {:else if gone && t.workshopId}
         {@const wid = t.workshopId}
         <button class="btn sm tonal" disabled={!app.game?.installed} title="Mod 已经删掉了，从创意工坊重新下载" onclick={() => void app.downloadWorkshop([wid])}><RotateCcw size={13} />重新下载</button>

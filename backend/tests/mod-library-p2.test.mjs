@@ -409,3 +409,35 @@ test('P2 download failure paths: cancel removes owned staging, retry succeeds, c
     assert.equal((await fs.readdir(base)).some(n => n.startsWith('.flare-download-')), false);
   } finally { await f.service.close(); }
 });
+
+test('favorite file tools export and preview original files independently of profiles', async () => {
+  const f=await setup(), call=(cmd,p)=>f.service.dispatch(cmd,p,approval);
+  try {
+    const folder=path.join(f.base,'source'), file=path.join(f.base,'外部声音.vpk'), sample=Buffer.from('ID3test');
+    await fs.mkdir(path.join(folder,'sound'),{recursive:true});
+    await fs.writeFile(path.join(folder,'sound/test.mp3'),sample);
+    await vpkFixture(file,{'sound/test.mp3':sample});
+    await call('bookmark-files',{paths:[file,folder]});
+    const refs=Object.values(f.service.settings.favoriteRefs), [vpk,material]=refs;
+    const original=structuredClone(f.service.settings.profiles);
+    assert.deepEqual((await call('mod-sounds',{id:vpk.id})).map(r=>r.path),['sound/test.mp3']);
+    assert.equal((await call('mod-sound',{id:vpk.id,path:'sound/test.mp3'})).base64,sample.toString('base64'));
+    let task=await finished(f.service,(await call('extract-mod',{id:vpk.id})).taskId);
+    assert.deepEqual(await fs.readFile(path.join(task.dir,'sound/test.mp3')),sample);
+    for(const name of ['source.vpk','source (2).vpk']){
+      task=await finished(f.service,(await call('pack-favorite-folder',{id:material.id})).taskId);
+      assert.equal(task.output,path.join(f.desktop,name),JSON.stringify(task.error));
+      assert.equal((await f.service.modManager.cached(task.output)).soundCount,1);
+    }
+    const first=await call('edit-favorite-collection',{action:'create',name:'A',modIds:[vpk.id,material.id]});
+    await call('edit-favorite-collection',{action:'create',name:'B',modIds:[vpk.id],fromCollectionId:first.id});
+    assert.deepEqual(f.service.settings.favoriteCollections.map(c=>c.modIds),[[material.id],[vpk.id]]);
+    const plan=await call('preview-recycle-favorites',{ids:[vpk.id]});
+    assert.equal(plan[0].file,file);
+    await assert.rejects(f.service.dispatch('recycle-favorite-files',{ids:[vpk.id],plan}),{code:'confirmation_required'});
+    await fs.appendFile(file,'changed');
+    await assert.rejects(call('recycle-favorite-files',{ids:[vpk.id],plan}),{code:'file_changed'});
+    assert.deepEqual(f.service.settings.profiles,original);
+    await assert.rejects(fs.stat(path.join(f.addons,'source.vpk')),{code:'ENOENT'});
+  } finally { await f.service.close(); }
+});

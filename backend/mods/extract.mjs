@@ -8,7 +8,7 @@ export async function extractMod(manager, request, ctx) {
   if (typeof target !== 'string' || !path.isAbsolute(target)) fail('desktop_required', '请指定已存在的输出父目录。');
   await directory(target);
   return manager.reading(gameRoot, async () => {
-    const source = await manager.resolve(gameRoot, id), vpk = await readVpk(source, { includeEntries: true });
+    const source = request.source ?? await manager.resolve(gameRoot, id), vpk = await readVpk(source, { includeEntries: true });
     if (request.sourceVersion && JSON.stringify(vpk.files.map(f => f.identity)) !== JSON.stringify(request.sourceVersion)) fail('file_changed', '源 Mod 在任务创建后已变化，请重新创建解包任务。');
     const entries = [...vpk.entries.values()], total = entries.reduce((n, e) => n + e.size, 0);
     if (total > 32 * 1024 ** 3) fail('resource_too_large', '解包总量超过 32 GiB。');

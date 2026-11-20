@@ -40,7 +40,7 @@ class Player {
   }
 
   /** 声音列表按 Mod 版本缓存 */
-  sounds(m: Mod): Promise<ModSound[]> {
+  sounds(m: Pick<Mod,'id'|'updatedAt'>): Promise<ModSound[]> {
     const k = `${m.id}@${m.updatedAt}`;
     let p = this.lists.get(k);
     if (!p) {
@@ -82,7 +82,7 @@ class Player {
     }
   }
   /** 试听「最像开火声」的那个文件；再点一次停止 */
-  async preview(m: Mod) {
+  async preview(m: Pick<Mod,'id'|'updatedAt'>) {
     if (this.modId === m.id) return this.stop();
     try {
       const best = bestShot(await this.sounds(m));

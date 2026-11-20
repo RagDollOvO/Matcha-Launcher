@@ -14,6 +14,6 @@ if (!await fs.access(path.join(build, 'CMakeCache.txt')).then(() => true, () => 
 }
 // Keep audio:build narrow; desktop packaging also builds its bundled DLLs.
 const targets = process.argv.includes('--desktop')
-  ? ['flare_audio', 'matcha_l4n_bridge', 'l4p_runtime', 'beacon_verify', 'flare_game_ui', 'ragdoll_supply_radar']
+  ? ['flare_audio', 'matcha_recycle', 'matcha_l4n_bridge', 'l4p_runtime', 'beacon_verify', 'flare_game_ui', 'ragdoll_supply_radar']
   : ['flare_audio'];
 run(['--build', build, '--target', ...targets, '-j', '2']);

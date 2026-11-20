@@ -146,19 +146,20 @@ export interface ModMeta {
   inbox?: boolean;
 }
 export interface FavoriteCollection { id: string; name: string; modIds: string[] }
-export interface FavoriteReference extends Pick<Mod,'id'|'title'|'file'|'author'|'dirs'|'sizeMB'|'updatedAt'|'hasThumbnail'> {
+export interface FavoriteReference extends Pick<Mod,'id'|'title'|'file'|'author'|'dirs'|'sizeMB'|'updatedAt'|'hasThumbnail'|'soundCount'> {
   absolutePath: string;
   referenceKind: 'vpk' | 'folder';
   library?: {gameRoot:string;modId:string};
 }
 export type FavoriteEntry = Mod | FavoriteReference;
 export type FavoriteEdit =
-  | { action: 'create'; name: string; modIds?: string[] }
+  | { action: 'create'; name: string; modIds?: string[]; fromCollectionId?:string }
   | { action: 'rename'; collectionId: string; name: string }
-  | { action: 'add' | 'remove'; collectionId: string; modIds: string[] }
+  | { action: 'add' | 'remove'; collectionId: string; modIds: string[]; fromCollectionId?:string }
   | { action: 'delete'; collectionId: string };
 
 export interface ModTask {
+  output?: string;
   favoriteImport?: boolean;
   taskId: string;
   workshopId?: string;

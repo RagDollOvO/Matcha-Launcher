@@ -11,19 +11,23 @@ const maxPackage = 0x7fffffff; // single, embedded Source 1 VPK
 const changed = () => fail('file_changed', '打包素材已变化，请重新拖入文件夹。');
 const within = (parent, child) => { const rel = path.relative(parent, child); return !path.isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + path.sep); };
 
-export async function folderSource(file, gameRoot, replaceExisting = false) {
+export async function packSource(file) {
   if (typeof file !== 'string' || !path.isAbsolute(file)) fail('invalid_argument', '请选择素材文件夹的完整路径。');
   const source = await fs.realpath(await directory(path.resolve(file)));
-  const content = await fs.realpath(await directory(path.join(gameRoot, 'left4dead2')));
   const base = path.basename(source);
-  if (!base || within(source, path.join(content, 'addons'))) fail('invalid_argument', '请选择单个 Mod 的素材文件夹。');
+  if (!base) fail('invalid_argument', '请选择单个 Mod 的素材文件夹。');
   const name = base + '.vpk';
   safeResourcePath(name);
   if (name.length > 255) fail('invalid_argument', '文件夹名称太长，请缩短后再打包。');
+  return {kind:'folder',file:source,name,prefix:resourceRoots.has(base.toLowerCase())?base.toLowerCase():'',sourceStamp:identity(await fs.lstat(source))};
+}
+export async function folderSource(file, gameRoot, replaceExisting = false) {
+  const input=await packSource(file), {name}=input;
+  const content=await fs.realpath(await directory(path.join(gameRoot,'left4dead2')));
+  if(within(input.file,path.join(content,'addons'))) fail('invalid_argument','请选择单个 Mod 的素材文件夹。');
   const targetExists = await exists(path.join(content, 'addons', name));
   if (!replaceExisting && targetExists) fail('file_exists', `已有同名文件：${name}。请重新查看替换提示，或给素材文件夹换名。`);
-  return { kind: 'folder', file: source, name, targetExists, prefix: resourceRoots.has(base.toLowerCase()) ? base.toLowerCase() : '',
-    sourceStamp: identity(await fs.lstat(source)) };
+  return {...input,targetExists};
 }
 
 async function inventory(input, signal) {
@@ -139,14 +143,25 @@ async function writePackage(target, input, { files, dirs, payload }, ctx) {
 }
 
 export async function packModFolder(request, ctx, publish) {
-  const input = await folderSource(request.file, request.gameRoot, request.replaceExisting === true);
+  const input = request.exportDir ? await packSource(request.file) : await folderSource(request.file, request.gameRoot, request.replaceExisting === true);
+  const parent = request.exportDir ? await fs.realpath(await directory(request.exportDir)) : path.join(request.gameRoot,'left4dead2');
+  if(request.exportDir && within(input.file,parent)) fail('invalid_argument','请选择桌面以外的素材目录，或桌面中的单个素材文件夹。');
   if (input.sourceStamp !== request.sourceStamp) changed();
   const items = await inventory(input, ctx.signal);
-  const stage = await taskDirectory(path.join(request.gameRoot, 'left4dead2'), ctx.taskId, 'pack');
+  const stage = await taskDirectory(parent, ctx.taskId, 'pack');
   try {
     const file = path.join(stage, input.name);
     await writePackage(file, input, items, ctx);
-    const result = await ctx.commit(() => publish(file));
+    const result = await ctx.commit(async () => {
+      if (!request.exportDir) return publish(file);
+      const stem=path.basename(input.name,'.vpk');
+      for(let n=1;n<=10000;n++){
+        const output=path.join(parent,stem+(n===1?'':' ('+n+')')+'.vpk');
+        try { await fs.link(file,output); return {output}; }
+        catch(e){if(e.code!=='EEXIST')throw e;}
+      }
+      fail('file_exists','同名 VPK 过多，请更换素材文件夹名称。');
+    });
     return { ...result, fileCount: items.files.length, done: items.payload, total: items.payload };
   } finally { await removeTaskDirectory(stage, ctx.taskId); }
 }

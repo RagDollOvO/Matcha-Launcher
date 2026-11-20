@@ -792,7 +792,7 @@
 
   {#if inFav}
     <FavoriteLibrary bind:folderId={collectionId} bind:view bind:selected bind:pathOpen={importOpen}
-      {dropping} over={fileOver ?? drag?.over} press={onPress} clickable={() => !suppressClick} locate={show} />
+      {dropping} over={fileOver ?? drag?.over} press={onPress} clickable={() => !suppressClick} locate={show} {openTest} />
   {:else}
   <div class="main" class:at-root={!lib && cur === ROOT}>
     <header class="head">

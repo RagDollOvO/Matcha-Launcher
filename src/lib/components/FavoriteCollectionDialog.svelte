@@ -7,14 +7,14 @@
   import { app } from '../stores/app.svelte';
   import type { FavoriteCollection } from '../types';
 
-  let { mode, group, seed = [], onclose, onsaved }: { mode: 'create' | 'add' | 'rename'; group?: FavoriteCollection; seed?: string[]; onclose: () => void; onsaved: (id: string) => void } = $props();
+  let { mode, group, seed = [], fromCollectionId, onclose, onsaved }: { mode: 'create' | 'add' | 'rename'; group?: FavoriteCollection; seed?: string[]; fromCollectionId?:string; onclose: () => void; onsaved: (id: string) => void } = $props();
   let dialog: HTMLDialogElement;
   let name = $state(untrack(() => mode === 'rename' ? group?.name ?? '' : ''));
   let chosen = $state<string[]>(untrack(() => [...seed]));
   let query = $state('');
   let error = $state('');
   const naming = $derived(mode !== 'add');
-  const list = $derived([...app.favoriteEntries, ...app.mods.filter(m => seed.includes(m.id) && !app.isFavorite(m.id))].filter(m => mode !== 'add' || !group?.modIds.includes(m.id)));
+  const list = $derived([...app.favoriteEntries, ...app.mods.filter(m => seed.includes(m.id) && !app.isFavorite(m.id))].filter(m => (!fromCollectionId || app.favoriteCollections.find(c=>c.id===fromCollectionId)?.modIds.includes(m.id)) && (mode !== 'add' || !group?.modIds.includes(m.id))));
   const visible = $derived(list.filter(m => (m.title + ' ' + m.file).toLowerCase().includes(query.trim().toLowerCase())));
   const selected = $derived(chosen.filter(id => list.some(m => m.id === id)));
   const all = $derived(visible.length > 0 && visible.every(m => chosen.includes(m.id)));
@@ -25,7 +25,7 @@
   async function save() {
     if (app.busy || duplicate || (naming ? !name.trim() : !selected.length)) return;
     error = '';
-    const result = await app.editFavoriteCollection(mode === 'create' ? {action: 'create', name: name.trim(), modIds: selected}
+    const result = await app.editFavoriteCollection(mode === 'create' ? {action: 'create', name: name.trim(), modIds: selected, fromCollectionId}
       : mode === 'rename' ? {action: 'rename', collectionId: group!.id, name: name.trim()}
       : {action: 'add', collectionId: group!.id, modIds: selected});
     if (result) onsaved(result.id); else error = app.error || '保存未完成，请重试。';
