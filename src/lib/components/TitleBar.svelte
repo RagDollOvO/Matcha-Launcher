@@ -42,7 +42,6 @@
     { id: 'servers', label: '服务器', icon: Server },
   ];
 
-  const conflictCount = $derived(app.ready ? app.activeConflicts(app.activeProfile).length : 0);
   // 「发现」记住上次停在创意工坊还是网页
   let lastDiscover: Route = 'workshop';
   $effect(() => { if (app.route === 'workshop' || app.route === 'bilibili' || app.route === 'gamemaps' || app.route === 'browser') lastDiscover = app.route; });
@@ -98,7 +97,6 @@
       {:else}
         <button class:on class="tab" data-sfx="tab" onclick={() => go(it)} title={it.title ?? it.label} aria-current={on ? 'page' : undefined}>
           <it.icon size={16} strokeWidth={1.8} />{it.label}
-          {#if it.id === 'mods' && conflictCount}<i class="badge" title="当前方案有 {conflictCount} 处冲突"></i>{/if}
           {#if it.id === 'plugins' && app.dllUpdates.length}<i class="dot" title="{app.dllUpdates.length} 项可以更新"></i>{/if}
         </button>
       {/if}
@@ -174,7 +172,6 @@
   .tab:hover { color: var(--fg); background: var(--hover); }
   .tab:active { transform: scale(0.96); }
   .tab.on { color: var(--md-on-secondary-container); background: var(--md-secondary-container); font-weight: 600; }
-  .badge { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
 
   /* 下载：进行中图标换成进度环，后面跟数量 */
   .ic { display: grid; place-items: center; width: 16px; height: 16px; }

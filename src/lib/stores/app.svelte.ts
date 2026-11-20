@@ -71,6 +71,8 @@ class AppState {
   /** 收藏等跨方案标记；后端未接入 modMeta 前存在本机 */
   modMeta = $state<Record<string, ModMeta>>({});
   favoriteCollections = $state<NonNullable<Snapshot['favoriteCollections']>>([]);
+  favoriteRefs = $state<NonNullable<Snapshot['favoriteRefs']>>({});
+  favoriteEntries = $derived([...this.mods.filter(m => !!this.modMeta[m.id]?.favorite), ...Object.values(this.favoriteRefs)]);
   private metaRemote = false;
   private metaLoaded = false;
   /** Matcha 回收站 */
@@ -163,6 +165,7 @@ class AppState {
     });
     this.acceptMeta(s.modMeta);
     this.favoriteCollections = s.favoriteCollections ?? [];
+    this.favoriteRefs = s.favoriteRefs ?? {};
     this.offerNativeOnce();
     this.trash = s.trash ?? [];
     this.acceptTasks(s.tasks);
@@ -401,16 +404,46 @@ class AppState {
   }
 
   // ---------- 收藏（modMeta） ----------
-  isFavorite(id: string) { return !!this.modMeta[id]?.favorite; }
-  favoriteIds(): string[] { return this.mods.filter((m) => this.isFavorite(m.id)).map((m) => m.id); }
+  isFavorite(id: string) { return !!this.modMeta[id]?.favorite || !!this.favoriteRefs[id]; }
+  favoriteIds(): string[] { return this.favoriteEntries.map(m => m.id); }
+  favoriteMod(id: string) {
+    const ref=this.favoriteRefs[id];
+    return ref ? (ref.library?.gameRoot.toLowerCase()===this.game.root.toLowerCase() ? this.mod(ref.library!.modId) : undefined) : this.mod(id);
+  }
+  importFavoriteSources(ids:string[]) {
+    const root=this.game.root;
+    return this.perform('导入收藏文件',async()=>{
+      for (const id of ids) {
+        const ref=this.favoriteRefs[id];
+        if (!ref || this.favoriteMod(id)) continue;
+        const input=await api.previewModInput(ref.absolutePath);
+        if (input.kind!=='vpk' && input.kind!=='folder') throw new Error('收藏的来源文件已变化：'+ref.title);
+        if (input.targetExists) throw new Error('Mod 库里已有「'+input.name+'」。请在库里确认现有版本，或给来源改名后重新收藏。');
+        if (input.kind==='folder') {
+          const task=await api.packModFolder(input,root,ROOT,id);
+          const done=await this.waitTask(task.taskId);
+          if (done.state!=='done') throw new Error(done.error?.message??'文件夹打包未完成');
+        } else await api.importMod(input,root,id);
+      }
+      return true;
+    }).then(async result=>{ if (!result) await this.refresh(); return result; });
+  }
+  applyFavorites(ids:string[],profiles:string[]) {
+    return this.perform('保存方案成员',()=>api.favoriteToProfiles(ids,profiles,this.game.root));
+  }
+  async bookmarkFiles(paths: string[], collectionId?: string) {
+    const result = await this.perform('保存到收藏夹', () => api.bookmarkFiles(paths, collectionId));
+    if (result) this.notify({kind:result.skipped.length ? 'info' : 'ok', text:'已收进' + (this.favoriteCollections.find(c => c.id === collectionId)?.name ?? '收藏夹') + ' · ' + result.count + ' 项' + (result.skipped.length ? '；' + result.skipped.join('；') : '')});
+    return result;
+  }
   editFavoriteCollection(edit: Parameters<typeof api.editFavoriteCollection>[0]) {
     return this.perform('保存收藏合集', () => api.editFavoriteCollection(edit));
   }
   setFavorite(ids: string[], favorite: boolean) {
-    // 收藏也算整理过：和后端一致，顺带离开「新下载」
-    this.patchMeta(ids, (m) => { if (favorite) { m.favorite = true; delete m.inbox; } else delete m.favorite; });
+    this.patchMeta(ids, (m) => { if (favorite) m.favorite = true; else delete m.favorite; });
     if (!favorite) {
       const removed = new Set(ids);
+      for (const id of removed) delete this.favoriteRefs[id];
       for (const c of this.favoriteCollections) c.modIds = c.modIds.filter(id => !removed.has(id));
     }
     // 单个点星标有即时视觉反馈，不再弹提示
@@ -461,7 +494,7 @@ class AppState {
     this.metaLoaded = true;
   }
   private persistMeta(patch: Record<string, ModMeta | null>) {
-    if (this.metaRemote) void api.saveModMeta(patch).catch(e => this.toast(errorText(e)));
+    if (this.metaRemote) void api.saveModMeta(patch).catch(e => { this.toast(errorText(e)); void this.refresh(); });
     else writeLocalMeta($state.snapshot(this.modMeta));
   }
   toggleMod(id: string) { this.setModsEnabled([id], !this.isEnabled(id)); }
@@ -564,7 +597,19 @@ class AppState {
   folderOf(m: Mod): string { return this.cat(m.categoryId) ? m.categoryId : ROOT; }
   parentOf(c: Category): string { return c.parentId && c.parentId !== c.id && this.cat(c.parentId) ? c.parentId : ROOT; }
   childCategories(parentId: string): Category[] {
-    return this.categories.filter((c) => !c.builtin && this.parentOf(c) === parentId).sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+    return this.categories.filter((c) => !c.builtin && this.parentOf(c) === parentId)
+      .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name, 'zh'));
+  }
+  async reorderCategory(id: string, targetId: string, after: boolean) {
+    const source = this.cat(id), target = this.cat(targetId);
+    if (!source || !target || source === target || this.parentOf(source) !== this.parentOf(target) || this.busy) return;
+    const siblings = this.childCategories(this.parentOf(source)).map(c => c.id);
+    const ids = siblings.filter(k => k !== id);
+    ids.splice(ids.indexOf(targetId) + Number(after), 0, id);
+    if (ids.every((k, i) => k === siblings[i])) return;
+    const ranks = new Map(ids.map((k, i) => [k, i]));
+    const categories = $state.snapshot(this.categories).map(c => ranks.has(c.id) ? {...c, order:ranks.get(c.id)!} : c);
+    await this.perform('保存分类顺序', () => api.saveCategories(categories, {}));
   }
   /** 从最外层到 id 的路径（不含最外层） */
   categoryPath(id: string): Category[] {
@@ -617,6 +662,7 @@ class AppState {
     if (this.subtree(id).has(parentId)) { this.toast('不能把分类移到它自己里面'); return false; }
     if (this.siblingTaken(c.name, parentId)) { this.toast(`目标位置已有「${c.name}」`); return false; }
     if (parentId === ROOT) delete c.parentId; else c.parentId = parentId;
+    delete c.order;
     this.persistCategories();
     this.toast(`「${c.name}」移到${parentId === ROOT ? '最外层' : `「${this.cat(parentId)?.name}」`}`);
     return true;
@@ -629,7 +675,7 @@ class AppState {
     const mods = this.mods.filter((m) => m.categoryId === id);
     const subs = this.categories.filter((k) => k.parentId === id);
     for (const m of mods) m.categoryId = parent === ROOT ? 'cat-none' : parent;
-    for (const k of subs) { if (parent === ROOT) delete k.parentId; else k.parentId = parent; }
+    for (const k of subs) { if (parent === ROOT) delete k.parentId; else k.parentId = parent; delete k.order; }
     this.categories = this.categories.filter((x) => x.id !== id);
     if (this.modFilter.category === id) this.modFilter.category = parent;
     this.persistCategories();
@@ -730,7 +776,7 @@ class AppState {
     if (!prev || prev.state === t.state || ended(prev)) return;
     if (t.kind === 'platform-download' && t.sourceId?.startsWith('native:')) void this.onLibraryDownload(t);
     if (t.kind === 'pack' && t.state === 'done') {
-      this.notify({ kind: t.warning ? 'error' : 'ok', title: '打包完成', text: t.warning || `${t.title} 已导入并启用，下次启动生效` });
+      this.notify({ kind: t.warning ? 'error' : 'ok', title: '打包完成', text: t.warning || (t.favoriteImport ? `${t.title} 已导入 Mod 库，可选择目标方案` : `${t.title} 已导入并启用，下次启动生效`) });
     }
     if (t.state === 'done' && t.kind === 'extract') {
       const dir = t.dir;

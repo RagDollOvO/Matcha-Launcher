@@ -1,5 +1,5 @@
 import { call } from './bridge';
-import type { FavoriteCollection, FavoriteEdit } from '../types';
+import type { FavoriteCollection, FavoriteEdit, FavoriteReference } from '../types';
 import type { LaunchConfiguration, LaunchMode, ModCreator, ModTask, ModSound, TrashEntry, WorkshopItem, WorkshopQuery, WorkshopPage, NativeLibrariesState, NativeLibraryPlan, NativeLibraryDownloadPlan, DllScreening, L4nPluginsState, L4nPluginPlan, PluginOverlayFields, IntakeResult, IntakeDetails, IntakeImportPlan } from '../types';
 import type { Category, CfgEntry, Conflict, DxvkRuntime, ExternalPlatform, GameInfo, Mod, ModMeta, PlatformChangePlan, PlatformLaunchPreview, PlatformOperation, PlatformPlan, PlatformPlugin, PlatformRelease, PlatformRuntime, Profile, Server, ServerLayout, SteamProfile } from '../types';
 
@@ -33,6 +33,7 @@ export interface Snapshot {
   /** 后端持久化标记；兼容旧服务时缺省并暂存在本机 */
   modMeta?: Record<string, ModMeta>;
   favoriteCollections?: FavoriteCollection[];
+  favoriteRefs?: Record<string, FavoriteReference>;
   tasks?: ModTask[];
   /** Matcha 回收站，按删除时间倒序 */
   trash?: TrashEntry[];
@@ -72,9 +73,9 @@ export const api = {
   saveCategories: (categories: Category[], assignments: Record<string, string>) => call('save-categories', { categories, assignments }),
   previewMod: (file: string) => call<VpkPreview>('preview-mod', { file }),
   previewModInput: (file: string) => call<LocalModInput | { kind: 'shard' } | { kind: 'unsupported' }>('preview-mod-input', { file, replaceExisting: true }),
-  importMod: (input: Extract<LocalModInput, { kind: 'vpk' }>, gameRoot: string) => call<{ id: string; enabled: boolean; replaced?: boolean }>('import-mod', { file: input.file, replaceExisting: input.targetExists, gameRoot }, true),
-  packModFolder: (input: Extract<LocalModInput, { kind: 'folder' }>, gameRoot: string, categoryId: string) =>
-    call<{ taskId: string }>('pack-mod-folder', { file: input.file, replaceExisting: input.targetExists, sourceStamp: input.sourceStamp, gameRoot, categoryId }, true),
+  importMod: (input: Extract<LocalModInput, { kind: 'vpk' }>, gameRoot: string, favoriteId?:string) => call<{ id: string; enabled: boolean; replaced?: boolean }>('import-mod', { file: input.file, replaceExisting: input.targetExists, gameRoot, favoriteId }, true),
+  packModFolder: (input: Extract<LocalModInput, { kind: 'folder' }>, gameRoot: string, categoryId: string, favoriteId?:string) =>
+    call<{ taskId: string }>('pack-mod-folder', { file: input.file, replaceExisting: input.targetExists, sourceStamp: input.sourceStamp, gameRoot, categoryId, favoriteId }, true),
   browserArchive: (id: string) => call<BrowserArchive>('browser-archive', { id }),
   /** creators：前端从来源链找到的作者页，后端存进 Mod 的 origin.creators（docs/creator-source-handoff.md） */
   browserImport: (id: string, selected?: string[], creators?: ModCreator[]) => call<{ imported: string[]; errors: string[] }>('browser-import', { id, selected, ...(creators?.length ? { creators } : {}) }, true),
@@ -84,6 +85,8 @@ export const api = {
   /** 按 id 替换记录；值为 null 表示删除该 id 的记录 */
   saveModMeta: (patch: Record<string, ModMeta | null>) => call('save-mod-meta', { patch }),
   editFavoriteCollection: (edit: FavoriteEdit) => call<{id: string; favoriteCollections: FavoriteCollection[]}>('edit-favorite-collection', edit),
+  bookmarkFiles: (paths: string[], collectionId?: string) => call<{count:number; skipped:string[]}>('bookmark-files', {paths, collectionId}),
+  favoriteToProfiles: (favoriteIds:string[],profileIds:string[],gameRoot:string) => call<{added:number;lines:string[]}>('favorite-to-profiles',{favoriteIds,profileIds,gameRoot},true),
   /** 只读：删除确认框用。预览里的 trashId 不是最终值 */
   previewDeleteMods: (ids: string[]) => call<{ mods: TrashEntry[]; sizeBytes: number }>('preview-delete-mods', { ids }),
   deleteMods: (ids: string[]) => call<{ trashed: { trashId: string; modId: string; files: string[] }[] }>('delete-mods', { ids }, true),

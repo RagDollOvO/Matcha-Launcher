@@ -23,7 +23,6 @@
     { id: 'servers', label: '服务器', icon: Server },
   ];
 
-  const conflictCount = $derived(app.ready ? app.activeConflicts(app.activeProfile).length : 0);
   // 「发现」记住上次停在创意工坊还是网页
   let lastDiscover: Route = 'workshop';
   $effect(() => { if (app.route === 'workshop' || app.route === 'bilibili' || app.route === 'gamemaps' || app.route === 'browser') lastDiscover = app.route; });
@@ -67,7 +66,6 @@
     {:else}
       <button class:on data-sfx="tab" onclick={() => go(it)} title={it.label} aria-label={it.label}>
         <it.icon size={18} strokeWidth={1.6} />
-        {#if it.id === 'mods' && conflictCount}<i class="badge"></i>{/if}
       </button>
     {/if}
   {/each}
@@ -111,7 +109,6 @@
   button:active { transform: scale(0.94); }
   /* 选中：M3 导航栏的色块胶囊 */
   button.on { color: var(--md-on-secondary-container); background: var(--md-secondary-container); }
-  .badge { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--md-surface-container); }
 
   /* 下载：进度环 + 数量；箭头在下载时轻轻往下落 */
   .dl.busy { color: var(--fg-2); }

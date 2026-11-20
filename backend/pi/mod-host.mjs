@@ -5,6 +5,7 @@ import { inspectMod, compareMods } from './mod-inspect.mjs';
 import { planMetadata } from './mod-metadata.mjs';
 import { commitMetadata, historyEntries, undoPreview, undoMetadata } from './mod-history.mjs';
 import { ACQUIRE_OPS, acquireMod } from './mod-acquire.mjs';
+import { bookmarkFiles } from '../mods/favorite-files.mjs';
 
 const fail = (code, message) => { throw new PlatformError(code, message); };
 const sameRoot = (a, b) => !!a && !!b && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
@@ -30,7 +31,7 @@ export function modHost(service, gameRoot) {
     return service.serial(async () => {
     await service.ready; aborted(signal);
     if (!sameRoot(gameRoot, await service.requireRoot())) fail('context_changed', '游戏目录已切换，请重新连接助手后扫描。');
-    const scan = () => service.modManager.scan(gameRoot);
+    const scan = (conflicts=true) => service.modManager.scan(gameRoot,{conflicts});
     const currentMods = async selected => {
       const inventory = await scan();
       const mods = ids(selected).map(id => inventory.mods.find(mod => mod.id === id) ?? fail('mod_missing', '选中的 Mod 已移除，请重新扫描。'));
@@ -69,12 +70,12 @@ export function modHost(service, gameRoot) {
         expected: snapshot(records.map(({ modId, title, files, categoryId, profileIds, meta }) => ({ modId, title, files, categoryId, profileIds, meta }))) };
     };
     if (operation === 'favorite-collections') {
-      const { mods } = await scan(), { favoriteCollections = [], modMeta } = service.settings;
+      const { mods } = await scan(false), { favoriteCollections = [], modMeta } = service.settings;
       const group = favoriteCollections.find(c => c.id === params.collectionId);
       if (params.collectionId && !group) fail('collection_missing', '请选择现有收藏合集。');
-      const favorites = mods.filter(m => modMeta[m.id]?.favorite);
+      const favorites = [...mods.filter(m => modMeta[m.id]?.favorite), ...Object.values(service.settings.favoriteRefs ?? {})];
       return { collections: favoriteCollections.map(c => ({ id: c.id, name: c.name, count: favorites.filter(m => c.modIds.includes(m.id)).length })),
-        favorites: favorites.filter(m => !group || group.modIds.includes(m.id)).map(({ id, title }) => ({ id, title, collectionIds: favoriteCollections.filter(c => c.modIds.includes(id)).map(c => c.id) })) };
+        favorites: favorites.filter(m => !group || group.modIds.includes(m.id)).map(({ id, title, referenceKind }) => ({ id, title, ...(referenceKind && { referenceKind }), collectionIds: favoriteCollections.filter(c => c.modIds.includes(id)).map(c => c.id) })) };
     }
     if (operation === 'inventory') {
       const inventory = await scan(), settings = service.settings, game = await service.core.inspectGame(gameRoot);
@@ -86,7 +87,8 @@ export function modHost(service, gameRoot) {
     if (operation === 'delete-preview') return deletion(params.modIds);
     if (operation === 'trash-list') return { entries: await service.modTrash.list(gameRoot) };
     const metadata = async () => {
-      const inventory = await scan();
+      const inventory = await scan(!['favorite-collection','bookmark-files','favorite-to-profiles','mark'].includes(params.kind));
+      if (params.kind === 'bookmark-files') return bookmarkFiles(service.settings, inventory.mods, service.modManager, params);
       return planMetadata(params.kind, params, service.settings, inventory, gameRoot, service.profileViews(inventory.mods));
     };
     if (operation === 'metadata-preview') {
@@ -108,6 +110,7 @@ export function modHost(service, gameRoot) {
       const modName = id => `${inventory.mods.find(m => m.id === id)?.title ?? id} [${id}]`;
       const categoryName = id => service.settings.categories.find(c => c.id === id)?.name ?? entry.changes.find(c => c.type === 'category' && c.id === id)?.before?.name ?? '最外层';
       const lines = entry.changes.map(change => {
+        if (change.type === 'favoriteRefs') return (change.before ? '恢复收藏记录：' : '移除收藏记录：') + (change.before ?? change.after).absolutePath;
         if (change.type === 'favorite-collection') {
           if (!change.before) return '移除收藏合集「' + change.after.name + '」';
           if (!change.after) return '恢复收藏合集「' + change.before.name + '」：' + (change.before.modIds.map(modName).join('、') || '空合集');
@@ -136,7 +139,7 @@ export function modHost(service, gameRoot) {
       aborted(signal);
       const saved = await commitMetadata(service, gameRoot, plan.label, plan.next);
       service.emit('event', { type: 'objects_changed' });
-      return { status: 'saved', label: plan.label, ...(plan.collectionId && { collectionId: plan.collectionId }), ...saved };
+      return { status: 'saved', label: plan.label, ...(plan.collectionId && { collectionId: plan.collectionId }), ...(plan.skipped && { skipped:plan.skipped }), ...saved };
     }
     if (operation === 'undo') {
       const { entry, known } = await undo(); aborted(signal);

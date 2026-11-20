@@ -51,7 +51,7 @@ export class TaskManager {
   }
   view(r) {
     const { request, ...view } = r;
-    return structuredClone({ ...view, pausable: canPause(r), resumable: false, ...(r.kind === 'download' ? request.source === 'gamemaps'
+    return structuredClone({ ...view, ...(r.kind==='pack' && request.favoriteId && {favoriteImport:true}), pausable: canPause(r), resumable: false, ...(r.kind === 'download' ? request.source === 'gamemaps'
       ? { source: 'gamemaps', sourceId: request.id } : { source: 'workshop', workshopId: request.id } : {}) });
   }
   list() { return [...this.records.values()].map(r => this.view(r)); }

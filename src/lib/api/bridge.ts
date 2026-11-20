@@ -52,10 +52,10 @@ export async function pickDirectory(title: string): Promise<string | null> {
   const { open } = await import('@tauri-apps/plugin-dialog');
   return await open({ title, directory: true, multiple: false }) as string | null;
 }
-export async function pickVpk(): Promise<string | null> {
+export async function pickVpk(title = '导入 VPK Mod（分卷包请选择 _dir.vpk）'): Promise<string | null> {
   if (!desktop) return null;
   const { open } = await import('@tauri-apps/plugin-dialog');
-  return await open({ title: '导入 VPK Mod（分卷包请选择 _dir.vpk）', multiple: false, filters: [{ name: 'Source VPK', extensions: ['vpk'] }] }) as string | null;
+  return await open({ title, multiple: false, filters: [{ name: 'Source VPK', extensions: ['vpk'] }] }) as string | null;
 }
 export async function pickDll(): Promise<string | null> {
   if (!desktop) return null;
@@ -72,15 +72,15 @@ export async function pickDllPackage(): Promise<string | null> {
 }
 export type FileDrop = { type: 'enter' | 'drop'; paths: string[] } | { type: 'over' | 'leave' };
 /** Dispatch only to the surface under the pointer, including in split view. */
-export async function onFileDrop(handler: (event: FileDrop) => void, target?: () => Element | null | undefined): Promise<() => void> {
+export async function onFileDrop(handler: (event: FileDrop, hit?: Element | null) => void, target?: () => Element | null | undefined): Promise<() => void> {
   if (!desktop) return () => {};
   const { getCurrentWebview } = await import('@tauri-apps/api/webview');
   return getCurrentWebview().onDragDropEvent(({ payload }) => {
     if (payload.type === 'leave') return handler({ type: 'leave' });
     const hit = document.elementFromPoint(payload.position.x / window.devicePixelRatio, payload.position.y / window.devicePixelRatio);
     if (target && (!hit || !target()?.contains(hit))) return handler({ type: 'leave' });
-    if (payload.type === 'over') handler({ type: 'over' });
-    else handler({ type: payload.type, paths: payload.paths });
+    if (payload.type === 'over') handler({ type: 'over' }, hit);
+    else handler({ type: payload.type, paths: payload.paths }, hit);
   });
 }
 export async function windowAction(action: 'minimize' | 'maximize' | 'close') {

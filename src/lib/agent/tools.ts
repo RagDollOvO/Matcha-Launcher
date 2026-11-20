@@ -47,6 +47,8 @@ export const TOOLS: Record<string, ToolMeta> = {
   mod_compare: { label: '核实 Mod 资源差异', write: false, icon: Search, description: '逐字节对比同路径资源，分开显示相同与差异。' },
   mod_mark: { label: '收藏与整理标记', write: true, icon: Package, description: '批量更新收藏和已整理标记，可撤销。' },
   mod_favorite_collections: { label: '查看收藏合集', write: false, icon: Package, description: '查看收藏页的合集与成员。' },
+  mod_bookmark_files: { label: '收藏本地文件', write:true, icon:Package, description:'记录 VPK 或素材文件夹的原位置，保持方案与游戏启停。' },
+  mod_favorites_to_profiles: {label:'将收藏应用到方案',write:true,icon:Package,description:'将成员一次性追加到所选方案。'},
   mod_favorite_collection: { label: '整理收藏合集', write: true, icon: Package, description: '创建、改名、增减成员或删除收藏合集，可撤销。' },
   mod_rename: { label: '修改 Mod 显示名', write: true, icon: Package, description: '改名、加前缀或恢复原名，支持批量撤销。' },
   mod_category: { label: '维护 Mod 分类', write: true, icon: Package, description: '重命名、移动、合并和移除分类，保留文件。' },

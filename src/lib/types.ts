@@ -146,6 +146,12 @@ export interface ModMeta {
   inbox?: boolean;
 }
 export interface FavoriteCollection { id: string; name: string; modIds: string[] }
+export interface FavoriteReference extends Pick<Mod,'id'|'title'|'file'|'author'|'dirs'|'sizeMB'|'updatedAt'|'hasThumbnail'> {
+  absolutePath: string;
+  referenceKind: 'vpk' | 'folder';
+  library?: {gameRoot:string;modId:string};
+}
+export type FavoriteEntry = Mod | FavoriteReference;
 export type FavoriteEdit =
   | { action: 'create'; name: string; modIds?: string[] }
   | { action: 'rename'; collectionId: string; name: string }
@@ -153,6 +159,7 @@ export type FavoriteEdit =
   | { action: 'delete'; collectionId: string };
 
 export interface ModTask {
+  favoriteImport?: boolean;
   taskId: string;
   workshopId?: string;
   /** 下载来源；gamemaps 的任务用 sourceId 对应 GameMaps 条目 id */
@@ -245,6 +252,7 @@ export interface WorkshopPage {
 export interface Category {
   id: string;
   name: string;
+  order?: number; // 同级手动顺序；未排序的分类按名称列在后面
   builtin?: boolean; // “未分类”不可删除；前端把它当作最外层，不显示成文件夹
   parentId?: string; // 上级分类；缺省 = 最外层。后端原样存取
 }

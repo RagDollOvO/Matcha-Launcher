@@ -14,7 +14,7 @@
   let query = $state('');
   let error = $state('');
   const naming = $derived(mode !== 'add');
-  const list = $derived(app.mods.filter(m => (app.isFavorite(m.id) || seed.includes(m.id)) && (mode !== 'add' || !group?.modIds.includes(m.id))));
+  const list = $derived([...app.favoriteEntries, ...app.mods.filter(m => seed.includes(m.id) && !app.isFavorite(m.id))].filter(m => mode !== 'add' || !group?.modIds.includes(m.id)));
   const visible = $derived(list.filter(m => (m.title + ' ' + m.file).toLowerCase().includes(query.trim().toLowerCase())));
   const selected = $derived(chosen.filter(id => list.some(m => m.id === id)));
   const all = $derived(visible.length > 0 && visible.every(m => chosen.includes(m.id)));

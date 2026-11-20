@@ -3,6 +3,7 @@ import path from 'node:path';
 import { metadataDelta } from './mod-history.mjs';
 import { displayNames, replaceDisplayNames } from '../mods/display-names.mjs';
 import { planFavoriteCollection, withoutMembers } from '../mods/favorite-collections.mjs';
+import { favoriteProfilePlan } from '../mods/favorite-profiles.mjs';
 
 const copy = value => JSON.parse(JSON.stringify(value));
 const sameRoot = (a, b) => !a || path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
@@ -11,6 +12,7 @@ const validName = value => {
   return value.trim();
 };
 export function planMetadata(kind, params, settings, inventory, root, views) {
+  if (kind === 'favorite-to-profiles') return favoriteProfilePlan(settings,inventory.mods,views,root,params);
   if (kind === 'favorite-collection') {
     const plan = planFavoriteCollection(settings, params, inventory.mods);
     const changes = metadataDelta(settings, plan.next, root);
@@ -23,7 +25,9 @@ export function planMetadata(kind, params, settings, inventory, root, views) {
   const chosen = () => {
     if (!Array.isArray(params.modIds) || !params.modIds.length || new Set(params.modIds).size !== params.modIds.length) fail('invalid_argument', '需要去重的 Mod ID 清单。');
     return params.modIds.map(id => {
-      const mod = inventory.mods.find(mod => mod.id === id);
+      const ref = kind === 'mark' && settings.favoriteRefs?.[id];
+      if (ref && params.sorted !== undefined) fail('invalid_argument', '本地收藏记录只支持收藏操作。');
+      const mod = inventory.mods.find(mod => mod.id === id) ?? ref;
       if (!mod || mod.kind === 'platform-package') fail('mod_missing', '请选择当前库中的普通 VPK Mod。');
       return mod;
     });
@@ -65,11 +69,13 @@ export function planMetadata(kind, params, settings, inventory, root, views) {
       next.favoriteCollections = withoutMembers(settings.favoriteCollections, ids);
     }
     for (const mod of mods) {
+      if (settings.favoriteRefs?.[mod.id]) {
+        if (params.favorite === false) { delete next.favoriteRefs[mod.id]; lines.push('取消收藏 · ' + mod.title + '（保留原文件）'); }
+        continue;
+      }
       const before = settings.modMeta[mod.id] ?? {}, value = { ...before };
       if (params.favorite !== undefined) { if (params.favorite) value.favorite = true; else delete value.favorite; }
       if (params.sorted !== undefined) { if (params.sorted) delete value.inbox; else value.inbox = true; }
-      if (value.favorite && params.sorted === false) fail('invalid_argument', '放回新下载时，请同时将 favorite 设为 false。');
-      if (value.favorite) delete value.inbox;
       if (Object.keys(value).length) next.modMeta[mod.id] = value; else delete next.modMeta[mod.id];
       lines.push(`${mod.title} [${mod.id}]\n收藏：${before.favorite ? '是' : '否'} → ${value.favorite ? '是' : '否'}；新下载：${before.inbox ? '是' : '否'} → ${value.inbox ? '是' : '否'}`);
     }
@@ -106,6 +112,7 @@ export function planMetadata(kind, params, settings, inventory, root, views) {
       if (!Object.hasOwn(params, 'parentId')) fail('invalid_argument', '移动分类时请指定 parentId；null 为最外层。');
       const target = destination(params.parentId);
       const before = settings.categories.find(c => c.id === category.parentId)?.name ?? '最外层';
+      if ((category.parentId ?? null) !== (target?.id ?? null)) delete category.order;
       if (target) category.parentId = target.id; else delete category.parentId;
       label = `移动分类「${category.name}」`; lines.push(`${before} → ${target?.name ?? '最外层'}（包含子分类）`);
     } else if (params.action === 'merge' || params.action === 'delete') {
@@ -119,6 +126,7 @@ export function planMetadata(kind, params, settings, inventory, root, views) {
       }
       for (const child of next.categories.filter(c => c.parentId === category.id)) {
         if (target) child.parentId = target.id; else delete child.parentId;
+        delete child.order;
         lines.push(`子分类「${child.name}」→ ${target?.name ?? '最外层'}`);
       }
       next.categories = next.categories.filter(c => c.id !== category.id);

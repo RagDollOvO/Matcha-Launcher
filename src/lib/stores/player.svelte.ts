@@ -1,6 +1,7 @@
 import { api } from '../api';
 import { errorText } from '../api/bridge';
 import { app } from './app.svelte';
+import { sfx } from '../sound/sfx.svelte';
 import type { Mod, ModSound } from '../types';
 
 const keyOf = (modId: string, path: string) => `${modId}\n${path}`;
@@ -28,6 +29,15 @@ class Player {
   private url: string | null = null;
   private seq = 0;
   private lists = new Map<string, Promise<ModSound[]>>();
+
+  constructor() {
+    $effect.root(() => {
+      $effect(() => this.syncVolume(this.audio, sfx.settings.volume, sfx.settings.muted));
+    });
+  }
+  private syncVolume(audio: HTMLAudioElement | null, volume: number, muted: boolean) {
+    if (audio) { audio.volume = Math.min(1, Math.max(0, volume)); audio.muted = muted; }
+  }
 
   /** 声音列表按 Mod 版本缓存 */
   sounds(m: Mod): Promise<ModSound[]> {
@@ -58,7 +68,7 @@ class Player {
       // CSP 只允许 blob: 音频
       this.url = URL.createObjectURL(new Blob([bytes], { type: r.mime }));
       const a = new Audio(this.url);
-      a.volume = 0.8;
+      this.syncVolume(a, sfx.settings.volume, sfx.settings.muted);
       this.audio = a;
       if (r.durationMs) this.durations[key] = r.durationMs;
       a.onloadedmetadata = () => { if (!this.durations[key] && Number.isFinite(a.duration)) this.durations[key] = Math.round(a.duration * 1000); };

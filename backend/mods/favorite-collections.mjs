@@ -16,16 +16,16 @@ export function planFavoriteCollection(settings, { action, collectionId, name, m
   if (naming && (typeof name !== 'string' || !title || title.length > 60 || /[\x00-\x1f\x7f]/u.test(title))) fail('invalid_argument', '合集名称需要 1–60 个单行字符。');
   if (naming && groups.some(c => c.id !== group.id && c.name.toLowerCase() === title.toLowerCase())) fail('collection_duplicate', '已有同名收藏合集，换个名字试试。');
   if (!Array.isArray(modIds) || (!creating && ['add','remove'].includes(action) && !modIds.length) || (modIds.length && !['create','add','remove'].includes(action))) fail('invalid_argument', '请提供此次整理的 Mod 清单。');
-  const library = new Map(mods.map(m => [m.id, m])), ids = [...new Set(modIds)];
+  const library = new Map([...mods, ...Object.values(settings.favoriteRefs ?? {})].map(m => [m.id, m])), ids = [...new Set(modIds)];
   for (const id of ids) if (!library.has(id)) fail('mod_missing', '所选 Mod 已离开当前库，请刷新后重选。');
   const members = new Set(group.modIds), modMeta = { ...settings.modMeta }, lines = [];
   for (const id of ids) {
     if (action === 'remove') {
       if (members.delete(id)) lines.push('移出 · ' + library.get(id).title);
     } else {
-      if (!members.has(id)) lines.push((modMeta[id]?.favorite ? '加入 · ' : '收藏并加入 · ') + library.get(id).title);
+      if (!members.has(id)) lines.push((modMeta[id]?.favorite || settings.favoriteRefs?.[id] ? '加入 · ' : '收藏并加入 · ') + library.get(id).title);
       members.add(id);
-      modMeta[id] = { ...modMeta[id], favorite: true }; delete modMeta[id].inbox;
+      if (!settings.favoriteRefs?.[id]) modMeta[id] = { ...modMeta[id], favorite: true };
     }
   }
   const updated = { ...group, name: title, modIds: [...members] };

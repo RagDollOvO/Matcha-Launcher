@@ -15,6 +15,8 @@ import { platformToolCatalog } from '../pi/platform-extension.mjs';
 import { ModManager } from '../mods/manager.mjs';
 import { displayNames } from '../mods/display-names.mjs';
 import { planFavoriteCollection, withoutMembers } from '../mods/favorite-collections.mjs';
+import { bookmarkFiles } from '../mods/favorite-files.mjs';
+import { favoriteProfilePlan } from '../mods/favorite-profiles.mjs';
 import { ModTrash } from '../mods/trash.mjs';
 import { TaskManager } from '../mods/tasks.mjs';
 import { ModAudio } from '../mods/audio.mjs';
@@ -282,6 +284,16 @@ export class DesktopService extends EventEmitter {
       await this.save({ ...this.settings, profiles: this.settings.profiles.map(p => p.id === next.id ? next : p) });
       return enabled;
     } catch { return []; }
+  }
+  favoriteSource(id, file) {
+    const ref=this.settings.favoriteRefs?.[id];
+    if (!ref || typeof file !== 'string' || !samePath(ref.absolutePath,file)) fail('favorite_missing','收藏来源已变更，请重新选择。');
+    return ref;
+  }
+  async linkFavoriteSource(id, file, gameRoot, modId) {
+    const refs=this.settings.favoriteRefs ?? {};
+    const ref=id ? refs[id] : Object.values(refs).find(ref=>samePath(ref.absolutePath,file));
+    if (ref && samePath(ref.absolutePath,file)) await this.save({...this.settings,favoriteRefs:{...refs,[ref.id]:{...ref,library:{gameRoot,modId}}}});
   }
   async bundledPlugins() {
     const root = path.join(this.distRoot, 'bin/l4p/plugins');
@@ -674,7 +686,7 @@ export class DesktopService extends EventEmitter {
       dxvk: { installed: !!nativeLibraries?.dxvk.installed, enabled: false, version: nativeLibraries?.dxvk.version??'—',
         dll:nativeLibraries?.dxvk.entries.find(e=>e.kind==='dxvk')?.path??'', configured:false },
       plugins, availablePlugins, platforms, externalPacks, nativeLibraries, l4nPlugins, profiles: this.profileViews(mods), activeProfileId: this.settings.activeProfileId,
-      categories, mods, modMeta: this.settings.modMeta, favoriteCollections: this.settings.favoriteCollections, trash, conflicts: modInventory.conflicts, servers, serverLayout, cfg: [],
+      categories, mods, modMeta: this.settings.modMeta, favoriteCollections: this.settings.favoriteCollections, favoriteRefs: this.settings.favoriteRefs ?? {}, trash, conflicts: modInventory.conflicts, servers, serverLayout, cfg: [],
       modState: { writable: modInventory.writable, addonListPath: modInventory.addonListPath },
       tasks: this.tasks.list(),
       capabilities: { plugins: true, l4nPlugins: true, platforms: false, platformManagement: false, mods: true, servers: true, config: true },
@@ -750,7 +762,11 @@ export class DesktopService extends EventEmitter {
     }
     if (command === 'mod-sounds') return this.audio.list(await this.requireRoot(), params.id);
     if (command === 'mod-sound') return this.audio.sound(await this.requireRoot(), params.id, params.path);
-    if (command === 'mod-thumbnail') return this.modManager.thumbnail(await this.requireRoot(), params.id);
+    if (command === 'mod-thumbnail') {
+      const ref = this.settings.favoriteRefs?.[params.id];
+      if (ref?.referenceKind === 'vpk') return this.modManager.localThumbnail(ref.absolutePath);
+      return this.modManager.thumbnail(await this.requireRoot(), params.id);
+    }
     if (command === 'trash-thumbnail') return this.modTrash.thumbnail(await this.requireRoot(), params.trashId);
     if (['pi-connect', 'pi-reconnect', 'pi-close', 'pi-sessions', 'pi-session-delete', 'pi-settings-set', 'pi-auth-set', 'pi-auth-remove', 'pi-models-set'].includes(command)
       || (command === 'pi-command' && ['new_session', 'switch_session', 'fork', 'clone', 'set_model', 'set_thinking_level', 'set_auto_compaction', 'set_auto_retry'].includes(params.type))) {
@@ -829,6 +845,8 @@ export class DesktopService extends EventEmitter {
       return packModFolder(request, ctx, file => this.serial(async () => {
         await checkRoot();
         const { id, replaced } = await this.modManager.importPacked({ gameRoot: request.gameRoot, file, replaceExisting: request.replaceExisting === true, confirmation: { approved: true, source: 'user' } });
+        await this.linkFavoriteSource(request.favoriteId,request.file,request.gameRoot,id);
+        if (request.favoriteId) return {modId:id};
         const enabled = await this.enableNewMods(request.gameRoot, [id]);
         const category = this.settings.categories.find(c => !c.builtin && c.id === request.categoryId)?.id ?? (replaced ? this.settings.assignments[id] : null) ?? 'cat-none';
         if ((this.settings.assignments[id] ?? 'cat-none') !== category || this.settings.modOrigins?.[id]) {
@@ -1114,8 +1132,24 @@ export class DesktopService extends EventEmitter {
         await this.save({ ...this.settings, modMeta, categories: p.categories, assignments: { ...this.settings.assignments, ...p.assignments } });
         return { status: 'saved' };
       }
+      case 'favorite-to-profiles': {
+        this.confirm(confirmation);
+        const root=await this.requireRoot();
+        if (!samePath(root,p.gameRoot)) fail('game_changed','游戏目录已切换，请重新选择方案。');
+        const {mods}=await this.modManager.scan(root,{conflicts:false});
+        const plan=favoriteProfilePlan(this.settings,mods,this.profileViews(mods),root,p);
+        if (plan.added) await this.save(plan.next);
+        return {added:plan.added,lines:plan.lines};
+      }
+      case 'bookmark-files': {
+        const root = await this.root();
+        const mods = root && await exists(path.join(root, 'left4dead2')) ? (await this.modManager.scan(root,{conflicts:false})).mods : [];
+        const plan = await bookmarkFiles(this.settings, mods, this.modManager, p);
+        await this.save(plan.next);
+        return { count:plan.count, skipped:plan.skipped };
+      }
       case 'edit-favorite-collection': {
-        const mods = p.modIds?.length ? (await this.modManager.scan(await this.requireRoot())).mods : [];
+        const mods = Array.isArray(p.modIds) && p.modIds.some(id => !this.settings.favoriteRefs?.[id]) ? (await this.modManager.scan(await this.requireRoot(),{conflicts:false})).mods : [];
         const plan = planFavoriteCollection(this.settings, p, mods);
         await this.save(plan.next);
         return { id: plan.collectionId, favoriteCollections: plan.next.favoriteCollections };
@@ -1127,10 +1161,11 @@ export class DesktopService extends EventEmitter {
           if (!id || ['__proto__', 'prototype', 'constructor'].includes(id) || (value !== null && (typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([key, v]) => !['favorite', 'inbox'].includes(key) || typeof v !== 'boolean')))) fail('invalid_argument', 'Mod 标记需要 favorite / inbox 布尔值或 null。');
           // Each supplied ID replaces its complete record; omitted fields are cleared.
           if (value === null) delete modMeta[id]; else modMeta[id] = { ...value };
-          if (value?.favorite && value?.inbox) modMeta[id].inbox = false;
         }
         const unstarred = new Set(Object.keys(p.patch).filter(id => !modMeta[id]?.favorite));
-        await this.save({ ...this.settings, modMeta, favoriteCollections: withoutMembers(this.settings.favoriteCollections, unstarred) });
+        const favoriteRefs = { ...this.settings.favoriteRefs };
+        for (const id of unstarred) delete favoriteRefs[id];
+        await this.save({ ...this.settings, modMeta, favoriteRefs, favoriteCollections: withoutMembers(this.settings.favoriteCollections, unstarred) });
         return { status: 'saved' };
       }
       case 'preview-delete-mods': return this.modTrash.preview(await this.requireRoot(), p.ids);
@@ -1186,16 +1221,18 @@ export class DesktopService extends EventEmitter {
         catch (e) { if (numbered && e.code === 'invalid_vpk') return { kind: 'shard' }; throw e; }
       }
       case 'pack-mod-folder': {
+        if (p.favoriteId) { this.favoriteSource(p.favoriteId,p.file); if(p.replaceExisting) fail('file_exists','请先处理 Mod 库中的同名文件。'); }
         this.confirm(confirmation);
         const gameRoot = await this.requireRoot();
         if (!samePath(p.gameRoot, gameRoot)) fail('game_changed', '游戏目录已切换，请重新拖入。');
         await this.modManager.idle(gameRoot);
         const input = await folderSource(p.file, gameRoot, p.replaceExisting === true);
         if (p.sourceStamp !== input.sourceStamp) fail('file_changed', '素材文件夹已变化，请重新拖入。');
-        return this.tasks.create('pack', { file: input.file, replaceExisting: p.replaceExisting === true, sourceStamp: input.sourceStamp,
+        return this.tasks.create('pack', { file: input.file, ...(p.favoriteId && {favoriteId:p.favoriteId}), replaceExisting: p.replaceExisting === true, sourceStamp: input.sourceStamp,
           gameRoot, categoryId: this.settings.categories.find(c => !c.builtin && c.id === p.categoryId)?.id ?? 'cat-none' }, input.name);
       }
       case 'import-mod': {
+        if (p.favoriteId) { this.favoriteSource(p.favoriteId,p.file); if(p.replaceExisting) fail('file_exists','请先处理 Mod 库中的同名文件。'); }
         const gameRoot = await this.requireRoot();
         if (p.gameRoot && !samePath(gameRoot, p.gameRoot)) fail('game_changed', '游戏目录已切换，请重新导入。');
         const result = await this.modManager.import({ gameRoot, file: p.file, confirmation, replaceExisting: p.replaceExisting === true });
@@ -1204,6 +1241,8 @@ export class DesktopService extends EventEmitter {
           await this.save({ ...this.settings, modOrigins });
         }
         // addonlist keeps the new entry off until the launch profile is applied.
+        await this.linkFavoriteSource(p.favoriteId,p.file,gameRoot,result.id);
+        if (p.favoriteId) return {...result,enabled:false};
         const enabled = (await this.enableNewMods(gameRoot, [result.id])).includes(result.id);
         return { ...result, enabled, ...(enabled ? { applies: 'next-launch', profileId: this.settings.activeProfileId } : {}) };
       }

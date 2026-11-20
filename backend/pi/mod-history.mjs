@@ -16,7 +16,7 @@ function current(settings, change, root) {
 }
 export function metadataDelta(before, after, root) {
   const changes = [];
-  for (const type of ['category', 'assignments', 'modMeta', 'profile-mods', 'display-name', 'favorite-collection']) {
+  for (const type of ['category', 'assignments', 'modMeta', 'profile-mods', 'display-name', 'favorite-collection', 'favoriteRefs']) {
     const keys = type === 'category' ? [...before.categories, ...after.categories].map(c => c.id)
       : type === 'profile-mods' ? [...before.profiles, ...after.profiles].map(p => p.id)
       : type === 'display-name' ? [...Object.keys(displayNames(before, root)), ...Object.keys(displayNames(after, root))]
@@ -58,7 +58,8 @@ function restoreValue(next, change, root) {
     const names = { ...displayNames(next, root) };
     if (change.before === null) delete names[change.id]; else names[change.id] = change.before;
     next.modNames = replaceDisplayNames(next, root, names);
-  } else if (['assignments', 'modMeta'].includes(change.type)) {
+  } else if (['assignments', 'modMeta', 'favoriteRefs'].includes(change.type)) {
+    next[change.type] ??= {};
     if (change.before === null) delete next[change.type][change.id]; else next[change.type][change.id] = copy(change.before);
   } else fail('mod_history_invalid', '整理记录中的操作类型需要检查。');
 }
@@ -78,7 +79,7 @@ export function undoPreview(settings, root, historyId, knownIds) {
   const categories = new Set(next.categories.map(c => c.id));
   const groups = next.favoriteCollections ?? [];
   for (const c of groups) {
-    if (c.modIds.some(id => !next.modMeta[id]?.favorite) || groups.some(other => other.id !== c.id && other.name.toLowerCase() === c.name.toLowerCase())) {
+    if (c.modIds.some(id => !next.modMeta[id]?.favorite && !next.favoriteRefs?.[id]) || groups.some(other => other.id !== c.id && other.name.toLowerCase() === c.name.toLowerCase())) {
       fail('mod_history_conflict', '收藏或合集名称已有后续修改，请先检查「' + c.name + '」。');
     }
   }

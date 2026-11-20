@@ -103,7 +103,7 @@ export class ModManager {
     const dataUrl = body?.[0] === 0xff && body?.[1] === 0xd8 && body?.[2] === 0xff ? `data:image/jpeg;base64,${body.toString('base64')}` : null;
     return { dataUrl, ...(archived && !dataUrl && { dirs }) };
   }
-  async scan(gameRoot) {
+  async scan(gameRoot, { conflicts = true } = {}) {
     const content = await directory(path.join(gameRoot, 'left4dead2'));
     const addons = path.join(content, 'addons'), items = [], issues = [];
     let document = null;
@@ -166,7 +166,7 @@ export class ModManager {
     for (const p of this.cache.keys()) if (!used.has(p)) this.cache.delete(p);
     const names = this.displayNames(gameRoot);
     return { mods: items.map(({ resources, ...m }) => m.kind === 'platform-package' ? m
-      : { ...m, sourceTitle: m.title, title: names[m.id] ?? m.title }), conflicts: compareResources(items), issues,
+      : { ...m, sourceTitle: m.title, title: names[m.id] ?? m.title }), conflicts: conflicts ? compareResources(items) : [], issues,
       writable: !!document, addonListPath: path.join(content, 'addonlist.txt') };
   }
   async idle(root) {

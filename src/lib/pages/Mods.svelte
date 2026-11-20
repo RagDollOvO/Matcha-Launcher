@@ -40,6 +40,8 @@
   import SoundList from '../components/SoundList.svelte';
   import TrashView from '../components/TrashView.svelte';
   import WorkshopDialog from '../components/WorkshopDialog.svelte';
+  import FavoriteLibrary from '../components/FavoriteLibrary.svelte';
+  import { favoriteMenu, setFavoriteMembers } from '../components/favorite-menus';
   import FavoriteCollectionDialog from '../components/FavoriteCollectionDialog.svelte';
   import QuickTest from '../components/QuickTest.svelte';
   import type { MenuItem, MenuState } from '../components/menu';
@@ -80,9 +82,6 @@
   const inFav = $derived(f.category === FAV);
   let collectionId = $state('');
   let collectionDialog = $state<{ mode: 'create' | 'add' | 'rename'; group?: FavoriteCollection; seed?: string[] } | null>(null);
-  const collection = $derived(inFav ? app.favoriteCollections.find(c => c.id === collectionId) : undefined);
-  const favorites = $derived(app.mods.filter(m => app.isFavorite(m.id)));
-  const shelves = $derived(app.favoriteCollections.map(c => ({ group: c, members: favorites.filter(m => c.modIds.includes(m.id)) })));
   const inInbox = $derived(f.category === INBOX);
   const inTrash = $derived(f.category === TRASH);
   /** 收藏、新下载这类跨分类的视图 */
@@ -101,11 +100,10 @@
   const flat = $derived(smart || !!f.q.trim() || fstatus !== 'all');
   const scope = $derived(app.subtree(cur));
   const scopeMods = $derived(
-    inFav ? collection ? favorites.filter(m => collection.modIds.includes(m.id)) : favorites
-    : inInbox ? app.mods.filter((m) => app.isInbox(m.id))
+    inInbox ? app.mods.filter((m) => app.isInbox(m.id))
     : app.mods.filter((m) => scope.has(app.folderOf(m))),
   );
-  const favCount = $derived(favorites.length);
+  const favCount = $derived(app.favoriteEntries.length);
   const inboxCount = $derived(app.mods.filter((m) => app.isInbox(m.id)).length);
   const downloading = $derived(app.tasks.filter((t) => t.kind === 'download' && !['done', 'failed', 'canceled'].includes(t.state)).length);
   const packing = $derived(app.tasks.filter(t => t.kind === 'pack' && t.gameRoot.toLowerCase() === app.game.root.toLowerCase() && !['done', 'failed', 'canceled'].includes(t.state)));
@@ -202,14 +200,13 @@
   ]);
   /** 库视图的标题副行 */
   const libSub = $derived(
-    inFav ? `${f.q.trim() ? `搜索结果 ${rows.length} 项 · ` : ''}${favCount} 个收藏 · ${shelves.length} 个合集`
-    : inInbox ? `${f.q.trim() ? `搜索结果 ${rows.length} 项 · ` : ''}${inboxCount} 个待整理${downloading ? ` · ${downloading} 个正在下载` : ''} · 加入方案、移到分类或收藏后离开这里`
+    inInbox ? `${f.q.trim() ? `搜索结果 ${rows.length} 项 · ` : ''}${inboxCount} 个待整理${downloading ? ` · ${downloading} 个正在下载` : ''} · 归类或标记已整理后离开这里`
     : `${app.trash.length} 项${app.trash.length ? ` · ${mib(trashSize)}` : ''} · 放在 left4dead2\\.matcha-trash，不参与扫描和方案应用`,
   );
 
   // ---------- 导航 ----------
   function go(id: string) {
-    if (id !== f.category) { selected = []; anchor = null; if (edit?.kind === 'category') edit = null; }
+    if (id !== f.category) { selected = []; anchor = null; importOpen = false; dropping = null; if (edit?.kind === 'category') edit = null; }
     f.category = id;
     if (id === FAV) { collectionId = ''; selected = []; anchor = null; detailId = null; }
     if (id !== FAV && id !== INBOX && id !== TRASH) lastPlace = id;
@@ -218,37 +215,7 @@
   function openCollection(id: string) {
     go(FAV); collectionId = id; f.q = '';
   }
-  $effect(() => {
-    if (!inFav) return;
-    const allowed = new Set(scopeMods.map(m => m.id));
-    if (selected.some(id => !allowed.has(id))) selected = selected.filter(id => allowed.has(id));
-    if (detailId && !allowed.has(detailId)) detailId = null;
-  });
-  async function membership(c: FavoriteCollection, ids: string[], add: boolean) {
-    if (await app.editFavoriteCollection({ action: add ? 'add' : 'remove', collectionId: c.id, modIds: ids }))
-      app.toast((add ? '已加入' : '已移出') + '「' + c.name + '」');
-  }
-  function collectionItems(ids: string[]): MenuItem[] {
-    return [
-      ...app.favoriteCollections.map((c): MenuItem => {
-        const count = ids.filter(id => c.modIds.includes(id)).length, all = count === ids.length;
-        return { label: c.name, checked: all || (count ? 'mixed' : false), hint: all ? '移出' : '加入', run: () => void membership(c, ids, !all) };
-      }),
-      ...(app.favoriteCollections.length ? [{kind: 'sep' as const}] : []),
-      { label: '新建合集…', icon: FolderPlus, run: () => collectionDialog = { mode: 'create', seed: [...ids] } },
-    ];
-  }
-  function manageCollection(c: FavoriteCollection): MenuItem[] {
-    return [
-      { label: '添加成员…', icon: Plus, run: () => collectionDialog = { mode: 'add', group:c } },
-      { label: '重命名合集…', icon: Pencil, run: () => collectionDialog = { mode: 'rename', group:c } },
-      { kind:'sep' }, { label:'删除合集…', icon:Trash, danger:true, run: async () => {
-        if (await app.confirm('删除「' + c.name + '」？', '合集中的 Mod 仍会保留在「全部收藏」。', '删除合集')) {
-          if (await app.editFavoriteCollection({action:'delete', collectionId:c.id})) openCollection('');
-        }
-      } },
-    ];
-  }
+  const collectionItems = (ids: string[]) => favoriteMenu(ids, seed => collectionDialog = { mode: 'create', seed });
   function up() { go(curPath.at(-2)?.id ?? ROOT); }
   /** 侧栏点方案：编辑这个方案；在库视图里时回到之前的分类 */
   function openProfile(id: string) {
@@ -293,7 +260,7 @@
   }
   /** 在 Mod 页按 Ctrl+V：剪贴板里是工坊链接就直接打开下载对话框 */
   function onPaste(e: ClipboardEvent) {
-    if (quickTest || workshop || collectionDialog || menu || app.confirmation || edit || (e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
+    if (inFav || quickTest || workshop || collectionDialog || menu || app.confirmation || edit || (e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
     const text = e.clipboardData?.getData('text') ?? '';
     if (!looksLikeWorkshop(text)) return;
     e.preventDefault();
@@ -533,14 +500,20 @@
   /** 放置目标的键：c:分类 id、p:方案 id、fav */
   const kCat = (id: string) => `c:${id}`;
   const kProf = (id: string) => `p:${id}`;
+  const isSortDrop = (key: string) => key.startsWith('<:') || key.startsWith('>:');
   let drag = $state<{ ids: string[]; folder: string | null; x: number; y: number; over: string | null } | null>(null);
   let press: { id: string; folder: boolean; x: number; y: number } | null = null;
   let suppressClick = false;
 
   function canDrop(key: string): boolean {
-    if (!drag) return false;
+    if (!drag || (inFav && !key.startsWith('g:'))) return false;
     if (key === FAV) return !drag.folder && drag.ids.some((id) => !app.isFavorite(id));
     const id = key.slice(2);
+    if (isSortDrop(key)) {
+      const source = app.categories.find(c => c.id === drag!.folder);
+      const target = app.categories.find(c => c.id === id);
+      return !app.busy && !!source && !!target && source !== target && !target.builtin && app.parentOf(source) === app.parentOf(target);
+    }
     if (key.startsWith('g:')) return !drag.folder && !app.busy && app.favoriteCollections.some(c => c.id === id && drag!.ids.some(m => !c.modIds.includes(m)));
     if (key.startsWith('p:')) {
       const p = app.profile(id);
@@ -569,17 +542,25 @@
       document.documentElement.classList.add('dragging-mods');
     }
     drag.x = e.clientX; drag.y = e.clientY;
-    const key = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-drop]')?.getAttribute('data-drop') ?? null;
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-drop]');
+    let key = el?.dataset.drop ?? null;
+    if (el?.matches('.item,.tile,.row') && key?.startsWith('c:') && drag.folder) {
+      const rect = el.getBoundingClientRect();
+      const fraction = el.classList.contains('tile') ? (e.clientX - rect.left) / rect.width : (e.clientY - rect.top) / rect.height;
+      const edge = fraction < .28 ? '<:' : fraction > .72 ? '>:' : null;
+      if (edge && canDrop(edge + key.slice(2))) key = edge + key.slice(2);
+    }
     drag.over = key && canDrop(key) ? key : null;
   }
   function onRelease() {
     if (drag) {
       suppressClick = true;
       setTimeout(() => (suppressClick = false));
-      const key = drag.over;
+      const key = drag.over && canDrop(drag.over) ? drag.over : null;
       if (key === FAV) app.setFavorite(drag.ids.filter((id) => !app.isFavorite(id)), true);
-      else if (key?.startsWith('g:')) { const c = app.favoriteCollections.find(c => c.id === key.slice(2)); if (c) void membership(c, drag.ids, true); }
+      else if (key?.startsWith('g:')) { const c = app.favoriteCollections.find(c => c.id === key.slice(2)); if (c) void setFavoriteMembers(c, drag.ids, true); }
       else if (key?.startsWith('p:')) setInProfile(drag.ids, key.slice(2), true);
+      else if (key && drag.folder && isSortDrop(key)) void app.reorderCategory(drag.folder, key.slice(2), key.startsWith('>'));
       else if (key) {
         if (drag.folder) app.moveCategory(drag.folder, key.slice(2));
         else moveTo(drag.ids, key.slice(2));
@@ -600,7 +581,9 @@
     if (!drag) return '';
     const what = drag.folder ? `「${catName(drag.folder)}」` : `${drag.ids.length} 个 Mod`;
     const k = drag.over;
-    if (!k) return drag.folder ? `${what} · 拖到分类或方案上` : `${what} · 拖到分类、方案或收藏上`;
+    if (!k && inFav) return what + ' · 拖到收藏合集上';
+    if (!k) return drag.folder ? `${what} · 同级边缘排序，中央移入` : `${what} · 拖到分类、方案或收藏上`;
+    if (isSortDrop(k)) return `${what} 排在「${catName(k.slice(2))}」${k.startsWith('>') ? '后面' : '前面'}`;
     if (k === FAV) return `${what} 加入收藏`;
     if (k.startsWith('g:')) return what + ' 加入合集「' + app.favoriteCollections.find(c => c.id === k.slice(2))?.name + '」';
     if (k.startsWith('p:')) {
@@ -614,17 +597,35 @@
 
   // 系统拖入既可能是目录，也可能是现成的 VPK；由后端按文件类型辨别。
   let dropping = $state<number | null>(null);
-  function receive(paths: string[]) {
+  let fileOver = $state<string | null>(null);
+  function fileTarget(hit?: Element | null) {
+    if (hit?.closest('[data-drop]')?.getAttribute('data-drop') === FAV) return FAV;
+    const id = hit?.closest<HTMLElement>('[data-favorite-folder]')?.dataset.favoriteFolder;
+    return id ? 'g:' + id : null;
+  }
+  function bookmarkTarget(hit?: Element | null) {
+    const key = fileTarget(hit);
+    if (key === FAV) return '';
+    return inFav ? (key?.slice(2) ?? collectionId) : null;
+  }
+  function receive(paths: string[], hit?: Element | null) {
+    const target = bookmarkTarget(hit);
+    if (target !== null) {
+      if (app.busy) return app.toast(`正在${app.busy}，稍后再试`);
+      void app.bookmarkFiles(paths, target || undefined);
+      return;
+    }
     if (importBlock) return app.toast(importBlock);
     void app.importMods(paths, cur);
   }
   $effect(() => {
     let off: (() => void) | undefined, dead = false;
-    void onFileDrop((e) => {
+    void onFileDrop((e, hit) => {
       if (dead) return;
+      fileOver = e.type === 'leave' || e.type === 'drop' ? null : fileTarget(hit);
       if (e.type === 'enter') dropping = e.paths.length;
       else if (e.type === 'leave') dropping = null;
-      else if (e.type === 'drop') { dropping = null; receive(e.paths); }
+      else if (e.type === 'drop') { dropping = null; receive(e.paths, hit); }
       else dropping ??= 0;
     }, () => document.querySelector('section.mods')).then((fn) => { if (dead) fn(); else off = fn; });
     return () => { dead = true; off?.(); };
@@ -633,17 +634,23 @@
   let depth = 0;
   const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
   function onDragEnter(e: DragEvent) { if (desktop || !hasFiles(e)) return; e.preventDefault(); depth++; dropping = 0; }
-  function onDragOver(e: DragEvent) { if (desktop || !hasFiles(e)) return; e.preventDefault(); e.dataTransfer!.dropEffect = 'copy'; }
-  function onDragLeave(e: DragEvent) { if (desktop || !hasFiles(e)) return; if (--depth <= 0) { depth = 0; dropping = null; } }
+  function onDragOver(e: DragEvent) { if (desktop || !hasFiles(e)) return; e.preventDefault(); fileOver = fileTarget(e.target as Element); e.dataTransfer!.dropEffect = 'copy'; }
+  function onDragLeave(e: DragEvent) { if (desktop || !hasFiles(e)) return; if (--depth <= 0) { depth = 0; dropping = null; fileOver = null; } }
   function onDropFiles(e: DragEvent) {
     if (desktop || !hasFiles(e)) return;
-    e.preventDefault(); depth = 0; dropping = null;
+    e.preventDefault(); depth = 0; dropping = null; fileOver = null;
+    const target = bookmarkTarget(e.target as Element);
+    if (target !== null) {
+      openCollection(target);
+      importOpen = true; app.toast('粘贴原文件路径即可收藏');
+      return;
+    }
     importOpen = true;
     app.toast('请粘贴 VPK 或素材文件夹的完整路径；桌面版支持直接拖入');
   }
 
   function onKey(e: KeyboardEvent) {
-    if (quickTest || menu || workshop || collectionDialog || app.confirmation || edit || (e.target as Element).closest?.('input, select, textarea')) return;
+    if (inFav || quickTest || menu || workshop || collectionDialog || app.confirmation || edit || (e.target as Element).closest?.('input, select, textarea')) return;
     if (e.key === 'Escape') {
       if (drag) endDrag();
       else if (player.key) player.stop();
@@ -652,7 +659,7 @@
     }
     // 空格停播；聚焦在卡片上时由卡片自己处理
     if (e.key === ' ' && player.key && !(e.target as Element).closest?.('.tile, .row, button')) { e.preventDefault(); player.stop(); }
-    if (e.key === 'Backspace' && (lib || cur !== ROOT)) { e.preventDefault(); if (collection) openCollection(''); else if (lib) go(lastPlace); else up(); }
+    if (e.key === 'Backspace' && (lib || cur !== ROOT)) { e.preventDefault(); if (lib) go(lastPlace); else up(); }
     if (inTrash) return;
     if (e.key === 'Delete') {
       const ids = selected.length ? selected : detailId ? [detailId] : [];
@@ -678,17 +685,17 @@
     {#if editing(c.id, 'side')}
       <input class="inline" style:margin-left="{level * 12}px" style:width="calc(100% - {level * 12}px)" bind:value={editValue} onkeydown={onEditKey} onblur={commit} use:focus />
     {:else}
-      <div class="item" class:on={!lib && cur === c.id} class:target={!!drag && canDrop(kCat(c.id))} class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id}
+      <div class="item" class:on={!lib && cur === c.id} class:target={!!drag && canDrop(kCat(c.id))} class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id}
            data-drop={kCat(c.id)} style:padding-left="{2 + (level - 1) * 12}px" role="button" tabindex="0"
-           onpointerdown={(e) => onPress(e, c.id, true)} onclick={() => openFolder(c.id)} onkeydown={(e) => onFolderKey(e, c.id)}
-           oncontextmenu={(e) => menuAt(e, folderItems(c.id, 'side'))}>
+           onpointerdown={(e) => { if (!inFav) onPress(e, c.id, true); }} onclick={() => openFolder(c.id)} onkeydown={(e) => onFolderKey(e, c.id)}
+           oncontextmenu={(e) => inFav ? e.preventDefault() : menuAt(e, folderItems(c.id, 'side'))}>
         <button class="caret" class:open class:none={!kids} tabindex="-1" aria-label={open ? '收起' : '展开'} onclick={(e) => { e.stopPropagation(); toggleExpand(c.id); }}><ChevronRight size={12} /></button>
         <span class="nm">{c.name}</span>
-        <span class="ops">
+        {#if !inFav}<span class="ops">
           <button class="icon-btn" title="新建子分类" onclick={(e) => { e.stopPropagation(); newFolder(c.id, 'side'); }}><FolderPlus size={12} /></button>
           <button class="icon-btn" title="重命名" onclick={(e) => { e.stopPropagation(); renameFolder(c.id, 'side'); }}><Pencil size={12} /></button>
           <button class="icon-btn" title="删除分类（里面的内容移到上一级）" onclick={(e) => { e.stopPropagation(); app.deleteCategory(c.id); }}><Trash size={12} /></button>
-        </span>
+        </span>{/if}
         <span class="mono n">{deep.get(c.id) ?? 0}</span>
       </div>
     {/if}
@@ -729,7 +736,7 @@
   <aside class="side">
     <div class="group">
       <div class="gh"><span class="section-label">Mod 方案</span>
-        <button class="icon-btn" title="复制当前方案为新方案" onclick={() => startEdit({ kind: 'new-profile' }, `${prof.name} 副本`)}><Plus size={14} /></button>
+        {#if !inFav}<button class="icon-btn" title="复制当前方案为新方案" onclick={() => startEdit({ kind: 'new-profile' }, `${prof.name} 副本`)}><Plus size={14} /></button>{/if}
       </div>
       {#each app.profiles as p (p.id)}
         {#if edit?.kind === 'profile' && edit.id === p.id}
@@ -737,18 +744,22 @@
         {:else}
           <div class="item" class:on={!lib && p.id === prof.id} class:target={!!drag && canDrop(kProf(p.id))} class:drop={drag?.over === kProf(p.id)}
                data-drop={kProf(p.id)} role="button" tabindex="0"
-               onclick={() => openProfile(p.id)} oncontextmenu={(e) => menuAt(e, profileActions(p))}
+               onclick={() => openProfile(p.id)} oncontextmenu={(e) => inFav ? e.preventDefault() : menuAt(e, profileActions(p))}
                onkeydown={(e) => e.key === 'Enter' && openProfile(p.id)}>
             <span class="nm">{p.name}</span>
             {#if p.id === app.activeProfileId}<span class="dot" title="启动方案"></span>{/if}
-            <span class="ops">
+            {#if !inFav}<span class="ops">
               <button class="icon-btn" title="重命名" onclick={(e) => { e.stopPropagation(); startEdit({ kind: 'profile', id: p.id }, p.name); }}><Pencil size={12} /></button>
               <button class="icon-btn" title="删除" onclick={(e) => { e.stopPropagation(); app.deleteProfile(p.id); }}><Trash size={12} /></button>
-            </span>
+            </span>{/if}
             <span class="mono n">{p.modIds.length}</span>
           </div>
         {/if}
       {/each}
+      <div class="item" class:on={inFav} class:target={!!drag && canDrop(FAV)} class:drop={drag?.over === FAV || fileOver === FAV} data-drop={FAV} role="button" tabindex="0"
+           onclick={() => go(FAV)} onkeydown={(e) => e.key === 'Enter' && go(FAV)}>
+        <span class="lic"><Star size={13} /></span><span class="nm">收藏夹</span><span class="mono n">{favCount}</span>
+      </div>
       {#if edit?.kind === 'new-profile'}
         <input class="inline" bind:value={editValue} onkeydown={onEditKey} onblur={commit} use:focus />
       {/if}
@@ -756,10 +767,6 @@
 
     <div class="group">
       <div class="gh"><span class="section-label">库</span></div>
-      <div class="item" class:on={inFav} class:target={!!drag && canDrop(FAV)} class:drop={drag?.over === FAV} data-drop={FAV} role="button" tabindex="0"
-           onclick={() => go(FAV)} onkeydown={(e) => e.key === 'Enter' && go(FAV)}>
-        <span class="lic"><Star size={13} /></span><span class="nm">收藏</span><span class="mono n">{favCount}</span>
-      </div>
       <div class="item" class:on={inInbox} role="button" tabindex="0" title="下载完成、还没整理的 Mod；不在任何方案里"
            onclick={() => go(INBOX)} onkeydown={(e) => e.key === 'Enter' && go(INBOX)}>
         <span class="lic">{#if downloading}<LoaderCircle size={13} class="spin" />{:else}<Inbox size={13} />{/if}</span><span class="nm">新下载</span>
@@ -773,7 +780,7 @@
 
     <div class="group">
       <div class="gh"><span class="section-label">分类</span>
-        <button class="icon-btn" title="在最外层新建分类" onclick={() => newFolder(ROOT, 'side')}><FolderPlus size={14} /></button>
+        {#if !inFav}<button class="icon-btn" title="在最外层新建分类" onclick={() => newFolder(ROOT, 'side')}><FolderPlus size={14} /></button>{/if}
       </div>
       <div class="item" class:on={!lib && cur === ROOT} class:target={!!drag && canDrop(kCat(ROOT))} class:drop={drag?.over === kCat(ROOT)} data-drop={kCat(ROOT)} role="button" tabindex="0"
            onclick={() => go(ROOT)} onkeydown={(e) => e.key === 'Enter' && go(ROOT)}>
@@ -783,23 +790,24 @@
     </div>
   </aside>
 
+  {#if inFav}
+    <FavoriteLibrary bind:folderId={collectionId} bind:view bind:selected bind:pathOpen={importOpen}
+      {dropping} over={fileOver ?? drag?.over} press={onPress} clickable={() => !suppressClick} locate={show} />
+  {:else}
   <div class="main" class:at-root={!lib && cur === ROOT}>
     <header class="head">
       {#if lib}
       <div class="ttl">
         <div class="name">
-          <span class="hic">{#if inFav}<Star size={16} />{:else if inInbox}<Inbox size={16} />{:else}<Trash size={16} />{/if}</span>
-          <h2>{inFav ? '收藏' : inInbox ? '新下载' : '回收站'}</h2>
+          <span class="hic">{#if inInbox}<Inbox size={16} />{:else}<Trash size={16} />{/if}</span>
+          <h2>{inInbox ? '新下载' : '回收站'}</h2>
           <span class="tag">独立于方案</span>
         </div>
         <p class="sub" role="status">{libSub}</p>
       </div>
       <div class="acts">
         <button class="icon-btn" title="重新扫描 addons 目录" aria-label="重新扫描" disabled={!!app.busy || app.refreshing} onclick={() => app.refresh()}><RefreshCw size={15} class={app.refreshing ? 'spin' : ''} /></button>
-        {#if inFav}
-          <button class="btn ghost" disabled={!scopeMods.length || !!app.busy} onclick={() => newProfileWith(scopeMods.map(m => m.id))}><ListChecks size={14} />{collection ? '用合集新建方案' : '用收藏新建方案'}</button>
-          <button class="btn primary" disabled={!!app.busy} onclick={() => collectionDialog = {mode:'create', seed:[...selected]}}><Plus size={15}/>新建合集</button>
-        {:else if inInbox}
+        {#if inInbox}
           <button class="btn ghost" disabled={!inboxCount} onclick={() => app.markSorted(app.inboxIds())}><CheckCheck size={14} />全部标记已整理</button>
           <button class="btn" disabled={!!workshopBlock} title={workshopBlock || '粘贴创意工坊链接下载（Ctrl+V）'} onclick={() => openWorkshop()}><Link size={14} />工坊链接</button>
         {:else}
@@ -825,25 +833,6 @@
     {#if inTrash}
       <TrashView />
     {:else}
-    {#if inFav && shelves.length}
-      <nav class="shelf" aria-label="收藏合集">
-        <div class="shelf-scroll">
-          <button class="shelf-tab" class:active={!collection} aria-pressed={!collection} onclick={() => openCollection('')}><Star size={14}/><span>全部收藏</span><small>{favCount}</small></button>
-          {#each shelves as {group, members} (group.id)}
-            <button class="shelf-tab" class:active={collection?.id === group.id} aria-pressed={collection?.id === group.id}
-              class:drop={drag?.over === 'g:' + group.id} data-drop={'g:' + group.id} title={group.name}
-              onclick={() => { if (!suppressClick) openCollection(group.id); }} oncontextmenu={(e) => menuAt(e, manageCollection(group))}>
-              {#if members[0]}<span class="shelf-cover"><ModThumb mod={members[0]}/></span>{:else}<Layers size={15}/>{/if}
-              <span>{group.name}</span><small>{members.length}</small>
-            </button>
-          {/each}
-        </div>
-        {#if collection}<div class="shelf-actions">
-          <button class="btn ghost" disabled={!!app.busy} onclick={() => collectionDialog = {mode:'add',group:collection}}><Plus size={14}/>添加成员</button>
-          <button class="icon-btn" title="管理合集" aria-label="管理合集" onclick={(e) => menuBelow(e.currentTarget, manageCollection(collection!))}><Ellipsis size={16}/></button>
-        </div>{/if}
-      </nav>
-    {/if}
     {#if selected.length}
       <div class="toolbar bulk">
         <span class="picked">已选 <b class="mono">{selected.length}</b> 项</span>
@@ -852,7 +841,6 @@
           <button class="btn" disabled={!!app.busy} onclick={() => setInProfile(selected, prof.id, false)}>停用</button>
         {/if}
         {#if inInbox}<button class="btn" onclick={() => app.markSorted(selected)}><CheckCheck size={14} />标记已整理</button>{/if}
-        {#if inFav}<button class="btn" onclick={(e) => menuBelow(e.currentTarget, collectionItems([...selected]))}><Layers size={14} />收藏合集<ChevronDown size={13}/></button>{/if}
         <button class="btn" onclick={() => app.setFavorite(selected, !selAllFav)}><Star size={14} fill={selAllFav ? 'currentColor' : 'none'} />{selAllFav ? '取消收藏' : '收藏'}</button>
         <button class="btn" onclick={(e) => menuBelow(e.currentTarget, profileItems(selected))}><ListChecks size={14} />加入方案<ChevronDown size={13} /></button>
         <button class="btn" onclick={(e) => menuBelow(e.currentTarget, categoryItems(selected))}><FolderInput size={14} />移到分类<ChevronDown size={13} /></button>        <button class="icon-btn del" title={deleteBlock || '删除（移到回收站）'} aria-label="删除" disabled={!!deleteBlock} onclick={() => void removeMods([...selected])}><Trash size={15} /></button>
@@ -873,7 +861,7 @@
         <span class="grow"></span>
         <label class="search">
           <Search size={14} />
-          <input placeholder={collection ? '在这个合集里搜索' : inFav ? '在收藏里搜索' : inInbox ? '在新下载里搜索' : cur === ROOT ? '搜索名称、文件名、作者' : `在「${catName(cur)}」里搜索`} bind:value={f.q} />
+          <input placeholder={inInbox ? '在新下载里搜索' : cur === ROOT ? '搜索名称、文件名、作者' : `在「${catName(cur)}」里搜索`} bind:value={f.q} />
           {#if f.q}<button class="clear" aria-label="清空搜索" onclick={() => (f.q = '')}><X size={13} /></button>{/if}
         </label>
         <span class="sort">
@@ -923,14 +911,7 @@
     <div class="content" class:lib role="presentation" oncontextmenu={(e) => { if (!(e.target as Element).closest('.tile, .row')) menuAt(e, areaItems()); }}>
       {#if !rows.length && !folders.length}
         <div class="empty">
-          {#if collection && !f.q.trim()}
-            <Layers size={28} strokeWidth={1.25}/><p>「{collection.name}」还是空的</p>
-            <button class="btn" onclick={() => collectionDialog = { mode:'add', group:collection }}><Plus size={14}/>从收藏添加</button>
-          {:else if inFav && !f.q.trim()}
-            <Star size={28} strokeWidth={1.25} />
-            <p>还没有收藏的 Mod</p>
-            <span>点卡片右上角的星标，按 F，或者右键选择「收藏」</span>
-          {:else if inInbox && !f.q.trim()}
+          {#if inInbox && !f.q.trim()}
             <Download size={28} strokeWidth={1.25} />
             <p>没有待整理的新下载</p>
             <span>从创意工坊链接下载的 Mod 会先放在这里，不加入任何方案。在 Mod 页按 Ctrl+V 也能粘贴链接</span>
@@ -953,7 +934,7 @@
         <div class="tiles">
           {#each folders as c (c.id)}
             {@const st = stats.get(c.id)!}
-            <div class="tile folder" class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} data-drop={kCat(c.id)}
+            <div class="tile folder" class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id} data-drop={kCat(c.id)}
                  role="button" tabindex="0" aria-label={`打开分类 ${c.name}`}
                  onpointerdown={(e) => onPress(e, c.id, true)} onclick={() => openFolder(c.id)} onkeydown={(e) => onFolderKey(e, c.id)}
                  oncontextmenu={(e) => menuAt(e, folderItems(c.id, 'main'))}>
@@ -1031,7 +1012,7 @@
           </div>
           {#each folders as c (c.id)}
             {@const st = stats.get(c.id)!}
-            <div class="row folder" class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} data-drop={kCat(c.id)}
+            <div class="row folder" class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id} data-drop={kCat(c.id)}
                  role="button" tabindex="0" aria-label={`打开分类 ${c.name}`}
                  onpointerdown={(e) => onPress(e, c.id, true)} onclick={() => openFolder(c.id)} onkeydown={(e) => onFolderKey(e, c.id)}
                  oncontextmenu={(e) => menuAt(e, folderItems(c.id, 'main'))}>
@@ -1096,15 +1077,18 @@
     {/if}
 
     {#if dropping !== null}
-      <div class="dropzone" class:bad={!!importBlock}>
-        <Upload size={30} />
-        <strong>{importBlock || (desktop ? `松开导入${dropping > 1 ? ' ' + dropping + ' 项' : ''}${cur !== ROOT ? '到「' + catName(cur) + '」' : '到 Mod 库'}` : '松开后粘贴本机路径')}</strong>
-        <span>文件夹打成 VPK · 现成的 VPK 直接导入</span>
+      <div class="dropzone" class:bad={fileOver !== FAV && !!importBlock}>
+        {#if fileOver === FAV}<Star size={30}/><strong>松开以收藏</strong><span>只记录原位置</span>
+        {:else}<Upload size={30} />
+          <strong>{importBlock || (desktop ? `松开导入${dropping > 1 ? ' ' + dropping + ' 项' : ''}${cur !== ROOT ? '到「' + catName(cur) + '」' : '到 Mod 库'}` : '松开后粘贴本机路径')}</strong>
+          <span>文件夹打成 VPK · 现成的 VPK 直接导入</span>{/if}
       </div>
     {/if}
   </div>
 
-  {#if detail}
+  {/if}
+
+  {#if !inFav && detail}
     {@const cs = app.conflictsOf(detail.id, scoped)}
     {@const fav = app.isFavorite(detail.id)}
     {@const inProfiles = app.profiles.filter((p) => p.modIds.includes(detail.id))}
@@ -1242,16 +1226,6 @@
 {#if quickTest}<QuickTest seed={quickTest.seed} onclose={()=>quickTest=null}/>{/if}
 
 <style>
-  .shelf,.shelf-scroll,.shelf-tab,.shelf-actions { display:flex; align-items:center; }
-  .shelf { gap:8px; margin:0 20px 10px; border-bottom:1px solid var(--line); }
-  .shelf-scroll { min-width:0; flex:1; gap:5px; overflow-x:auto; scrollbar-width:thin; }
-  .shelf-tab { position:relative; flex:none; gap:7px; height:40px; padding:0 10px; color:var(--fg-3); font-size:13px; }
-  .shelf-tab > span:not(.shelf-cover) { max-width:160px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-  .shelf-tab:hover,.shelf-tab.active { color:var(--fg); }
-  .shelf-tab.active::after { content:''; position:absolute; bottom:0; height:2px; border-radius:2px; inset-inline:8px; background:var(--md-primary); }
-  .shelf-tab small { color:var(--fg-3); font:11px var(--font-mono,monospace); }
-  .shelf-cover { flex:none; width:22px; height:22px; position:relative; overflow:hidden; border-radius:5px; }
-  .shelf-actions { flex:none; gap:1px; } .shelf-actions .btn { font-size:12px; white-space:nowrap; }
   .mods { position: absolute; inset: 0; display: flex; }
   .btn:disabled, .icon-btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
   .grow { flex: 1; }
@@ -1267,6 +1241,10 @@
   .item.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .item.on .n { color: inherit; opacity: .7; }
   .item.target { outline-color: var(--line-strong); }
+  .item.sort-before, .row.sort-before { box-shadow: inset 0 3px var(--md-primary); }
+  .item.sort-after, .row.sort-after { box-shadow: inset 0 -3px var(--md-primary); }
+  .tile.sort-before { box-shadow: inset 3px 0 var(--md-primary); }
+  .tile.sort-after { box-shadow: inset -3px 0 var(--md-primary); }
   .item.drop { outline: 1px solid var(--md-primary); background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .item.moving { opacity: .45; }
   .item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

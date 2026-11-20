@@ -59,6 +59,85 @@ test('favorite collections share desktop and assistant writes, retain stars and 
   assert.deepEqual(reopened.settings.profiles[0].modIds, [ids[1]]);
 });
 
+test('bookmark drops and assistant collections leave installed files and both Mod switches alone', async t => {
+  const f = await fixture(t);
+  const folder = path.join(f.base, 'materials'), installed = path.join(f.addons, 'music.vpk');
+  await fs.mkdir(folder);
+  const external = await vpkFixture(path.join(f.base, 'music.vpk'), { 'addoninfo.txt': addonInfo('收藏的另一套音乐'), 'sound/test.wav': 'sample' });
+  const addonlist = path.join(f.gameRoot, 'left4dead2/addonlist.txt');
+  const files = await fs.readdir(f.addons), switches = await fs.readFile(addonlist), orig = await fs.readFile(installed);
+  const profiles = structuredClone(f.service.settings.profiles), categories = structuredClone(f.service.settings.assignments);
+  f.setRunning([{ pid: 42 }]);
+  const group = await f.service.dispatch('edit-favorite-collection', { action:'create', name:'备选音效' });
+  const drop = paths => f.service.dispatch('bookmark-files', { paths, collectionId:group.id });
+  assert.equal((await drop([installed, external, external])).count, 2);
+  assert.deepEqual(f.service.settings.modMeta['music.vpk'], { inbox:true, favorite:true });
+  const refs = () => Object.values(f.service.settings.favoriteRefs ?? {});
+  const id = refs()[0].id;
+  assert.equal(refs()[0].absolutePath, external);
+  await drop([external]);
+  assert.deepEqual(refs().map(m => m.id), [id]);
+  const inGroup = () => f.run('mod_favorite_collections', { collectionId:group.id });
+  assert.deepEqual((await inGroup()).favorites.map(m => m.id), ['music.vpk', id]);
+  const args = { paths:[folder], collectionId:group.id };
+  assert.equal((await f.run('mod_bookmark_files', args, async () => false)).applied, false);
+  const saved = await f.run('mod_bookmark_files', args);
+  assert.equal((await inGroup()).favorites.filter(m => m.referenceKind === 'folder').length, 1);
+  await f.run('mod_undo', { historyId:saved.historyId });
+  assert.deepEqual(refs().map(m => m.id), [id]);
+  await f.run('mod_favorite_collection', { action:'remove', collectionId:group.id, modIds:[id] });
+  assert.equal((await f.run('mod_favorite_collections')).favorites.find(m => m.id === id).collectionIds.length, 0);
+  await f.service.dispatch('save-mod-meta', { patch:{ [id]:null } });
+  assert.deepEqual(refs(), []);
+  assert.ok((await fs.stat(external)).isFile());
+  assert.ok((await fs.stat(folder)).isDirectory());
+  assert.deepEqual(await fs.readdir(f.addons), files);
+  assert.deepEqual(await fs.readFile(installed), orig);
+  assert.deepEqual(await fs.readFile(addonlist), switches);
+  assert.deepEqual(f.service.settings.profiles, profiles);
+  assert.deepEqual(f.service.settings.assignments, categories);
+});
+
+test('favorite copies into multiple drafts stay independent; external sources import to the library first', async t => {
+  const f=await fixture(t), svc=f.service, ok={approved:true,source:'user'};
+  const cmd=(name,p)=>svc.dispatch(name,p,ok);
+  const base=structuredClone(svc.settings.profiles[0]);
+  for(const id of ['a','b']) await cmd('save-profile',{profile:{...base,id,name:id}});
+  const folder=path.join(f.base,'Sea'),file=await vpkFixture(path.join(f.base,'extra.vpk'),{'scripts/a.txt':'a'});
+  await fs.mkdir(path.join(folder,'materials'),{recursive:true});await fs.writeFile(path.join(folder,'materials/a.txt'),'a');
+  await cmd('bookmark-files',{paths:[file,folder]});
+  const refs=Object.values(svc.settings.favoriteRefs), ids=refs.map(r=>r.id), group=await cmd('edit-favorite-collection',{action:'create',name:'收藏',modIds:ids});
+  const args={favoriteIds:ids,profileIds:['a','b'],gameRoot:f.gameRoot};
+  await assert.rejects(cmd('favorite-to-profiles',args),{code:'favorite_unavailable'});
+  await cmd('import-mod',{favoriteId:ids[0],file,gameRoot:f.gameRoot});
+  const input=await cmd('preview-mod-input',{file:folder,replaceExisting:true});
+  const {taskId}=await cmd('pack-mod-folder',{favoriteId:ids[1],file:folder,sourceStamp:input.sourceStamp,gameRoot:f.gameRoot});
+  let task;for(let i=0;i<180;i++){task=svc.tasks.list().find(t=>t.taskId===taskId);if(['done','failed'].includes(task?.state))break;await delay(25);}
+  assert.equal(task.state,'done',task.error?.message);assert.equal(task.favoriteImport,true);
+  const profiles=()=>svc.settings.profiles, memberIds=()=>profiles().map(p=>p.modIds);
+  assert.deepEqual(memberIds(),[base.modIds,base.modIds,base.modIds]);
+  const list=path.join(f.gameRoot,'left4dead2/addonlist.txt'), before=await fs.readFile(list);
+  assert.equal((await cmd('favorite-to-profiles',args)).added,4);
+  assert.equal((await cmd('favorite-to-profiles',args)).added,0);
+  assert.deepEqual(memberIds()[0],base.modIds);assert.deepEqual(memberIds()[1],memberIds()[2]);
+  assert.deepEqual(await fs.readFile(list),before);assert.equal(svc.settings.activeProfileId,base.id);
+  await cmd('save-profile',{profile:{...profiles().find(p=>p.id==='a'),modIds:[]}});
+  await cmd('delete-profile',{id:'b'});
+  assert.deepEqual(svc.settings.favoriteCollections.find(c=>c.id===group.id).modIds,ids);
+  await f.run('mod_favorites_to_profiles',{favoriteIds:ids,profileIds:['a']});
+  const kept=structuredClone(profiles().find(p=>p.id==='a').modIds);
+  await cmd('save-mod-meta',{patch:{[ids[0]]:null}});
+  assert.deepEqual(profiles().find(p=>p.id==='a').modIds,kept);
+  await cmd('edit-favorite-collection',{action:'add',collectionId:group.id,modIds:['music.vpk']});
+  const {trashed}=await cmd('delete-mods',{ids:['music.vpk']});
+  assert.equal(svc.settings.favoriteRefs['music.vpk'].title,'音乐');
+  assert.ok(svc.settings.favoriteCollections[0].modIds.includes('music.vpk'));
+  await cmd('save-mod-meta',{patch:{'music.vpk':null}});
+  await cmd('restore-mods',{trashIds:[trashed[0].trashId]});
+  assert.ok(!svc.settings.modMeta['music.vpk']?.favorite);
+  assert.ok(!svc.settings.favoriteCollections[0].modIds.includes('music.vpk'));
+});
+
 test('Mod P1 inspection compares actual bytes across preload/split layouts and paginates', async t => {
   const f = await fixture(t);
   const resources = { 'addoninfo.txt': addonInfo('另一个说明'), 'models/weapons/rifle.mdl': Buffer.alloc(160000, 65), 'scripts/test.cfg': Buffer.concat([Buffer.from([255,254]), Buffer.from('音量 0.5', 'utf16le')]) };
