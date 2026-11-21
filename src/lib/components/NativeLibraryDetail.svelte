@@ -5,6 +5,7 @@
   import Plus from '@lucide/svelte/icons/plus';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import { desktop } from '../api/bridge';
+  import { browser } from '../browser/browser.svelte';
   import { libraryUpdate, needsDownload, sizeLabel } from '../plugins/native-offer';
   import type { L4nSubPlugin } from '../types';
   const env = $derived(app.nativeLibraries);
@@ -30,8 +31,11 @@
     <div class="text">
       <div class="eyebrow">整包 · 外部平台</div>
       <h1>L4N</h1>
-      <p class="byline"><span>Starfelll / nekonacho</span><span class="mono">{env?.l4n.version ? '本机 v'+env.l4n.version : env?.l4n.installed ? '本机版本待识别' : '本机未安装'}</span></p>
-      <p class="summary">{env?.l4n.unmanaged ? '沿用这个游戏目录已有的 L4N，子插件在下方管理。' : '由 Matcha 安装的整包可以整体启停。'} 内部功能在 L4N 的游戏内菜单里设置。</p>
+      <p class="byline"><span>Starfelll / nekonacho</span>
+        {#if env}<span>本机：{env.l4n.version ? 'v'+env.l4n.version : env.l4n.installed ? '版本未知' : '未安装'}</span><span>可用版本：{env.l4n.availableVersion ? 'v'+env.l4n.availableVersion : '未知'}</span>
+        {:else}<span>正在读取版本…</span>{/if}
+      </p>
+      <p class="summary">内部功能在 L4N 的游戏内菜单里设置，第三方子插件可在下方单独启停。</p>
     </div>
   </header>
 
@@ -94,14 +98,13 @@
         </ol>
       </section>
       <section>
-        <h3>L4N 本体为什么只能整体启停</h3>
-        <p>L4N 没有按 Matcha 的模块接口拆分，加载的是它自带的完整入口。Matcha 只负责切换入口文件：停用时还原安装前的文件，保留个人设置和素材；启用时从所选版本包恢复。上面的子插件是另外的 DLL，可以单独开关。</p>
+        <h3>Matcha 管理的整包怎样启停</h3>
+        <p>L4N 本体使用整包入口。由 Matcha 安装时，启用会从所选版本包恢复入口，停用会还原安装前的文件。个人设置和素材保留。</p>
       </section>
       <section>
         <h3>组件来源</h3>
         <dl class="facts">
-          <div><dt>L4N</dt><dd>{env?.l4n.sourceKind === 'release-archive' ? 'STC214/l4n-releases 版本备份仓库' : '作者 Steam 工坊 3558049615'} · v{env?.l4n.availableVersion ?? '—'}</dd></div>
-          
+          <div><dt>可用包</dt><dd>{env ? (env.l4n.sourceKind === 'release-archive' ? 'STC214/l4n-releases 版本备份仓库' : '作者 Steam 工坊 3558049615') : '读取中…'}</dd></div>
         </dl>
         <p class="muted">切换前展示文件清单，原文件随操作记录备份。游戏内兼容性以实际游玩为准。</p>
       </section>
@@ -113,15 +116,16 @@
           {#each [env.l4n] as lib (lib.id)}
             {@const title = 'L4N 整体加载'}
             {@const to = libraryUpdate(lib)}
-            {#if lib.unmanaged}<div class="line"><strong>本机已有 L4N</strong><small>{lib.enabled ? '入口已启用' : '入口已停用'}</small></div>
+            {#if lib.unmanaged}<div class="line"><div><strong>手动安装</strong><small>整包由你维护，请按原安装方式更新。</small></div></div>
+              {#if lib.source}<button class="btn sm" onclick={() => { browser.open(lib.source); app.route = 'browser'; }}>查看可用版本来源</button>{/if}
             {:else if needsDownload(lib)}
               <!-- 本机没有组件文件：先下载，下载完再确认启用 -->
               <div class="line"><div><strong>{title}</strong><small>还没下载{lib.download ? ` · v${lib.download.version}${sizeLabel(lib.download.sizeBytes) ? ` · 约 ${sizeLabel(lib.download.sizeBytes)}` : ''}` : ''}</small></div>
                 {#if app.downloadTask(`native:${lib.id}`)}<span class="dling">下载中…</span>{:else}<button class="btn sm" disabled={!!lock} title={lock || '先确认来源和大小再下载'} onclick={() => app.downloadNativeLibrary(lib.id)}>下载…</button>{/if}</div>
             {:else}
-              <div class="line"><div><strong>{title}</strong><small>{lib.installed ? `已安装${lib.version ? ' v' + lib.version : ''}` : lib.availability === 'downloaded' ? `已下载 v${lib.download?.version ?? lib.availableVersion}，启用时装进游戏` : '首次启用时安装随包版本'}</small></div>
+              <div class="line"><div><strong>{title}</strong><small>{lib.installed ? 'Matcha 管理' : lib.availability === 'downloaded' ? '已下载，确认启用后安装' : '首次启用时安装随包版本'}</small></div>
                 <Toggle on={lib.enabled} disabled={busy || lib.pending} onchange={() => app.setNativeLibrary(lib.id, !lib.enabled)} label={`${lib.enabled ? '停用' : '启用'} ${lib.id === 'l4n' ? 'L4N 整包' : 'DXVK'}`}/></div>
-              {#if to}<button class="btn sm" disabled={!!lock || lib.pending} onclick={() => (lib.download ? app.downloadNativeLibrary(lib.id) : app.setNativeLibrary(lib.id, true))}>更新到 v{to}{lib.download ? '…' : ''}</button>{/if}
+              {#if to}<button class="btn sm" disabled={!!lock || lib.pending || !!app.downloadTask(`native:${lib.id}`)} onclick={() => app.updateNativeLibrary()}>{lib.enabled ? '更新到' : '更新并启用'} v{to}…</button>{/if}
             {/if}
           {/each}
           {#if env.l4n.supportsLaunchToggle}<div class="line"><div><strong>随 Matcha 启动 L4N</strong><small>仅作用于平台模式。关闭后跳过 L4N 及依赖它的模组。</small></div>

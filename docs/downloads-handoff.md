@@ -23,6 +23,10 @@
 - **限速**：`speedLimit` 为非负安全整数，单位 **B/s**，默认 0 表示不限。这个额度由工坊和 GameMaps 的文件传输**合计共享**。保存后，正在传输的文件立即使用新额度。例：1 MiB/s 写 `1048576`。
 - 设置独立保存在应用数据目录的 `download-settings.json`。可以只改一个字段；越界、小数或未知字段返回 `invalid_argument`，原值保留。内置浏览器标签页里由网页发起的 `BrowserDownload` 走独立的 WebView2 下载列表。
 
+## 发现里的网页下载
+
+同一个下载页按网页记录 `id` 调用 `browser_call` 的 `download-pause`、`download-resume`、`download-cancel`。WebView2 回报状态后再更新按钮：`paused` 为用户暂停，`waiting` 为可恢复或可能自动重试的传输中断；`canResume` 决定是否提供「继续」。网站可能要求从头传输。关闭来源标签后仍可操作这笔下载；退出 Matcha 后，未结束的网页下载在下次启动时记为 `interrupted`，可从来源页重新下载。
+
 ## 删除记录与历史保留
 
 `task-remove` 只处理 `done / failed / canceled`。未结束和未知 ID 跳过，重复 ID 只处理一次；前端按回执 `removed` 从任务列表移除。磁盘上的已下载文件、已导入 Mod、解包目录及来源凭据全部保留。「收进历史」继续用本机归档标记；真正删除时才调用此命令。网页记录使用独立的 `BrowserDownload.id`。
@@ -32,7 +36,7 @@
 ## 历史时间：按结束时间分月
 
 - **ModTask**：新增 `finishedAt?: string`。成功、失败、取消时写入，此次结束后保持固定；重试会清空，直至本次尝试结束。旧的终态记录用原 `updatedAt` 补齐。意外退出后首次恢复的未完成任务以恢复时间记为 `failed / task_interrupted`；暂停任务继续保持 `paused`。
-- **BrowserDownload**：新增 `startedAt?: string`、`finishedAt?: string`，随原有 `browser-event` 的 `download` 和 `browser_call` 的 `downloads` 动作返回。开始时写前者，成功 / 失败时写后者。重启发现中断时，记录首次发现时间并保存。旧的已结束网页记录可以缺少两者。
+- **BrowserDownload**：`startedAt?: string`、`finishedAt?: string` 随 `browser-event` 的 `download` 和 `browser_call` 的 `downloads` 动作返回。开始时写前者，成功、失败或取消时写后者。重启发现中断时，记录首次发现时间并保存。旧的已结束网页记录可以缺少两者。
 - 时间均为 UTC ISO 8601 字符串。按用户本地月份分组：任务取 `finishedAt ?? updatedAt`，网页取 `finishedAt ?? startedAt`；网页两者均缺时保留「没有记录时间」。
 
 ## 系统通知：点击屏幕弹窗回到下载页

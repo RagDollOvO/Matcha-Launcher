@@ -5,7 +5,7 @@
 import { SvelteSet } from 'svelte/reactivity';
 import { getCurrentWindow, ProgressBarStatus } from '@tauri-apps/api/window';
 import { app } from './app.svelte';
-import { browser, type BrowserDownload } from '../browser/browser.svelte';
+import { browser, type BrowserDownload, type WebDownloadAction } from '../browser/browser.svelte';
 import { sfx } from '../sound/sfx.svelte';
 import { transfer, span } from './transfer.svelte';
 import { desktop, errorText } from '../api/bridge';
@@ -73,7 +73,8 @@ export function taskLine(t: ModTask): string {
   }
 }
 
-export const webEnded = (d: BrowserDownload) => d.state !== 'downloading';
+const webPending = (state: BrowserDownload['state'] | undefined) => state === 'downloading' || state === 'paused' || state === 'waiting';
+export const webEnded = (d: BrowserDownload) => !webPending(d.state);
 /** 网页下载有字节进度；兼容没有字节数的旧下载记录 */
 export const webSized = (d: BrowserDownload) => d.state === 'downloading' && d.received !== undefined;
 
@@ -100,7 +101,13 @@ class Downloads {
   pausable = $derived(this.active.filter((t) => t.pausable && t.state !== 'paused'));
   finished = $derived(this.tasks.filter(ended));
   web = $derived(browser.downloads.filter((d) => !this.hiddenWeb.has(d.id)));
-  webActive = $derived(this.web.filter((d) => d.state === 'downloading'));
+  webActive = $derived(this.web.filter((d) => !webEnded(d)));
+  webLive = $derived(this.webActive.filter((d) => d.state === 'downloading'));
+  webPaused = $derived(this.webActive.filter((d) => d.state === 'paused'));
+  webPausable = $derived(this.webLive.filter((d) => d.controllable));
+  webResumable = $derived(this.webActive.filter((d) => d.controllable && d.canResume));
+  webCancelable = $derived(this.webActive.filter((d) => d.controllable));
+  webCommands = new SvelteSet<string>();
   /** 「当前」里显示的：最近 7 天结束、没收进历史的；旧网页记录没有时间，没收进历史的都算 */
   recent = $derived(this.finished.filter((t) => !this.archived.has(t.taskId) && Date.now() - Date.parse(endAt(t)) < RECENT_MS));
   webRecent = $derived(this.web.filter((d) => {
@@ -111,12 +118,12 @@ class Downloads {
   /** 历史：所有结束的记录（删除记录的除外） */
   historyCount = $derived(this.finished.length + this.web.filter(webEnded).length);
   /** 侧栏角标：进行中的总数（暂停的不算） */
-  busy = $derived(this.live.length + this.webActive.length);
+  busy = $derived(this.live.length + this.webLive.length);
   /** 总进度：全是字节就按字节加权（大文件不被小文件拉偏）；混了解包的文件数就取各自比例的平均 */
   overall = $derived.by(() => {
     const sized = [
       ...this.live.filter((t) => t.total).map(t => ({ done: t.done, total: t.total!, unit: t.unit })),
-      ...this.webActive.filter(d => d.total && d.received !== undefined).map(d => ({ done: d.received!, total: d.total!, unit: 'bytes' })),
+      ...this.webLive.filter(d => d.total && d.received !== undefined).map(d => ({ done: d.received!, total: d.total!, unit: 'bytes' })),
     ];
     if (!sized.length) return null;
     if (sized.every((t) => t.unit === 'bytes')) return Math.min(1, sized.reduce((n, t) => n + t.done, 0) / sized.reduce((n, t) => n + t.total, 0));
@@ -124,16 +131,16 @@ class Downloads {
   });
 
   /** 有下载没结束就一直测速（含排队和校验）：一个下完、下一个刚开始的空档里曲线不断开 */
-  measuring = $derived(this.live.some((t) => t.kind === 'download') || this.webActive.some(webSized));
+  measuring = $derived(this.live.some((t) => t.kind === 'download') || this.webLive.some(webSized));
   /** 正在传字节的下载 id：创意工坊 / GameMaps 任务 + 有进度的网页下载 */
-  streams = $derived([...this.active.filter(streaming).map((t) => t.taskId), ...this.webActive.filter(webSized).map((d) => d.id)]);
+  streams = $derived([...this.active.filter(streaming).map((t) => t.taskId), ...this.webLive.filter(webSized).map((d) => d.id)]);
   /** 实时总速度（字节/秒）；还没结算出来时为 0 */
   speed = $derived(this.streams.reduce((n, id) => n + (transfer.rates[id]?.speed ?? 0), 0));
   /** 传输中的已下 / 总量；有任何一项总量未知就是 null */
   received = $derived.by(() => {
     let done = 0, total: number | null = 0;
     for (const t of this.active) if (streaming(t)) { done += t.done; total = total !== null && t.total ? total + t.total : null; }
-    for (const d of this.webActive) if (webSized(d)) { done += d.received!; total = total !== null && d.total ? total + d.total : null; }
+    for (const d of this.webLive) if (webSized(d)) { done += d.received!; total = total !== null && d.total ? total + d.total : null; }
     return { done, total };
   });
   /** 正在传的这批全部下完还要多久：取最慢的那个（宁可说久一点）；任何一个估不出来就不估。排队的不算在内 */
@@ -212,7 +219,7 @@ class Downloads {
           webStates.set(d.id, d.state);
           if (!primed) continue;
           if (!prev && d.state === 'downloading') sfx.play('download');
-          if (prev === 'downloading' && d.state === 'done') {
+          if (webPending(prev) && d.state === 'done') {
             this.arrive(d.id);
             sfx.play('done');
             support.web(d);
@@ -220,7 +227,7 @@ class Downloads {
             const mod = /\.(vpk|zip)$/i.test(d.name);
             app.notify({ kind: 'ok', title: '网页下载完成', text: d.name, actions: mod ? [{ label: '去导入', run: () => (app.route = 'downloads') }] : [{ label: '打开文件夹', run: () => app.reveal(d.path) }], ms: 7000 });
           }
-          if (prev === 'downloading' && (d.state === 'failed' || d.state === 'interrupted')) {
+          if (webPending(prev) && (d.state === 'failed' || d.state === 'interrupted')) {
             sfx.play('error');
             systemNotify({ ok: false, name: d.name, web: true });
             app.notify({ kind: 'error', title: d.state === 'interrupted' ? '网页下载中断' : '网页下载失败', text: `${d.name} · 回到原网页重新下载`, actions: d.pageUrl ? [{ label: '打开原网页', run: () => { browser.open(d.pageUrl); app.route = 'browser'; } }] : [], ms: 8000 });
@@ -245,7 +252,7 @@ class Downloads {
     for (const t of this.finished.filter((x) => x.state === 'failed')) await app.retryTask(t.taskId);
   }
 
-  /** 「全部收进历史」：结束的任务和失败 / 中断的网页下载离开「当前」；下好的网页文件还等着导入，留着 */
+  /** 「全部收进历史」：结束的任务和未下完的网页记录离开「当前」；下好的网页文件还等着导入，留着 */
   clearEnded() {
     for (const t of this.recent) this.archived.add(t.taskId);
     for (const d of this.webRecent) if (d.state !== 'done') this.archivedWeb.add(d.id);
@@ -270,14 +277,29 @@ class Downloads {
     return ids.length;
   }
 
+  async controlWeb(d: BrowserDownload, action: WebDownloadAction) {
+    const current = this.webActive.find((row) => row.id === d.id);
+    if (!current?.controllable || this.webCommands.has(d.id)) return;
+    if (action === 'pause' && current.state !== 'downloading') return;
+    if (action === 'resume' && !current.canResume) return;
+    this.webCommands.add(d.id);
+    try { await browser.controlDownload(d.id, action); }
+    catch (e) { app.notify({ kind: 'error', title: d.name, text: errorText(e) }); }
+    finally { this.webCommands.delete(d.id); }
+  }
+
   /** 全部暂停：先停排队的，再停正在跑的，免得刚停一个、后面排队的又顶上来开工 */
   async pauseAll() {
     const queued = this.pausable.filter((t) => t.state === 'queued'), rest = this.pausable.filter((t) => t.state !== 'queued');
+    const web = this.webPausable;
     for (const t of [...queued, ...rest]) await app.pauseTask(t.taskId, true);
+    for (const d of web) await this.controlWeb(d, 'pause');
   }
   /** 按原来的先后依次继续，回到队尾 */
   async resumeAll() {
+    const web = [...this.webResumable].reverse();
     for (const t of [...this.paused].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) await app.resumeTask(t.taskId);
+    for (const d of web) await this.controlWeb(d, 'resume');
   }
 
   async loadLimits() {

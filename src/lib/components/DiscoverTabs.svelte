@@ -18,20 +18,24 @@
   // 固定标签：创意工坊、B站；其余是内置浏览器的网页标签
   const onWorkshop = $derived(app.route === 'workshop' || app.route === 'bilibili' || app.route === 'gamemaps');
   // 空白的新标签页只在正看着它时显示，免得一直多挂一个「新标签页」
-  const shown = $derived(snap.tabs.filter((t) => t.url !== START_URL || (!onWorkshop && t.id === snap.activeId)));
+  const shown = $derived(snap.tabs.filter((t) => t.url !== START_URL || browser.linkDrafts[t.id] || (!onWorkshop && t.id === snap.activeId)));
   const activeKey = $derived(onWorkshop ? app.route : snap.activeId ?? '');
 
   function openTab(id: string) { tabs.activate(id); browser.downloadsOpen = false; app.route = 'browser'; }
   function newTab() {
-    const blank = snap.tabs.find((t) => t.url === START_URL);
+    const blank = snap.tabs.find((t) => t.url === START_URL && !browser.linkDrafts[t.id]);
     if (blank) tabs.activate(blank.id); else tabs.newTab();
     app.route = 'browser';
   }
   function close(id: string) {
-    const wasActive = !onWorkshop && id === snap.activeId;
+    const wasActive = app.route === 'browser' && id === snap.activeId;
+    // Choose among the tabs the player can see; the store also keeps a blank start tab.
+    const i = shown.findIndex(t => t.id === id);
+    const neighbor = shown[i + 1] ?? shown[i - 1];
     tabs.closeTab(id);
-    // 关掉最后一个网页就回到创意工坊
-    if (wasActive && !tabs.getSnapshot().tabs.some((t) => t.url !== START_URL)) app.route = 'workshop';
+    if (!wasActive) return;
+    if (!neighbor) app.closeLastWebTab();
+    else if (tabs.activeTab()?.id !== neighbor.id) tabs.activate(neighbor.id);
   }
 
   // 底部指示条：一根 1px 宽的条用 translateX + scaleX 移到当前标签下
@@ -62,12 +66,13 @@
   {#if shown.length}<span class="sep" aria-hidden="true"></span>{/if}
   {#each shown as tab (tab.id)}
     {@const on = !onWorkshop && tab.id === snap.activeId}
+    {@const label = tab.url === START_URL ? (browser.linkDrafts[tab.id] ? '编辑链接' : '新标签页') : tab.label}
     <div class="tab web" data-key={tab.id} class:on>
-      <button class="open" role="tab" aria-selected={on} data-sfx="tab" title={tab.url === START_URL ? '新标签页' : tab.url} onclick={() => openTab(tab.id)}>
+      <button class="open" role="tab" aria-selected={on} data-sfx="tab" title={tab.url === START_URL ? label : tab.url} onclick={() => openTab(tab.id)}>
         {#if browser.loading[tab.id]}<LoaderCircle class="spin" size={13} />{:else}<Globe size={13} />{/if}
-        <span>{tab.url === START_URL ? '新标签页' : tab.label}</span>
+        <span>{label}</span>
       </button>
-      <button class="x" aria-label={`关闭 ${tab.label || '新标签页'}`} data-sfx="close" onclick={() => close(tab.id)}><X size={12} /></button>
+      <button class="x" aria-label={`关闭 ${label}`} data-sfx="close" onclick={() => close(tab.id)}><X size={12} /></button>
     </div>
   {/each}
   <button class="new" title="打开网页（B站、爱发电…）" aria-label="新标签页" onclick={newTab}><Plus size={15} /></button>

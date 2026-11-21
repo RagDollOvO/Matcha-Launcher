@@ -59,10 +59,10 @@ async fn clear(app:&tauri::AppHandle,p:PathBuf,i:usize)->Result<(),String>{
 pub async fn request(app:&tauri::AppHandle,p:&Value)->Result<Value,(String,String)>{
     let s=app.state::<BrowserState>();let error=|e:String|("storage_native".into(),e);
     match p["action"].as_str(){
-        Some("freeze")=>{let rows=s.downloads.lock().unwrap();if rows.iter().any(|r|r["state"]=="downloading"){return Err(("storage_busy".into(),"内置浏览器有下载正在进行。".into()))}s.routes.lock().unwrap().blocked=true;}
+        Some("freeze")=>{let rows=s.downloads.lock().unwrap();if rows.iter().any(super::downloads::pending){return Err(("storage_busy".into(),"请先完成或取消网页下载，再移动存储位置。".into()))}s.routes.lock().unwrap().blocked=true;}
         Some("thaw")=>s.routes.lock().unwrap().blocked=false,
         Some("patch")=>{let mut rows=s.downloads.lock().unwrap();let mut next=rows.clone();
-            let row=next.iter_mut().find(|r|r["id"]==p["rowId"]&&r["path"]==p["oldPath"]&&r["state"]!="downloading").ok_or_else(||error("网页下载记录已变化".into()))?;
+            let row=next.iter_mut().find(|r|r["id"]==p["rowId"]&&r["path"]==p["oldPath"]&&!super::downloads::pending(r)).ok_or_else(||error("网页下载记录已变化".into()))?;
             for k in ["path","archiveStamp","cleaned","cleanupPending","selectionStamp","importedNames"] {if let Some(v)=p["patch"].get(k){row[k]=v.clone();}}
             let updated=row.clone();s.save(&next).map_err(error)?;*rows=next;event(app,json!({"type":"download","download":updated}));
         }

@@ -13,6 +13,7 @@ import { PiConfigFiles } from '../pi/config-files.mjs';
 import { listSessions, trashSession } from '../pi/session-files.mjs';
 import { platformToolCatalog } from '../pi/platform-extension.mjs';
 import { ModManager } from '../mods/manager.mjs';
+import { ConflictFileIndex } from '../mods/conflicts.mjs';
 import { displayNames } from '../mods/display-names.mjs';
 import { planFavoriteCollection, withoutMembers } from '../mods/favorite-collections.mjs';
 import { bookmarkFiles } from '../mods/favorite-files.mjs';
@@ -660,9 +661,10 @@ export class DesktopService extends EventEmitter {
     }
     const { plugins, availablePlugins, nativeLibraries, l4nPlugins, runtime, normalProcess, externalPacks } = await this.dllSnapshot(root, inspection, issues);
     const process = normalProcess ?? inspection?.processes.find(p => p.path && path.basename(p.path).toLowerCase() === 'left4dead2.exe' && (d => samePath(path.dirname(d), root) && isFolder(d, 'tests'))(path.dirname(path.dirname(p.path))));
+    const fileIndex = new ConflictFileIndex();
     let modInventory = { mods: [], conflicts: [], issues: [], writable: false, addonListPath: '' };
     if (inspection) {
-      try { modInventory = await this.modManager.scan(root); }
+      try { modInventory = await this.modManager.scan(root, { fileIndex }); }
       catch (e) { issues.push(core.errorRecord(e)); }
     }
     issues.push(...modInventory.issues);
@@ -677,6 +679,7 @@ export class DesktopService extends EventEmitter {
     try { ({ servers, serverLayout } = await this.serverManager.snapshot()); }
     catch (e) { issues.push(core.errorRecord(e)); }
     const platforms = [];
+    this.modFileIndex = { root, fileIndex };
     return {
       game: { installed: !!inspection, root, steamId: '550', build: inspection?.steamBuildId ?? '—', running: !!process, pid: process?.pid },
       launch: launchSpec(this.launchMode, undefined, this.gameSettings()),
@@ -760,6 +763,11 @@ export class DesktopService extends EventEmitter {
         child.once('error', reject); child.once('spawn', () => { child.unref(); resolve(); });
       });
       return { status: 'opened' };
+    }
+    if (command === 'mod-conflict-files') {
+      if (!this.modFileIndex || this.modFileIndex.root !== params.gameRoot)
+        fail('context_changed', 'Mod 清单已变化，请重新扫描。');
+      return this.modFileIndex.fileIndex.page(params);
     }
     if (command === 'mod-sounds' || command === 'mod-sound') {
       const ref=this.settings.favoriteRefs?.[params.id], source=ref?.referenceKind==='vpk' ? ref.absolutePath : undefined;

@@ -1,15 +1,16 @@
 import { fail } from './files.mjs';
 import { workshopId } from './library.mjs';
 
-const sorts = ['trend', 'mostrecent', 'lastupdated', 'totaluniquesubscribers'];
+const sorts = ['trend', 'mostrecent', 'lastupdated', 'totaluniquesubscribers', 'textsearch'];
 export function browseUrl({ search = '', sort = 'trend', tag = '', page = 1, kind = 'item' } = {}) {
   if (typeof search !== 'string' || search.length > 200 || typeof tag !== 'string' || tag.length > 80 ||
       !sorts.includes(sort) || !Number.isInteger(page) || page < 1 || page > 1000 || !['item', 'collection'].includes(kind)) {
     fail('invalid_argument', '请检查工坊搜索条件（关键词最多 200 字，第 1–1000 页）。');
   }
+  const keyword = search.trim();
   const url = new URL('https://steamcommunity.com/workshop/browse/');
-  url.search = new URLSearchParams({ appid: '550', browsesort: sort, section: kind === 'collection' ? 'collections' : 'readytouseitems',
-    days: '7', p: String(page), numperpage: '30', searchtext: search.trim(), l: 'schinese' }).toString();
+  url.search = new URLSearchParams({ appid: '550', browsesort: sort === 'textsearch' && !keyword ? 'trend' : sort, section: kind === 'collection' ? 'collections' : 'readytouseitems',
+    days: '7', p: String(page), numperpage: '30', searchtext: keyword, l: 'schinese' }).toString();
   if (tag) url.searchParams.set('requiredtags[]', tag);
   return url.href;
 }

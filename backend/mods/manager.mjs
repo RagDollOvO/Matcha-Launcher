@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PlatformError, errorRecord, inspectGame } from '../core.mjs';
 import { readVpk, readResource, regular, identity } from './vpk.mjs';
+import { compareResources } from './conflicts.mjs';
 import { readAddonList, updateAddonList, addonKey } from './addonlist.mjs';
 import { ModLibrary, libraryWorkshopId, deployName } from './library.mjs';
 import { gameFolder } from '../legacy-names.mjs';
@@ -13,21 +14,6 @@ export { directory } from './files.mjs';
 
 const fail = (code, message) => { throw new PlatformError(code, message); };
 const exists = p => fs.lstat(p).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; });
-function compareResources(items) {
-  const byPath = new Map(), pairs = new Map();
-  for (const m of items) for (const resource of m.resources ?? []) {
-    const owners = byPath.get(resource) ?? [];
-    for (const other of owners) {
-      const key = JSON.stringify([other, m.id]);
-      let pair = pairs.get(key);
-      if (!pair) { pair = { id: key, a: other, b: m.id, paths: [], pathCount: 0 }; pairs.set(key, pair); }
-      pair.pathCount++;
-      if (pair.paths.length < 200) pair.paths.push(resource);
-    }
-    owners.push(m.id); byPath.set(resource, owners);
-  }
-  return [...pairs.values()];
-}
 
 export class ModManager {
   constructor(options = {}) {
@@ -103,7 +89,7 @@ export class ModManager {
     const dataUrl = body?.[0] === 0xff && body?.[1] === 0xd8 && body?.[2] === 0xff ? `data:image/jpeg;base64,${body.toString('base64')}` : null;
     return { dataUrl, ...(archived && !dataUrl && { dirs }) };
   }
-  async scan(gameRoot, { conflicts = true } = {}) {
+  async scan(gameRoot, { conflicts = true, fileIndex } = {}) {
     const content = await directory(path.join(gameRoot, 'left4dead2'));
     const addons = path.join(content, 'addons'), items = [], issues = [];
     let document = null;
@@ -166,7 +152,7 @@ export class ModManager {
     for (const p of this.cache.keys()) if (!used.has(p)) this.cache.delete(p);
     const names = this.displayNames(gameRoot);
     return { mods: items.map(({ resources, ...m }) => m.kind === 'platform-package' ? m
-      : { ...m, sourceTitle: m.title, title: names[m.id] ?? m.title }), conflicts: conflicts ? compareResources(items) : [], issues,
+      : { ...m, sourceTitle: m.title, title: names[m.id] ?? m.title }), conflicts: conflicts ? compareResources(items, fileIndex) : [], issues,
       writable: !!document, addonListPath: path.join(content, 'addonlist.txt') };
   }
   async idle(root) {

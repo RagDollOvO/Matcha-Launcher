@@ -22,13 +22,14 @@
   import Heart from '@lucide/svelte/icons/heart';
   import GitBranch from '@lucide/svelte/icons/git-branch';
   import Link from '@lucide/svelte/icons/link';
+  import Pencil from '@lucide/svelte/icons/pencil';
   import Package from '@lucide/svelte/icons/package';
   import DiscoverTabs from '../components/DiscoverTabs.svelte';
   import '../styles/discover.css';
   import { api } from '../api';
   import { errorText } from '../api/bridge';
   import { biliApi, biliBlocked, biliMissing, cover, playCount, type BiliDetail } from '../api/bilibili';
-  import { extractLinks, isDisk, linkBadges, looksLikeBili, type FoundLink } from '../bilibili-links';
+  import { extractLinks, isDisk, linkBadges, linkSegments as segments, looksLikeBili, type FoundLink } from '../bilibili-links';
   import { score, compileKeywords, dayGroup, type Scored } from '../bilibili-filter';
   import { biliFilter } from '../stores/bili-filter.svelte';
   import { openSettings } from '../stores/nav.svelte';
@@ -124,12 +125,12 @@
   let sentinelEl = $state<HTMLDivElement>();
   let filling = false;
   async function fillIfShort() {
-    if (filling) return;
+    if (filling || app.route !== 'bilibili') return;
     filling = true;
     try {
       for (let n = 0; n < 4; n++) {
         await tick();
-        if (!sentinelEl || !scroller) return;
+        if (app.route !== 'bilibili' || !sentinelEl || !scroller) return;
         if (sentinelEl.getBoundingClientRect().top - scroller.getBoundingClientRect().bottom > 600) return;
         if (!await more()) return;
       }
@@ -184,24 +185,22 @@
     browser.open(url, creatorOf(detail.url, detail.title) ?? undefined);
     app.route = 'browser';
   }
+  function editFromVideo(raw: string) {
+    const video = detail;
+    if (!video) return;
+    browser.editAddress(raw, creatorOf(video.url, video.title) ?? undefined, url => support.viaBiliLink(video, url));
+    app.route = 'browser';
+  }
+  function selectedIn(p: Element | null) {
+    const s = window.getSelection();
+    return s && !s.isCollapsed && p?.contains(s.anchorNode) && p.contains(s.focusNode) ? s.toString() : '';
+  }
   async function openDisk(l: FoundLink) {
     if (l.code) { try { await navigator.clipboard.writeText(l.code); app.toast(`提取码 ${l.code} 已复制，网页里直接粘贴`); } catch { app.toast(`提取码：${l.code}`); } }
     openFromVideo(l.url);
   }
   function searchInBrowser() { openPage(`https://search.bilibili.com/all?keyword=${encodeURIComponent(keyword())}`); }
 
-  /** 简介文字切成文本 / 链接两种片段，链接可点 */
-  function segments(text: string) {
-    const out: { url?: string; text: string }[] = [];
-    let last = 0;
-    for (const m of text.matchAll(/https?:\/\/[^\s"'<>，。；、）)】」\]]+/gi)) {
-      if (m.index! > last) out.push({ text: text.slice(last, m.index) });
-      out.push({ url: m[0], text: m[0] });
-      last = m.index! + m[0].length;
-    }
-    if (last < text.length) out.push({ text: text.slice(last) });
-    return out;
-  }
   const icon = (l: FoundLink) => (l.kind === 'workshop' ? Package : isDisk(l.kind) ? HardDrive : l.kind === 'afdian' ? Heart : l.kind === 'github' ? GitBranch : Link);
 
   onMount(() => {
@@ -225,6 +224,23 @@
   {:else}
     <button class="dl" class:large data-sfx="none" disabled={!app.game.installed} title={app.game.installed ? '从创意工坊下载到「新下载」' : '请先在主页选择游戏目录'} onclick={() => download(id, source?.())}><Download size={14} />下载</button>
   {/if}
+{/snippet}
+
+{#snippet passage(title: string, text: string, error = '')}
+  <section class="block">
+    <h3>{title}
+      {#if text}
+        <button class="edit-text" title="带入选中的文字；未选中时带入整段原文"
+          onmousedown={e => e.preventDefault()}
+          onclick={e => editFromVideo(selectedIn(e.currentTarget.closest('section')?.querySelector('.prose') ?? null) || text)}>
+          <Pencil size={12} />在地址栏编辑
+        </button>
+      {/if}
+    </h3>
+    {#if error}<p class="error">{error}</p>{/if}
+    <p class="prose">{#each segments(text || '（作者没有写简介）') as s, i (i)}{#if s.url || s.editFirst}<button class="inl" title={s.editFirst ? '在地址栏编辑' : s.url}
+      onclick={e => { if (selectedIn(e.currentTarget.closest('.prose'))) return; if (s.editFirst) editFromVideo(s.text); else if (s.url) openFromVideo(s.url); }}>{s.text}</button>{:else}{s.text}{/if}{/each}</p>
+  </section>
 {/snippet}
 
 <svelte:window onclick={() => (blockOpen = false)} />
@@ -264,13 +280,16 @@
                 <div class="rrow">
                   <span class="ric"><I size={15} /></span>
                   <div class="rbody">
-                    <span class="rkind">{l.label}{#if l.code}<span class="code mono" title="打开时自动复制">提取码 {l.code}</span>{/if}</span>
-                    <span class="rurl">{#if info && info !== 'error'}{info.title}{#if info.sizeBytes} · <span class="mono">{mib(info.sizeBytes)}</span>{/if}{:else}{l.url}{/if}</span>
+                    <span class="rkind">{l.label}{#if l.code}<button class="code mono" title="复制提取码" onclick={() => app.copyText(l.code!, '提取码已复制')}>提取码 {l.code}</button>{/if}</span>
+                    <span class="rurl">{#if info && info !== 'error'}{info.title}{#if info.sizeBytes} · <span class="mono">{mib(info.sizeBytes)}</span>{/if}{:else}{l.editFirst ? l.raw : l.url}{/if}</span>
                   </div>
                   <div class="racts">
+                    {#if l.raw && !l.editFirst}<button class="icon-btn" title="在地址栏编辑" aria-label={`在地址栏编辑${l.label}`} onclick={() => editFromVideo(l.raw!)}><Pencil size={14} /></button>{/if}
                     {#if l.workshopId}
                       <button class="btn sm ghost" onclick={() => openPage(l.url)}>工坊页</button>
                       {@render wsAction(l.workshopId, false, () => document.querySelector('.detail-art'))}
+                    {:else if l.editFirst}
+                      <button class="btn sm" onclick={() => editFromVideo(l.raw!)}><Pencil size={12} />在地址栏编辑</button>
                     {:else if isDisk(l.kind)}
                       <button class="btn sm" onclick={() => void openDisk(l)}>{#if l.code}<Copy size={12} />复制提取码并打开{:else}打开网盘{/if}</button>
                     {:else}
@@ -282,19 +301,12 @@
             </div>
             <p class="note">工坊资源可以直接下载；网盘、爱发电在内置浏览器里打开，下载的 VPK / ZIP 会进「下载」页，可直接导入。</p>
           {:else if !detailLoading}
-            <p class="note">简介和置顶评论里没找到下载链接，可能在评论区或作者主页。<button class="link" onclick={() => openPage(detail!.url)}>去视频页看看</button></p>
+            <p class="note">没识别到资源。{#if detail.description || detail.pinnedComment}可以选中下方原文，在地址栏编辑，或{/if}<button class="link" onclick={() => openPage(detail!.url)}>去视频页看看</button>。</p>
           {/if}
         </section>
 
-        <section class="block">
-          <h3>简介</h3>
-          {#if detailError}<p class="error">{detailError}</p>{/if}
-          <p class="prose">{#each segments(detail.description || '（作者没有写简介）') as s, i (i)}{#if s.url}<button class="inl" onclick={() => openFromVideo(s.url!)}>{s.text}</button>{:else}{s.text}{/if}{/each}</p>
-          {#if detail.pinnedComment}
-            <h3>置顶评论</h3>
-            <p class="prose">{#each segments(detail.pinnedComment) as s, i (i)}{#if s.url}<button class="inl" onclick={() => openFromVideo(s.url!)}>{s.text}</button>{:else}{s.text}{/if}{/each}</p>
-          {/if}
-        </section>
+        {@render passage('简介', detail.description, detailError)}
+        {#if detail.pinnedComment}{@render passage('置顶评论', detail.pinnedComment)}{/if}
       {:else}
         <p class="status"><LoaderCircle size={15} class="spin" />正在读取视频…</p>
         {#if detailError}<p class="error">{detailError}</p>{/if}
@@ -483,6 +495,8 @@
   .block { margin-top: 28px; }
   h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; margin: 0 0 12px; }
   h3 .n { font-size: 11px; color: var(--fg-3); font-weight: 400; }
+  .edit-text { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; color: var(--fg-3); font-size: 12px; font-weight: 400; }
+  .edit-text:hover { color: var(--md-primary); }
   .res { border: 1px solid var(--line); border-radius: 8px; background: var(--bg-1); overflow: hidden; }
   .rrow { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px; border-top: 1px solid var(--line); animation: rise 220ms var(--ease-out) backwards; }
   .rrow:first-child { border-top: 0; }
@@ -495,7 +509,7 @@
   .note { margin: 10px 0 0; font-size: 12px; color: var(--fg-3); line-height: 1.7; }
   .link, .inl { color: var(--fg); text-decoration: underline; text-decoration-color: var(--fg-4); text-underline-offset: 3px; }
   .link:hover, .inl:hover { text-decoration-color: var(--fg); }
-  .inl { display: inline; padding: 0; font: inherit; text-align: left; overflow-wrap: anywhere; }
+  .inl { display: inline; padding: 0; font: inherit; text-align: left; overflow-wrap: anywhere; user-select: text; }
   .prose { margin: 0 0 18px; color: var(--fg-2); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.85; user-select: text; max-width: 900px; }
   .status { display: flex; gap: 10px; color: var(--fg-2); align-items: center; }
   @media (max-width: 1100px) { .controls { padding: 14px 18px 0; } .results, .detail-scroll { padding-left: 18px; padding-right: 18px; } }

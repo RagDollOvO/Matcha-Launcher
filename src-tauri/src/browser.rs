@@ -5,6 +5,7 @@ use tauri::{Emitter, Manager, Webview, WebviewUrl, webview::{NewWindowResponse, 
 pub mod storage;
 mod downloads;
 mod images;
+mod fullscreen;
 mod bili_like;
 mod creators;
 
@@ -20,6 +21,7 @@ pub struct BrowserState {
     downloads: Mutex<Vec<Value>>,
     pages: Mutex<HashMap<String, Value>>,
     steam_views: Mutex<HashSet<String>>,
+    fullscreen_owner: Mutex<Option<String>>,
     folder: PathBuf,
     routes: Mutex<storage::Routes>,
     load_error: Option<String>,
@@ -36,7 +38,7 @@ impl BrowserState {
             }
         } else { (vec![], None) };
         let recovered = downloads::recover(&mut downloads);
-        let mut state = Self { downloads: Mutex::new(downloads), pages: Mutex::new(HashMap::new()), steam_views: Mutex::new(HashSet::new()), folder, load_error,routes:Mutex::default() };
+        let mut state = Self { downloads: Mutex::new(downloads), pages: Mutex::new(HashMap::new()), steam_views: Mutex::new(HashSet::new()), fullscreen_owner: Mutex::default(), folder, load_error,routes:Mutex::default() };
         if recovered {
             let result = state.save(&state.downloads.lock().unwrap());
             if let Err(e) = result { state.load_error = Some(format!("下载中断记录保存失败：{e}")); }
@@ -47,6 +49,9 @@ impl BrowserState {
         let temp = self.folder.join("downloads.json.tmp");
         std::fs::write(&temp, serde_json::to_vec_pretty(rows).map_err(err)?).map_err(err)?;
         std::fs::rename(temp, self.folder.join("downloads.json")).map_err(err)
+    }
+    fn has_downloads(&self, view: &str) -> bool {
+        self.downloads.lock().unwrap().iter().any(|d| d["view"] == view && downloads::pending(d))
     }
 }
 fn err(e: impl std::fmt::Display) -> String { e.to_string() }
@@ -132,6 +137,7 @@ async fn create(app: &tauri::AppHandle, id: &str, url: &str) -> Result<Webview, 
         view.hide().map_err(err)?;
         #[cfg(windows)]
         {
+            fullscreen::attach(&view).await?;
             downloads::attach(&view).await?;
             if direct { images::attach(&view).await?; }
         }
@@ -146,15 +152,32 @@ async fn create(app: &tauri::AppHandle, id: &str, url: &str) -> Result<Webview, 
 async fn navigate(app: &tauri::AppHandle, id: &str, view: Webview, url: tauri::Url, reload: bool) -> Result<(), String> {
     let state = app.state::<BrowserState>();
     let direct = state.steam_views.lock().unwrap().contains(view.label());
-    let downloading = state.downloads.lock().unwrap().iter().any(|d| d["view"] == view.label() && d["state"] == "downloading");
-    if direct != steam_route(app, &url) && !downloading {
+    if direct != steam_route(app, &url) && !state.has_downloads(view.label()) {
         let bounds = view.bounds().map_err(err)?;
+        fullscreen::leave(&view, false)?;
         view.close().map_err(err)?;
         let new_view = create(app, id, url.as_str()).await?;
         new_view.set_bounds(bounds).map_err(err)?;
         new_view.show().map_err(err)
     } else if reload { view.reload().map_err(err) }
     else { view.navigate(url).map_err(err) }
+}
+
+fn hide_tab(view: &Webview) -> Result<(), String> {
+    fullscreen::leave(view, true)?;
+    view.hide().map_err(err)
+}
+
+fn close_tab(view: &Webview) -> Result<(), String> {
+    let state = view.app_handle().state::<BrowserState>();
+    let name = view.label();
+    // Keep the native operation (including paused ones) when the user leaves its tab.
+    if state.has_downloads(name) { return hide_tab(view); }
+    fullscreen::leave(view, false)?;
+    view.close().map_err(err)?;
+    state.pages.lock().unwrap().remove(name);
+    state.steam_views.lock().unwrap().remove(name);
+    Ok(())
 }
 
 /// Always async: WebView2 creation must not block its UI event thread.
@@ -164,6 +187,7 @@ pub async fn browser_call(webview: Webview, app: tauri::AppHandle, action: Strin
     let p = params.unwrap_or(json!({}));
     let id = p["id"].as_str().unwrap_or("");
     match action.as_str() {
+        "exit-fullscreen" => { fullscreen::exit_main(&app)?; Ok(json!({})) }
         "bili-like" => Ok(bili_like::run(&app, p["bvid"].as_str().unwrap_or("")).await),
         "annotate" => creators::annotate(&app.state::<BrowserState>(), id, &p["creators"]),
         "downloads" => {
@@ -172,29 +196,37 @@ pub async fn browser_call(webview: Webview, app: tauri::AppHandle, action: Strin
             let downloads = state.downloads.lock().unwrap().clone();
             Ok(json!(downloads))
         }
+        #[cfg(windows)]
+        "download-pause" | "download-resume" | "download-cancel" => {
+            downloads::control(&app, action, id.to_owned()).await
+        }
         "sync" => {
             let tabs = p["tabs"].as_array().ok_or("标签页列表无效。")?;
             if tabs.len() > 10 { return Err("最多打开 10 个标签页。".into()); }
-            let names: Vec<String> = tabs.iter().map(|t|label(t["id"].as_str().unwrap_or(""))).collect::<Result<_,_>>()?;
+            let mut names = Vec::new();
+            for t in tabs {
+                let name = label(t["id"].as_str().unwrap_or(""))?;
+                if t["url"] != "start" { names.push(name); }
+            }
             let active = p["activeId"].as_str().unwrap_or("");
             let visible = p["visible"].as_bool().unwrap_or(false);
             for (name, v) in app.webviews() {
                 if !name.starts_with("browser-") { continue; }
-                let downloading = app.state::<BrowserState>().downloads.lock().unwrap().iter().any(|d|d["view"] == name && d["state"] == "downloading");
-                if !names.contains(&name) && !downloading {
-                    v.close().map_err(err)?;
-                    let state = app.state::<BrowserState>();
-                    state.pages.lock().unwrap().remove(&name);
-                    state.steam_views.lock().unwrap().remove(&name);
-                }
-                else if !visible || name != format!("browser-{active}") { v.hide().map_err(err)?; }
+                if !names.contains(&name) { close_tab(&v)?; }
+                else if !visible || name != format!("browser-{active}") { hide_tab(&v)?; }
             }
             if visible {
                 if let Some(tab) = tabs.iter().find(|t| t["id"] == active && t["url"] != "start") {
                     let key = label(active)?;
                     let view = match app.get_webview(&key) { Some(v) => v, None => create(&app, active, tab["url"].as_str().unwrap_or("")).await? };
                     let n = |key: &str, min: f64| -> Result<f64, String> { let v = p["bounds"][key].as_f64().ok_or("浏览区域尚未就绪。")?; if !v.is_finite() || v < min || v > 20000. { Err("浏览区域尺寸无效。".into()) } else { Ok(v) } };
-                    view.set_bounds(tauri::Rect { position: tauri::LogicalPosition::new(n("x",0.)?,n("y",0.)?).into(), size: tauri::LogicalSize::new(n("width",1.)?,n("height",1.)?).into() }).map_err(err)?;
+                    let (x, y, w, h) = (n("x",0.)?, n("y",0.)?, n("width",1.)?, n("height",1.)?);
+                    let rect = if p["bounds"]["physical"] == true {
+                        tauri::Rect { position: tauri::PhysicalPosition::new(x as i32, y as i32).into(), size: tauri::PhysicalSize::new(w as u32, h as u32).into() }
+                    } else {
+                        tauri::Rect { position: tauri::LogicalPosition::new(x, y).into(), size: tauri::LogicalSize::new(w, h).into() }
+                    };
+                    view.set_bounds(rect).map_err(err)?;
                     view.show().map_err(err)?;
                 }
             }
@@ -210,8 +242,7 @@ pub async fn browser_call(webview: Webview, app: tauri::AppHandle, action: Strin
         }
         "close" => {
             let key = label(id)?;
-            if let Some(v) = app.get_webview(&key) { v.close().map_err(err)?; }
-            app.state::<BrowserState>().steam_views.lock().unwrap().remove(&key);
+            if let Some(v) = app.get_webview(&key) { close_tab(&v)?; }
             Ok(json!({}))
         }
         "back" | "forward" | "stop" | "reload" => {

@@ -154,6 +154,32 @@ test('Mods: true inventory, overlaps, apply with backup, process guard and inval
   await assert.rejects(f.manager.apply({ gameRoot: f.gameRoot, enabledIds: ['broken.vpk'], confirmation: approval }), e => e.code === 'invalid_vpk');
 });
 
+test('Mod conflict files: complete paths, all enabled providers, paging and snapshot refresh', async t => {
+  const f = await fixture(), service = new DesktopService({ dataDir: path.join(f.base, 'settings'), core: f.api });
+  t.after(() => service.close());
+  await service.ready; service.settings.gameRoot = f.gameRoot;
+  const a = 'local.vpk', b = 'workshop/123.vpk', c = 'third.vpk';
+  const paths = Array.from({ length: 205 }, (_, i) => `materials/skins/skin_${String(i).padStart(3, '0')}.vmt`);
+  const shared = Object.fromEntries(paths.map(p => [p, 'material']));
+  for (const id of [a, b]) await vpkFixture(path.join(f.addons, id), { 'addoninfo.txt': addonInfo(id), ...shared });
+  const last = paths.at(-1);
+  await vpkFixture(path.join(f.addons, c), { 'addoninfo.txt': addonInfo(c), [last.toUpperCase()]: 'other', 'materials/other/skin_204.vmt': 'unique' });
+  const snap = await service.dispatch('snapshot');
+  const pair = snap.conflicts.find(p => [p.a, p.b].includes(a) && [p.a, p.b].includes(b));
+  assert.equal(pair.pathCount, 205); assert.equal(pair.paths.length, 200); assert.ok(!pair.paths.includes(last));
+  const query = (modIds, query = '', page = 0) => service.dispatch('mod-conflict-files', { gameRoot: f.gameRoot, modIds, query, page });
+  const first = await query([a, b, c]);
+  assert.equal(first.total, 205); assert.equal(first.files.length, first.pageSize);
+  const tail = await query([a, b, c], '', Math.floor(204 / first.pageSize));
+  assert.equal(tail.files.at(-1).path, last); assert.deepEqual(tail.files.at(-1).modIds.sort(), [a, b, c].sort());
+  assert.deepEqual((await query([a, b], 'SKINS\\skin_204')).files, [{ path: last, modIds: [a, b] }]);
+  assert.equal((await query([c])).total, 0);
+  await fs.unlink(path.join(f.addons, c));
+  await service.dispatch('snapshot');
+  assert.equal((await query([a, c])).total, 0);
+  assert.equal(await fs.readFile(f.list, 'utf8'), f.text);
+});
+
 test('Mods import: copy split package, default disabled, preserve source and refuse collisions', async () => {
   const f = await fixture();
   const file = await vpkFixture(path.join(f.base, 'source/demo_dir.vpk'), { 'addoninfo.txt': addonInfo('导入测试'), 'sound/example.wav': 'a'.repeat(90) }, { split: true });

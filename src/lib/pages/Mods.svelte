@@ -19,6 +19,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import Star from '@lucide/svelte/icons/star';
   import ListChecks from '@lucide/svelte/icons/list-checks';
+  import Files from '@lucide/svelte/icons/files';
   import PanelRight from '@lucide/svelte/icons/panel-right';
   import ToggleLeft from '@lucide/svelte/icons/toggle-left';
   import ToggleRight from '@lucide/svelte/icons/toggle-right';
@@ -44,6 +45,7 @@
   import { favoriteMenu, setFavoriteMembers } from '../components/favorite-menus';
   import FavoriteCollectionDialog from '../components/FavoriteCollectionDialog.svelte';
   import QuickTest from '../components/QuickTest.svelte';
+  import ConflictFiles from '../components/ConflictFiles.svelte';
   import type { MenuItem, MenuState } from '../components/menu';
   import { app, ROOT, FAV, INBOX, TRASH, workshopLink, mib } from '../stores/app.svelte';
   import { player, hasGunSounds } from '../stores/player.svelte';
@@ -65,6 +67,7 @@
   let importOpen = $state(false);
   let importPath = $state('');
   let quickTest = $state<{seed?: string[]} | null>(null);
+  let conflictFilesOpen = $state(false);
   function openTest(ids?: string[]) { player.stop(); quickTest = {seed:ids}; }
 
   // ---------- 本机记忆：视图、侧栏展开 ----------
@@ -260,7 +263,7 @@
   }
   /** 在 Mod 页按 Ctrl+V：剪贴板里是工坊链接就直接打开下载对话框 */
   function onPaste(e: ClipboardEvent) {
-    if (inFav || quickTest || workshop || collectionDialog || menu || app.confirmation || edit || (e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
+    if (inFav || quickTest || conflictFilesOpen || workshop || collectionDialog || menu || app.confirmation || edit || (e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
     const text = e.clipboardData?.getData('text') ?? '';
     if (!looksLikeWorkshop(text)) return;
     e.preventDefault();
@@ -650,7 +653,7 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (inFav || quickTest || menu || workshop || collectionDialog || app.confirmation || edit || (e.target as Element).closest?.('input, select, textarea')) return;
+    if (inFav || quickTest || conflictFilesOpen || menu || workshop || collectionDialog || app.confirmation || edit || (e.target as Element).closest?.('input, select, textarea')) return;
     if (e.key === 'Escape') {
       if (drag) endDrag();
       else if (player.key) player.stop();
@@ -820,6 +823,9 @@
         <p class="sub" role="status">共 {app.mods.length} 个 VPK，启用 {prof.modIds.filter((id) => app.mod(id)).length} 个</p>
       </div>
       <div class="acts">
+        {#if fstatus === 'conflict'}
+          <button class="btn" title="查看整个方案的重叠文件" onclick={() => (conflictFilesOpen = true)}><Files size={14} />按文件查看</button>
+        {/if}
         <button class="icon-btn" title="重新扫描 Mod" aria-label="重新扫描 Mod" disabled={!!app.busy || app.refreshing} onclick={() => app.refresh()}><RefreshCw size={15} class={app.refreshing ? 'spin' : ''} /></button>
         {#if prof.id === app.activeProfileId}
           <span class="startup-state">当前启动方案</span>
@@ -1224,6 +1230,10 @@
 {#if workshop}<WorkshopDialog initial={workshop.text} onclose={() => (workshop = null)} />{/if}
 {#if collectionDialog}<FavoriteCollectionDialog {...collectionDialog} onclose={() => collectionDialog = null} onsaved={id => { collectionDialog = null; openCollection(id); }} />{/if}
 {#if quickTest}<QuickTest seed={quickTest.seed} onclose={()=>quickTest=null}/>{/if}
+{#if conflictFilesOpen && scoped}
+  <ConflictFiles profile={scoped} onclose={() => (conflictFilesOpen = false)}
+    onmod={(id) => { conflictFilesOpen = false; selected = []; detailId = id; }} />
+{/if}
 
 <style>
   .mods { position: absolute; inset: 0; display: flex; }

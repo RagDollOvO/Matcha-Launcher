@@ -4,6 +4,7 @@ import type { LaunchConfiguration, LaunchMode, ModCreator, ModTask, ModSound, Tr
 import type { Category, CfgEntry, Conflict, DxvkRuntime, ExternalPlatform, GameInfo, Mod, ModMeta, PlatformChangePlan, PlatformLaunchPreview, PlatformOperation, PlatformPlan, PlatformPlugin, PlatformRelease, PlatformRuntime, Profile, Server, ServerLayout, SteamProfile } from '../types';
 
 export interface BrowserArchive { items: { name: string; size: number }[] }
+export interface ConflictFilePage { total: number; pageSize: number; files: { path: string; modIds: string[] }[] }
 interface VpkPreview { file: string; name: string; title: string; sizeMB: number; fileCount: number; files: { name: string; size: number }[]; warning: string }
 export type LocalModInput = { targetExists: boolean } & (({ kind: 'vpk' } & VpkPreview)
   | { kind: 'folder'; file: string; name: string; prefix: string; sourceStamp: string });
@@ -81,6 +82,8 @@ export const api = {
   browserImport: (id: string, selected?: string[], creators?: ModCreator[]) => call<{ imported: string[]; errors: string[] }>('browser-import', { id, selected, ...(creators?.length ? { creators } : {}) }, true),
   /** 返回 JPEG data URL，无图为 null */
   modThumbnail: (id: string) => call<{ dataUrl: string | null }>('mod-thumbnail', { id }),
+  conflictFiles: (gameRoot: string, modIds: string[], query: string, page: number) =>
+    call<ConflictFilePage>('mod-conflict-files', { gameRoot, modIds, query, page }),
   trashThumbnail: (trashId: string) => call<{ dataUrl: string | null; dirs?: string[] }>('trash-thumbnail', { trashId }),
   /** 按 id 替换记录；值为 null 表示删除该 id 的记录 */
   saveModMeta: (patch: Record<string, ModMeta | null>) => call('save-mod-meta', { patch }),

@@ -55,7 +55,7 @@ export function extraModTools(request) {
   write('mod_undo', '撤销 Mod 整理', '撤销指定或最近一次尚未撤销的元数据整理。预览逆向变更；有后续修改或新引用时保留现场并报告。文件删除的恢复使用 mod_restore。',
     'undo-preview', 'undo', { historyId: text('要撤销的整理记录 ID；省略时预览最近一次。') }, [], p => (p.lines ?? p.changes.map(c => `${c.type} · ${c.id}\n${JSON.stringify(c.after)} → ${JSON.stringify(c.before)}`)).join('\n\n'));
   read('mod_source', '查看 Mod 来源条目', '识别工坊或 GameMaps 条目链接并读取详情、作者说明和下载信息。工坊合集返回子条目，选择具体条目后下载。', 'source-inspect', source);
-  read('mod_search', '搜索地图与 Mod', '搜索 Steam 创意工坊或 GameMaps，返回分页条目。工坊 sort 使用 trend/mostrecent/lastupdated/totaluniquesubscribers；GameMaps 使用 recent/popular/rviews。', 'source-search',
+  read('mod_search', '搜索地图与 Mod', '搜索 Steam 创意工坊或 GameMaps，返回分页条目。工坊 sort 使用 textsearch（关键词相关度）/trend/mostrecent/lastupdated/totaluniquesubscribers；GameMaps 使用 recent/popular/rviews。', 'source-search',
     { source: source.source, query: { type: 'string', maxLength: 200 }, page: { type: 'integer', minimum: 1, maximum: 1000 }, category: { type: 'string' }, sort: { type: 'string' }, section: { type: 'string', enum: ['maps', 'mods'] }, kind: { type: 'string', enum: ['item', 'collection'] } }, ['source']);
   write('mod_download', '下载 Mod 到库', '预览并确认工坊/GameMaps 条目后创建现有下载任务。完成后放入新下载，并默认加入当前启动方案（下次启动生效）。通过 mod_tasks 跟进，成功后再归类。',
     'download-preview', 'download', { items: { type: 'array', minItems: 1, maxItems: 32, items: object(source) } }, ['items'], p => p.items.map(i =>

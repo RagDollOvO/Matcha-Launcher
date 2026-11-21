@@ -2,7 +2,7 @@
 // 浏览器/WebView 要求首次用户手势后才能出声，所以第一次 pointerdown/keydown 时 unlock()。
 
 import { UI_SAMPLES } from './manifest';
-import { homeMusicUrl } from './home-music';
+import { checkMusicFile, homeMusicUrl, localMusic } from './home-music';
 
 const SFX_BASE = `${import.meta.env.BASE_URL}sfx/`;
 
@@ -36,7 +36,8 @@ class SoundEngine {
   private hold = false;
   private unlocked = false;
   private music: HTMLAudioElement | null = null;
-  private preparingMusic = false;
+  musicName = $state('');
+  private preparingMusic?: Promise<void>;
   private lastHover = 0;
   private buffers = new Map<string, AudioBuffer>();
 
@@ -77,6 +78,7 @@ class SoundEngine {
   /** 只有主窗口放背景音乐，助手独立窗口不放，免得两份叠在一起 */
   setMusicHost(on: boolean) {
     this.host = on;
+    if (on) void this.prepareMusic();
     this.syncMusic();
   }
 
@@ -87,28 +89,44 @@ class SoundEngine {
     this.syncMusic();
   }
 
-  // Keep one media element (and its playhead) across pages. Long music never
-  // enters the short-effect buffer cache, even on the first user gesture.
+  private async setTrack(file?: File) {
+    const url = file ? URL.createObjectURL(file) : await homeMusicUrl();
+    const audio = this.music ??= new Audio();
+    const previous = audio.src;
+    audio.pause();
+    audio.preload = 'none';
+    audio.loop = true;
+    audio.src = url;
+    this.musicName = file?.name ?? '';
+    if (previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+    this.syncMusic();
+  }
+
+  private prepareMusic() {
+    return this.preparingMusic ??= localMusic.load().catch(e => {
+      console.warn('自选音乐读取失败', e);
+      return undefined;
+    }).then(file => this.setTrack(file)).catch(e => {
+      this.preparingMusic = undefined;
+      console.warn('背景音乐读取失败', e);
+    });
+  }
+
+  async chooseMusic(file?: File) {
+    await this.prepareMusic();
+    if (file) { await checkMusicFile(file); await localMusic.save(file); }
+    else await localMusic.clear();
+    await this.setTrack(file);
+  }
+
+  // One media element keeps its playhead across pages, minimization and game sessions.
   private syncMusic() {
     const { ambient, muted, volume } = this.settings;
     if (!this.host || this.hold || !ambient || muted || volume <= 0) {
       this.music?.pause();
       return;
     }
-    if (!this.music) {
-      if (this.preparingMusic) return;
-      this.preparingMusic = true;
-      void homeMusicUrl().then(url => {
-        const audio = new Audio();
-        audio.preload = 'none';
-        audio.loop = true;
-        audio.src = url;
-        this.music = audio;
-        this.syncMusic();
-      }).catch(error => console.warn('背景音乐读取失败', error))
-        .finally(() => { this.preparingMusic = false; });
-      return;
-    }
+    if (!this.music) { void this.prepareMusic(); return; }
     this.music.volume = Math.min(1, Math.max(0, volume)) * 0.6;
     if (this.unlocked && this.music.paused) {
       void this.music.play().catch((e: DOMException) => {

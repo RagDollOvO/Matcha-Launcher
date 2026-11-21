@@ -39,6 +39,19 @@ export function normalizeAddress(input: string): string | null {
   return `https://www.bing.com/search?q=${encodeURIComponent(trimmed)}`
 }
 
+/** A link edited from source text must resolve to one web address, never a search. */
+export function normalizeLinkAddress(input: string): string | null {
+  const text = input.trim()
+  if (!text || /[\s\\]/u.test(text)) return null
+  const explicit = /^https?:\/\//i.test(text)
+  if (!explicit && !/^(?:[a-z\d-]+\.)+[a-z\d-]+(?::\d+)?(?:[/?#]|$)/i.test(text)) return null
+  try {
+    const url = new URL(explicit ? text : `https://${text}`)
+    if (url.username || url.password || ['tauri.localhost', 'ipc.localhost', 'asset.localhost'].includes(url.hostname)) return null
+    return url.href
+  } catch { return null }
+}
+
 /** Parse an http(s) URL; null when the input is not a valid http(s) URL. */
 export function tryParseHttp(input: string): string | null {
   try {

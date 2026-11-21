@@ -90,7 +90,7 @@ export function registerVideo(d: Pick<BiliDetail, 'bvid' | 'title' | 'author' | 
   videos.set(d.bvid, { title: d.title, author: d.author || undefined });
   const video: CreatorPage = { key: `bili:${d.bvid}`, source: 'bilibili', url: `https://www.bilibili.com/video/${d.bvid}`, title: d.title, author: d.author || undefined };
   const now = Date.now();
-  const found = extractLinks(`${d.description ?? ''}\n${d.pinnedComment ?? ''}`).map((l) => linkKey(l.url)).filter(Boolean);
+  const found = extractLinks(`${d.description ?? ''}\n${d.pinnedComment ?? ''}`).filter(l => !l.editFirst).map(l => linkKey(l.url)).filter(Boolean);
   if (!found.length) return;
   links = [...links.filter((r) => now - r.at <= TTL && !found.includes(r.link)), ...found.map((link) => ({ link, video, at: now }))].slice(-MAX_LINKS);
   write(LINKS, links);

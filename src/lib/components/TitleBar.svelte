@@ -42,13 +42,10 @@
     { id: 'servers', label: '服务器', icon: Server },
   ];
 
-  // 「发现」记住上次停在创意工坊还是网页
-  let lastDiscover: Route = 'workshop';
-  $effect(() => { if (app.route === 'workshop' || app.route === 'bilibili' || app.route === 'gamemaps' || app.route === 'browser') lastDiscover = app.route; });
   const isOn = (it: Item) => (it.match ?? [it.id]).includes(app.route);
   function go(it: Item) {
     if (isOn(it)) return;
-    app.route = it.id === 'workshop' ? lastDiscover : it.id;
+    app.route = it.id === 'workshop' ? app.discoverRoute : it.id;
   }
 
   // 下载完成：图标弹一下

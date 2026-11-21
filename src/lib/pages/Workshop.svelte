@@ -33,7 +33,7 @@
 
   const categories = [['', '全部'], ['Campaigns', '地图战役'], ['Survivors', '幸存者'], ['Weapons', '武器'],
     ['Special Infected', '特殊感染者'], ['Common Infected', '普通感染者'], ['Items', '物品'], ['Sounds', '声音'], ['Scripts', '脚本'], ['UI', '界面']];
-  const sorts = [['trend', '本周热门'], ['mostrecent', '最新发布'], ['lastupdated', '最近更新'], ['totaluniquesubscribers', '最多订阅']] as const;
+  const sorts = [['trend', '本周热门'], ['textsearch', '相关度'], ['mostrecent', '最新发布'], ['lastupdated', '最近更新'], ['totaluniquesubscribers', '最多订阅']] as const;
   let search = $state(cache?.search ?? '');
   let query = $state<WorkshopQuery>(cache?.query ?? { search: '', sort: 'trend', tag: '', kind: 'item', page: 1 });
   let result = $state<WorkshopPage | null>(cache?.result ?? null);
@@ -55,7 +55,9 @@
 
   async function browse(change: Partial<WorkshopQuery> = {}) {
     const request = ++sequence;
-    query = { ...query, ...change }; loading = true; error = ''; result = null;
+    const next = { ...query, ...change };
+    if (!next.search && next.sort === 'textsearch') next.sort = 'trend';
+    query = next; loading = true; error = ''; result = null;
     scroller?.scrollTo({ top: 0 });
     try { const data = await api.workshopBrowse({ ...query }); if (sequence === request) { result = data; fresh = true; } }
     catch (e) { if (sequence === request) error = errorText(e); }
@@ -166,7 +168,7 @@
         </nav>
         <span class="sort">
           <select aria-label="工坊排序" value={query.sort} onchange={(e) => browse({ sort: e.currentTarget.value as WorkshopQuery['sort'], page: 1 })}>
-            {#each sorts as [value, name]}<option {value}>{name}</option>{/each}
+            {#each sorts as [value, name]}<option {value} disabled={value === 'textsearch' && !query.search}>{name}</option>{/each}
           </select>
           <ChevronDown size={13} />
         </span>
@@ -214,7 +216,7 @@
     </div>
   {/if}
 </div>
-{#if dialog !== null}<WorkshopDialog initial={dialog} onclose={() => (dialog = null)} />{/if}
+{#if dialog !== null && app.route === 'workshop'}<WorkshopDialog initial={dialog} onclose={() => (dialog = null)} />{/if}
 
 <style>
   .muted { color: var(--fg-3); }

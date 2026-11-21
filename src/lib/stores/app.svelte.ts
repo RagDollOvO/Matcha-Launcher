@@ -57,7 +57,27 @@ class AppState {
   installations = $state<Snapshot['installations']>([]);
   capabilities = $state<Snapshot['capabilities']>({ plugins: true, mods: false, servers: false, config: false });
   confirmation = $state<{ title: string; message: string; ok?: string; extra?: ConfirmExtra; resolve: (approved: boolean) => void } | null>(null);
-  route = $state<Route>('home');
+  private currentRoute = $state<Route>('home');
+  browserOrigin = $state<Exclude<Route, 'browser'>>('workshop');
+  private lastPinned: 'workshop' | 'bilibili' | 'gamemaps' = 'workshop';
+  discoverRoute: Route = 'workshop';
+  get route(): Route { return this.currentRoute; }
+  set route(next: Route) {
+    const from = this.currentRoute;
+    if (next === from) return;
+    if (next === 'browser') {
+      if (from !== 'browser') this.browserOrigin = from;
+      this.discoverRoute = 'browser';
+    } else if (next === 'workshop' || next === 'bilibili' || next === 'gamemaps') {
+      this.discoverRoute = this.lastPinned = next;
+    }
+    this.currentRoute = next;
+  }
+  closeLastWebTab() {
+    // A subsequent click on 发现 should open a real source, not the leftover blank tab.
+    this.discoverRoute = this.lastPinned;
+    this.route = this.browserOrigin;
+  }
   /** 下载页「查看」：Mod 页打开时定位到这个 Mod 并展开详情 */
   focusMod = $state<string | null>(null);
   agentOpen = $state(false);
@@ -1020,16 +1040,23 @@ class AppState {
   async setL4nLaunch(enabled:boolean) {
     await this.perform('保存 L4N 启动偏好',()=>gameSettings.setL4nLaunch(enabled,this.game.root),enabled?'平台模式下次启动加载 L4N':'平台模式下次启动跳过 L4N，子插件选择已保留');
   }
+  updateNativeLibrary() {
+    const lib = this.nativeLibraries?.l4n;
+    if (!lib || !libraryUpdate(lib) || lib.pending) return;
+    const fetchPackage = lib.availability ? lib.availability === 'missing' : !!lib.download;
+    return fetchPackage ? this.downloadNativeLibrary(lib.id) : this.setNativeLibrary(lib.id, true);
+  }
   async setNativeLibrary(id: 'l4n', enabled: boolean) {
-    const name='L4N 整包';
     await this.perform('准备 L4N', async () => {
       const plan=await api.libraryPreview(id,enabled);
-      const title=(enabled?'启用':'停用')+' L4N 整包',note='切换 L4N 入口，保留个人设置。';
+      const lib = this.nativeLibraries?.l4n;
+      const action = enabled && libraryUpdate(lib) ? (lib?.enabled ? '更新' : '更新并启用') : enabled ? '启用' : '停用';
+      const title = action + ' L4N 整包' + (enabled && plan.version ? ' v' + plan.version : ''), note='切换 L4N 入口，保留个人设置。';
       if (!await this.confirm(title, `${this.game.root}\n\n${note}\n旧文件会保存在组件操作备份里。`, '确认执行', {
         lists: [{ title: `文件变化 · ${plan.files.length}`, rows: plan.files.map(f => ({ k: f.path, v: f.action === 'create' ? '新增' : f.action === 'restore/remove' ? '还原原状态' : '替换并保留备份' })) }],
       })) return;
       await api.libraryApply(plan.planId);
-      this.toast(`${name}已${enabled ? '启用' : '停用'}，下次完整启动生效`);
+      this.toast(`L4N 整包已${action}，下次完整启动生效`);
     });
   }
   async recoverNativeLibrary(id: string) {
@@ -1270,13 +1297,14 @@ class AppState {
     return done;
   }
   /** 改备注。后端还没有 update-server 时，移除后用同一地址重新添加，再恢复收藏和合集位置 */
-  async renameServer(id: string, label: string) {
+  async renameServer(id: string, label: string, inPlaceOnly = false) {
     const s = this.servers.find(x => x.id === id);
     const next = label.trim();
     if (!s || next === s.label || (!s.label && next === s.name)) return;
     if (next.length > 80) return this.toast('备注最多 80 个字符');
     try { this.servers = await serverApi.update(id, next, s.gamePort); return; }
     catch (e) { if ((e as { code?: string }).code !== 'unsupported_capability') return this.toast(errorText(e)); }
+    if (inPlaceOnly) return this.toast('当前服务版本较旧，请升级后再清除备注。');
     const layout = this.explicitLayout();
     const port = s.gamePort === null ? '' : String(s.gamePort);
     let list: Server[];

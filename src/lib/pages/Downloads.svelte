@@ -76,7 +76,7 @@
         && has(needle, t.title, t.workshopId, t.sourceId, t.error?.message));
     const webs = src !== 'all' && src !== 'web' ? [] : downloads.web
       .filter((d) => webEnded(d)
-        && (res === 'all' || (res === 'done' ? d.state === 'done' : res === 'failed' && d.state !== 'done'))
+        && (res === 'all' || d.state === res || (res === 'failed' && d.state === 'interrupted'))
         && has(needle, d.name, d.pageTitle, d.pageUrl, d.url));
     // 新的在前；没有时间的旧网页记录放最后
     const rows: Entry[] = [
@@ -116,7 +116,8 @@
   const queued = $derived(downloads.active.filter((t) => t.state === 'queued').length);
   const failed = $derived(downloads.finished.filter((t) => t.state === 'failed').length);
   const cancelable = $derived(downloads.active.filter((t) => t.cancelable));
-  const paused = $derived(downloads.paused.length);
+  const paused = $derived(downloads.paused.length + downloads.webPaused.length);
+  const waiting = $derived(downloads.webActive.filter(d => d.state === 'waiting').length);
 
   // 并发 / 限速的小面板：点外面或按 Esc 收起
   let limitsOpen = $state(false);
@@ -141,9 +142,8 @@
   const today = $derived(downloads.finished.filter((t) => t.kind === 'download' && t.state === 'done' && dayOf(endAt(t)) === 'today'));
   const todayBytes = $derived(today.reduce((n, t) => n + (t.unit === 'bytes' ? t.total ?? t.done : 0), 0));
 
-  const summary = $derived(downloads.busy
-    ? [downloads.busy > queued ? `${downloads.busy - queued} 个进行中` : '', queued ? `${queued} 个排队` : '', paused ? `${paused} 个已暂停` : '', downloads.overall !== null ? `${Math.floor(downloads.overall * 100)}%` : ''].filter(Boolean).join(' · ')
-    : paused ? `${paused} 个已暂停，点「继续」接着排队`
+  const summary = $derived(downloads.busy || paused || waiting
+    ? [downloads.busy > queued ? `${downloads.busy - queued} 个进行中` : '', queued ? `${queued} 个排队` : '', paused ? `${paused} 个已暂停` : '', waiting ? `${waiting} 个传输中断` : '', downloads.overall !== null ? `${Math.floor(downloads.overall * 100)}%` : ''].filter(Boolean).join(' · ')
     : today.length ? `全部结束 · 今天下载了 ${today.length} 个${todayBytes ? `，共 ${size(todayBytes)}` : ''}`
     : total ? `全部结束 · ${total} 条记录` : '创意工坊和网页里的下载都会出现在这里');
 
@@ -173,9 +173,11 @@
     if (p) void app.setModsEnabled([id], true, p, `已加入「${p.name}」`);
   }
   async function cancelAll() {
-    const list = cancelable;
-    if (!list.length || !await app.confirm('取消全部下载', `将取消 ${list.length} 个进行中和排队的任务。\n取消后可以在「已结束」里重试。`, '全部取消')) return;
+    const list = cancelable, web = downloads.webCancelable, n = list.length + web.length;
+    const follow = [list.length ? '普通任务可在下载记录里重试。' : '', web.length ? '网页下载需回到原网页重新发起。' : ''].filter(Boolean).join('\n');
+    if (!n || !await app.confirm('取消全部下载', `将取消 ${n} 个未结束的任务。\n${follow}`, '全部取消')) return;
     for (const t of list) await app.cancelTask(t.taskId);
+    for (const d of web) await downloads.controlWeb(d, 'cancel');
   }
 
   const isMod = (d: BrowserDownload) => /\.(vpk|zip)$/i.test(d.name);
@@ -296,24 +298,35 @@
 {/snippet}
 
 {#snippet web(d: BrowserDownload, inHistory = false)}
-  {@const live = d.state === 'downloading'}
-  {@const sized = webSized(d)}
-  {@const wr = sized && d.total ? Math.min(1, d.received! / d.total) : null}
-  {@const rate = sized ? transfer.rates[d.id] : undefined}
+  {@const done = webEnded(d)}
+  {@const held = d.state === 'paused' || d.state === 'waiting'}
+  {@const bytes = d.received === undefined ? '' : ` · ${size(d.received)}${d.total ? ` / ${size(d.total)}` : ''}`}
+  {@const wr = !done && d.received !== undefined && d.total ? Math.min(1, d.received / d.total) : null}
+  {@const rate = webSized(d) ? transfer.rates[d.id] : undefined}
+  {@const commanding = downloads.webCommands.has(d.id)}
   {@const fresh = downloads.fresh.has(d.id)}
-  <div class="row" class:failed={d.state === 'failed' || d.state === 'interrupted'} class:fresh>
+  <div class="row" class:failed={d.state === 'failed' || d.state === 'interrupted'} class:muted={d.state === 'canceled'} class:fresh>
     <span class="pv file"><span class="ext mono">{ext(d.name)}</span>{#if d.state === 'done'}<i class="ok" class:pop={fresh}><Check size={10} strokeWidth={3} /></i>{/if}</span>
     <div class="body">
       <div class="name-line">
         <span class="name" title={d.name}>{d.name}</span>
-        {#if wr !== null}<span class="pct mono">{Math.floor(wr * 100)}%</span>
-        {:else if !live && webAt(d)}{@const at = webAt(d)!}<time class="when mono" datetime={at} title={new Date(at).toLocaleString()}>{when(at)}</time>{/if}
+        {#if wr !== null}<span class="pct mono" class:held>{Math.floor(wr * 100)}%</span>
+        {:else if done && webAt(d)}{@const at = webAt(d)!}<time class="when mono" datetime={at} title={new Date(at).toLocaleString()}>{when(at)}</time>{/if}
       </div>
       <div class="sub-line">
-        <span class="sub">{d.cleaned ? '已导入 · 压缩包已清理' : d.state === 'done' ? `${mib(d.size ?? 0)}${isMod(d) ? '' : ' · 解压后再导入 VPK'}` : live ? (sized ? `下载中 · ${size(d.received!)}${d.total ? ` / ${size(d.total)}` : ''}` : '正在从网页下载…') : d.state === 'interrupted' ? '下载已中断，请回到原网页重新下载' : '下载失败，请回到原网页重试'}</span>
+        <span class="sub">
+          {#if d.cleaned}已导入 · 压缩包已清理
+          {:else if d.state === 'done'}{mib(d.size ?? 0)}{isMod(d) ? '' : ' · 解压后再导入 VPK'}
+          {:else if d.state === 'waiting'}传输中断{bytes}{d.canResume ? ' · 可继续' : ' · 等待浏览器重试'}
+          {:else if held}已暂停{bytes}{d.canResume ? '' : ' · 请回到原网页重新下载'}
+          {:else if !done}下载中{bytes}
+          {:else if d.state === 'canceled'}已取消
+          {:else if d.state === 'interrupted'}下载已中断，请回到原网页重新下载
+          {:else}下载失败，请回到原网页重试{/if}
+        </span>
         {#if rate}<span class="rate mono" class:stall={rate.stalled > 0}>{rateText(rate)}</span>{/if}
       </div>
-      {#if live}<span class="track" class:indet={wr === null} class:stall={!!rate?.stalled}><span class="fill" style:transform="scaleX({wr ?? 0})"></span></span>{/if}
+      {#if !done}<span class="track" class:indet={wr === null && !held} class:paused={held} class:stall={!!rate?.stalled}><span class="fill" style:transform="scaleX({wr ?? 0})"></span></span>{/if}
       {#if d.pageUrl || trail.creatorsOf(d).length}
         {@const creators = trail.creatorsOf(d)}
         <span class="sources">
@@ -333,8 +346,15 @@
           </button>
         {/if}
       {/if}
-      {#if !live && inHistory}<button class="icon-btn del" title="删除这条记录（文件保留）" aria-label={`删除记录 ${d.name}`} data-sfx="close" onclick={() => { downloads.forgetWeb([d.id]); if (archive?.id === d.id) archive = null; }}><Trash size={14} /></button>
-      {:else if !live}<button class="icon-btn" title="收进历史（文件保留）" aria-label={`把 ${d.name} 收进历史`} data-sfx="close" onclick={() => { downloads.archivedWeb.add(d.id); if (archive?.id === d.id) archive = null; }}><X size={14} /></button>{/if}
+      {#if !done && d.controllable}
+        {#if held && d.canResume}
+          <button class="btn sm tonal" disabled={commanding} aria-label={`继续 ${d.name}`} title="续传方式取决于原网站" onclick={() => downloads.controlWeb(d, 'resume')}><Play size={13} />继续</button>
+        {:else if !held}
+          <button class="icon-btn" disabled={commanding} title="暂停" aria-label={`暂停 ${d.name}`} onclick={() => downloads.controlWeb(d, 'pause')}><Pause size={14} /></button>
+        {/if}
+        <button class="icon-btn" disabled={commanding} title="取消下载" aria-label={`取消 ${d.name}`} data-sfx="close" onclick={() => downloads.controlWeb(d, 'cancel')}><X size={14} /></button>
+      {:else if done && inHistory}<button class="icon-btn del" title="删除这条记录（文件保留）" aria-label={`删除记录 ${d.name}`} data-sfx="close" onclick={() => { downloads.forgetWeb([d.id]); if (archive?.id === d.id) archive = null; }}><Trash size={14} /></button>
+      {:else if done}<button class="icon-btn" title="收进历史（文件保留）" aria-label={`把 ${d.name} 收进历史`} data-sfx="close" onclick={() => { downloads.archivedWeb.add(d.id); if (archive?.id === d.id) archive = null; }}><X size={14} /></button>{/if}
     </span>
   </div>
   {#if archive?.id === d.id}
@@ -370,9 +390,9 @@
       </div>
       <div class="acts">
         {#if tab === 'now'}
-          {#if downloads.pausable.length > 1}<button class="btn ghost" title="排队和正在下的都先停下，进度条保留" onclick={() => downloads.pauseAll()}><Pause size={14} />全部暂停</button>{/if}
-          {#if paused > 1}<button class="btn ghost" title="按原来的先后回到队尾" onclick={() => downloads.resumeAll()}><Play size={14} />全部继续</button>{/if}
-          {#if cancelable.length > 1}<button class="btn ghost" onclick={cancelAll}><X size={14} />全部取消</button>{/if}
+          {#if downloads.pausable.length + downloads.webPausable.length > 1}<button class="btn ghost" title="暂停可暂停的任务，保留已显示的进度" onclick={() => downloads.pauseAll()}><Pause size={14} />全部暂停</button>{/if}
+          {#if downloads.paused.length + downloads.webResumable.length > 1}<button class="btn ghost" title="恢复可继续的任务" onclick={() => downloads.resumeAll()}><Play size={14} />全部继续</button>{/if}
+          {#if cancelable.length + downloads.webCancelable.length > 1}<button class="btn ghost" onclick={cancelAll}><X size={14} />全部取消</button>{/if}
           {#if failed > 1}<button class="btn ghost" onclick={() => downloads.retryFailed()}><RotateCcw size={14} />重试失败的 {failed} 个</button>{/if}
           {#if canClear}<button class="btn ghost" title="结束的记录离开「当前」，在「历史」里还能找到" onclick={() => downloads.clearEnded()}>全部收进历史</button>{/if}
         {/if}

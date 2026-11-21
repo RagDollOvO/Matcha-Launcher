@@ -22,9 +22,10 @@
   let draft = $state('');
   let address: HTMLInputElement;
   let carrier: HTMLDivElement;
-  let bounds = $state({ x: 0, y: 0, width: 1, height: 1 });
+  let bounds = $state<{ x: number; y: number; width: number; height: number; physical: true } | null>(null);
   let attached = $state(false);
   const active = $derived(tabState.tabs.find(t => t.id === tabState.activeId));
+  const editing = $derived(active && browser.linkDrafts[active.id]);
   const isHome = $derived(!active || active.url === START_URL);
   const visible = $derived(app.route === 'browser');
   const sources = [
@@ -34,12 +35,15 @@
   ];
   $effect(() => { browser.workspace(app.game?.root ?? ''); });
   $effect(() => { draft = active?.url === START_URL ? '' : active?.url ?? ''; });
+  $effect(() => { if (visible && editing) address?.focus(); });
   // Native children sit above HTML. Hide them for dialogs and download selection.
   let lastSync = '';
+  // Revisit hidden tabs once their last download finishes so the native view can close.
+  const downloadViews = $derived([...new Set(downloads.webActive.map(d => d.view))].sort().join(','));
   $effect(() => {
     const params = { tabs: tabState.tabs.map(t => ({ id: t.id, url: t.url })), activeId: tabState.activeId,
-      visible: visible && attached && !isHome && !app.confirmation && !app.friendsOpen, bounds };
-    const next = JSON.stringify(params);
+      visible: visible && attached && !!bounds && !isHome && !app.confirmation && !app.friendsOpen, bounds };
+    const next = JSON.stringify([params, downloadViews]);
     if (desktop && attached && next !== lastSync) {
       lastSync = next;
       void browser.call('sync', params).catch(() => { lastSync = ''; });
@@ -49,12 +53,31 @@
     const unsubscribe = tabs.subscribe(() => { tabState = { ...tabs.getSnapshot() }; });
     tabState = { ...tabs.getSnapshot() };
     void browser.init().catch(e => { browser.error = errorText(e); });
-    const measure = () => { const r = carrier.getBoundingClientRect(); if (r.width > 0 && r.height > 0) bounds = { x: r.x, y: r.y, width: r.width, height: r.height }; };
+    const measure = () => {
+      const r = carrier.getBoundingClientRect();
+      if (!r.width || !r.height) { bounds = null; return; }
+      // WebView2 的 CSS 像素同时受主界面缩放和显示器 DPI 影响。按两端取整，和子窗口共用物理像素边界。
+      const px = (v: number) => Math.round(v * window.devicePixelRatio);
+      const x = px(r.left), y = px(r.top);
+      bounds = { x, y, width: px(r.right) - x, height: px(r.bottom) - y, physical: true };
+    };
+    let dpi = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    const dpiChanged = () => {
+      dpi = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dpi.addEventListener('change', dpiChanged, { once: true });
+      measure();
+    };
+    dpi.addEventListener('change', dpiChanged, { once: true });
     const observer = new ResizeObserver(measure); observer.observe(carrier);
     measure(); attached = true;
-    return () => { unsubscribe(); observer.disconnect(); void browser.call('sync', { tabs: [], visible: false }).catch(() => {}); };
+    return () => { unsubscribe(); observer.disconnect(); dpi.removeEventListener('change', dpiChanged); void browser.call('sync', { tabs: [], visible: false }).catch(() => {}); };
   });
   async function attempt(fn: () => Promise<unknown>) { try { await fn(); } catch (e) { browser.error = errorText(e); } }
+  function submitAddress(e: SubmitEvent) {
+    e.preventDefault();
+    if (editing) browser.openEditedAddress();
+    else void attempt(() => browser.navigate(draft));
+  }
   function key(e: KeyboardEvent) {
     if (!visible || !(e.ctrlKey || e.metaKey)) return;
     if (e.key.toLowerCase() === 'l') { e.preventDefault(); address.focus(); address.select(); }
@@ -65,19 +88,27 @@
 <svelte:window onkeydown={key} />
 <section class:hidden={!visible} class="browser" aria-label="DSH 内置浏览器">
   <DiscoverTabs />
-  <form class="toolbar" onsubmit={e => { e.preventDefault(); void attempt(() => browser.navigate(draft)); }}>
+  <form class="toolbar" onsubmit={submitAddress}>
     <button type="button" class="tool" disabled={isHome} aria-label="后退" title="后退" onclick={() => attempt(() => browser.action('back'))}><ArrowLeft size={16} /></button>
     <button type="button" class="tool" disabled={isHome} aria-label="前进" title="前进" onclick={() => attempt(() => browser.action('forward'))}><ArrowRight size={16} /></button>
     <button type="button" class="tool" disabled={isHome} aria-label={browser.loading[active?.id ?? ''] ? '停止加载' : '刷新网页'} onclick={() => attempt(() => browser.action(browser.loading[active?.id ?? ''] ? 'stop' : 'reload'))}>{#if browser.loading[active?.id ?? '']}<X size={16} />{:else}<RotateCw size={15} />{/if}</button>
     <button type="button" class="tool" aria-label="浏览器主页" title="主页" onclick={() => attempt(() => browser.home())}><House size={15} /></button>
-    <input bind:this={address} bind:value={draft} aria-label="网址或搜索词" placeholder="输入网址或搜索 Mod" spellcheck="false" />
+    <input bind:this={address} value={editing?.text ?? draft} oninput={e => {
+      if (editing) { editing.text = e.currentTarget.value; editing.error = ''; } else draft = e.currentTarget.value;
+    }} aria-label={editing ? '编辑链接地址' : '网址或搜索词'} aria-describedby={editing ? 'edit-hint' : undefined}
+      aria-invalid={editing?.error ? true : undefined} placeholder={editing ? '输入网页地址' : '输入网址或搜索 Mod'} spellcheck="false" />
+    {#if editing}<button type="submit" class="go">打开</button>{/if}
     <button type="button" class="tool" class:saved={browser.bookmarks.some(b => b.url === active?.url)} disabled={isHome} aria-label="收藏当前网页" title="收藏当前网页" onclick={() => browser.bookmark()}><Star size={15} /></button>
     <button type="button" class="tool downloads-toggle" aria-label="打开下载页" title="下载" onclick={() => (app.route = 'downloads')}><Download size={16} />{#if downloads.webActive.length}<i></i>{/if}</button>
     <button type="button" class="tool" disabled={isHome} aria-label="在系统浏览器打开" title="在系统浏览器打开" onclick={() => attempt(() => browser.call('external', { url: active?.url }))}><ExternalLink size={15} /></button>
   </form>
   {#if browser.error}<div class="error" role="alert"><span>{browser.error}</span><button aria-label="关闭提示" onclick={() => browser.error = ''}><X size={14} /></button></div>{/if}
   <div class="carrier" bind:this={carrier}>
-    {#if isHome}
+    {#if editing}
+      <div class="edit-hint" id="edit-hint">
+        {#if editing.error}<span role="alert">{editing.error}</span>{:else}删掉地址栏里的多余字符，按 <kbd>Enter</kbd> 打开网页。{/if}
+      </div>
+    {:else if isHome}
       <div class="start">
         <div class="start-inner">
           <h1>打开网页</h1>
@@ -114,6 +145,10 @@
   .saved { color: var(--fg); }
   .saved :global(svg) { fill: currentColor; }
   .toolbar input { flex: 1; width: 0; height: 30px; font-size: 12px; color: var(--fg-2); }
+  .go { height: 30px; padding: 0 12px; border-radius: var(--r); color: var(--md-on-primary); background: var(--md-primary); font-size: 12px; }
+  .edit-hint { padding: 16px 24px; font-size: 13px; color: var(--fg-2); }
+  .edit-hint kbd { font: 12px var(--font-mono); color: var(--fg); }
+  .edit-hint [role="alert"] { color: var(--danger); }
   .downloads-toggle i { position: absolute; right: 5px; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--fg); }
   .error { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 16px; color: var(--danger); font-size: 12px; background: #160d0d; border-bottom: 1px solid #4a1d1d; overflow-wrap: anywhere; }
   .error button { flex: none; color: var(--fg-2); }

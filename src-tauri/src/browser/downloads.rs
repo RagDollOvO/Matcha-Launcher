@@ -1,11 +1,45 @@
-//! Native download operation identity and byte progress, independent of page navigation.
+//! Download records and lifecycle, independent of page navigation.
 use super::{BrowserState, err, event, filename};
 use chrono::{SecondsFormat, Utc};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use tauri::{Manager, Webview};
 
-fn total_bytes(value: i64) -> Option<u64> { (value > 0).then_some(value as u64) }
+#[cfg(windows)]
+mod native;
+#[cfg(windows)]
+pub(super) use native::{attach, control};
+
+type Progress = (u64, Option<u64>);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Status {
+    Downloading,
+    Paused { can_resume: bool },
+    Waiting { can_resume: bool },
+    Done,
+    Failed,
+    Canceled,
+}
+impl Status {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Downloading => "downloading",
+            Self::Paused { .. } => "paused",
+            Self::Waiting { .. } => "waiting",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Canceled => "canceled",
+        }
+    }
+    fn can_resume(self) -> Option<bool> {
+        match self { Self::Paused { can_resume } | Self::Waiting { can_resume } => Some(can_resume), _ => None }
+    }
+}
+
+pub(super) fn pending(row: &Value) -> bool {
+    matches!(row["state"].as_str(), Some("downloading" | "paused" | "waiting"))
+}
 
 fn begin(view: &Webview, url: &str, destination: &mut PathBuf, received: u64, total: Option<u64>) -> Result<String, String> {
     let app = view.app_handle();
@@ -21,7 +55,7 @@ fn begin(view: &Webview, url: &str, destination: &mut PathBuf, received: u64, to
     let page = state.pages.lock().unwrap().get(view.label()).cloned().unwrap_or(json!({}));
     let row = json!({"id":id,"name":name,"path":destination.to_string_lossy(),"url":url,
         "pageUrl":view.url().ok().map(|u|u.to_string()).unwrap_or_default(),"pageTitle":page["title"],
-        "view":view.label(),"state":"downloading","startedAt":started.to_rfc3339_opts(SecondsFormat::Millis, true),
+        "view":view.label(),"state":"downloading","controllable":cfg!(windows),"startedAt":started.to_rfc3339_opts(SecondsFormat::Millis, true),
         "received":received,"total":total});
     rows.insert(0, row.clone());
     if let Err(e) = state.save(&rows) { rows.remove(0); return Err(e); }
@@ -29,20 +63,28 @@ fn begin(view: &Webview, url: &str, destination: &mut PathBuf, received: u64, to
     Ok(id)
 }
 
-/// Late byte callbacks never resurrect a terminal row. Only start/finish write
-/// the history file; 200 ms progress is kept in memory for snapshots and events.
-fn update(row: &mut Value, received: u64, total: Option<u64>, finished: Option<bool>) -> bool {
-    if row["state"] != "downloading" { return false; }
-    row["received"] = json!(received.max(row["received"].as_u64().unwrap_or(0)));
-    if total.is_some() { row["total"] = json!(total); }
-    if let Some(success) = finished {
-        row["state"] = json!(if success { "done" } else { "failed" });
-        row["finishedAt"] = json!(Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true));
-        if success {
-            let size = row["path"].as_str().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len()).unwrap_or(received);
-            row["size"] = json!(size);
-            row["received"] = json!(size);
-            row["total"] = json!(size);
+/// Late byte events leave paused and terminal rows alone. WebView2 may restart
+/// a transfer on resume, so the current count may be lower than the last one.
+fn update(row: &mut Value, progress: Option<Progress>, status: Option<Status>) -> bool {
+    if !pending(row) || (status.is_none() && row["state"] != "downloading") { return false; }
+    if let Some((received, total)) = progress {
+        row["received"] = json!(received);
+        row["total"] = json!(total);
+    }
+    if let Some(status) = status {
+        row["state"] = json!(status.name());
+        if let Some(can_resume) = status.can_resume() { row["canResume"] = json!(can_resume); }
+        else if let Some(fields) = row.as_object_mut() { fields.remove("canResume"); }
+        if !pending(row) {
+            row["finishedAt"] = json!(Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true));
+            row["controllable"] = json!(false);
+            if status == Status::Done {
+                let size = row["path"].as_str().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len())
+                    .unwrap_or_else(|| row["received"].as_u64().unwrap_or(0));
+                row["size"] = json!(size);
+                row["received"] = json!(size);
+                row["total"] = json!(size);
+            }
         }
     }
     true
@@ -52,112 +94,29 @@ fn update(row: &mut Value, received: u64, total: Option<u64>, finished: Option<b
 pub(super) fn recover(rows: &mut [Value]) -> bool {
     let at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut changed = false;
-    for row in rows.iter_mut().filter(|r| r["state"] == "downloading") {
+    for row in rows.iter_mut().filter(|r| pending(r)) {
         row["state"] = json!("interrupted");
+        row["controllable"] = json!(false);
+        if let Some(fields) = row.as_object_mut() { fields.remove("canResume"); }
         row["finishedAt"] = json!(at);
         changed = true;
     }
     changed
 }
 
-fn publish(app: &tauri::AppHandle, id: &str, received: u64, total: Option<u64>, finished: Option<bool>) {
+fn publish(app: &tauri::AppHandle, id: &str, progress: Option<Progress>, status: Option<Status>) -> bool {
     let state = app.state::<BrowserState>();
     let mut rows = state.downloads.lock().unwrap();
-    let Some(row) = rows.iter_mut().find(|r| r["id"] == id) else { return; };
-    if !update(row, received, total, finished) { return; }
+    let Some(row) = rows.iter_mut().find(|r| r["id"] == id) else { return false; };
+    let changed = status.is_some_and(|s| row["state"] != s.name() || row["canResume"].as_bool() != s.can_resume());
+    if !update(row, progress, status) { return false; }
+    let ended = !pending(row);
     let row = row.clone();
-    if finished.is_some() {
+    if changed {
         if let Err(e) = state.save(&rows) { event(app, json!({"type":"error","message":e})); }
     }
     event(app, json!({"type":"download","download":row}));
-}
-
-#[cfg(windows)]
-pub async fn attach(view: &Webview) -> Result<(), String> {
-    use std::{cell::Cell, rc::Rc, time::{Duration, Instant}};
-    use windows::core::{HSTRING, Interface, PWSTR};
-    use webview2_com::{BytesReceivedChangedEventHandler, CoTaskMemPWSTR, DownloadStartingEventHandler, StateChangedEventHandler,
-        Microsoft::Web::WebView2::Win32::*};
-
-    // Each operation supplies its own counts and completion state. In particular,
-    // simultaneous downloads of the same URL must never be matched by URL.
-    unsafe fn counts(op: &ICoreWebView2DownloadOperation) -> windows::core::Result<(u64, Option<u64>)> {
-        let (mut bytes, mut total) = (0, 0);
-        op.BytesReceived(&mut bytes)?;
-        op.TotalBytesToReceive(&mut total)?;
-        Ok((bytes.max(0) as u64, total_bytes(total)))
-    }
-    let source = view.clone();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    view.with_webview(move |native| unsafe {
-        let result = (|| -> windows::core::Result<()> {
-            let core: ICoreWebView2_4 = native.controller().CoreWebView2()?.cast()?;
-            core.add_DownloadStarting(&DownloadStartingEventHandler::create(Box::new(move |_, args| {
-                let Some(args) = args else { return Ok(()); };
-                let app = source.app_handle();
-                let op = args.DownloadOperation()?;
-                let mut raw = PWSTR::null();
-                op.Uri(&mut raw)?;
-                let url = CoTaskMemPWSTR::from(raw).to_string();
-                args.ResultFilePath(&mut raw)?;
-                let mut destination = PathBuf::from(CoTaskMemPWSTR::from(raw).to_string());
-                let (bytes, total) = counts(&op)?;
-                let id = match begin(&source, &url, &mut destination, bytes, total) {
-                    Ok(id) => id,
-                    Err(message) => {
-                        args.SetCancel(true)?;
-                        event(app, json!({"type":"error","message":message}));
-                        return Ok(());
-                    }
-                };
-                let bytes_token = Rc::new(Cell::new(None));
-                let state_token = Rc::new(Cell::new(None));
-                let register = (|| -> windows::core::Result<()> {
-                    args.SetResultFilePath(&HSTRING::from(dunce::simplified(&destination)))?;
-                    args.SetHandled(true)?;
-                    let a = app.clone(); let key = id.clone(); let mut last = Instant::now();
-                    let mut token = 0;
-                    op.add_BytesReceivedChanged(&BytesReceivedChangedEventHandler::create(Box::new(move |operation, _| {
-                        let Some(operation) = operation else { return Ok(()); };
-                        if last.elapsed() >= Duration::from_millis(200) {
-                            let (received, total) = counts(&operation)?;
-                            last = Instant::now();
-                            publish(&a, &key, received, total, None);
-                        }
-                        Ok(())
-                    })), &mut token)?;
-                    bytes_token.set(Some(token));
-                    let b = bytes_token.clone(); let s = state_token.clone();
-                    let a = app.clone(); let key = id.clone();
-                    op.add_StateChanged(&StateChangedEventHandler::create(Box::new(move |operation, _| {
-                        let Some(operation) = operation else { return Ok(()); };
-                        let mut status = COREWEBVIEW2_DOWNLOAD_STATE::default();
-                        operation.State(&mut status)?;
-                        if status == COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS { return Ok(()); }
-                        let (received, total) = counts(&operation).unwrap_or((0, None));
-                        // Always flush final bytes, even inside the 200 ms throttle.
-                        publish(&a, &key, received, total, Some(status == COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED));
-                        if let Some(token) = b.take() { let _ = operation.remove_BytesReceivedChanged(token); }
-                        if let Some(token) = s.take() { let _ = operation.remove_StateChanged(token); }
-                        Ok(())
-                    })), &mut token)?;
-                    state_token.set(Some(token));
-                    Ok(())
-                })();
-                if let Err(e) = register {
-                    if let Some(token) = bytes_token.take() { let _ = op.remove_BytesReceivedChanged(token); }
-                    if let Some(token) = state_token.take() { let _ = op.remove_StateChanged(token); }
-                    args.SetCancel(true)?;
-                    publish(app, &id, bytes, total, Some(false));
-                    event(app, json!({"type":"error","message":format!("建立下载进度失败：{e}")}));
-                }
-                Ok(())
-            })), &mut 0)?;
-            Ok(())
-        })();
-        let _ = tx.send(result.map_err(err));
-    }).map_err(err)?;
-    rx.await.map_err(err)?
+    ended
 }
 
 #[cfg(not(windows))]
@@ -177,7 +136,7 @@ pub fn fallback(view: Webview, e: tauri::webview::DownloadEvent<'_>) -> bool {
                     None => d["url"].as_str() == Some(url.as_str()),
                 }
             }).and_then(|d| d["id"].as_str().map(str::to_owned));
-            if let Some(id) = id { publish(app, &id, 0, None, Some(success)); }
+            if let Some(id) = id { publish(app, &id, None, Some(if success { Status::Done } else { Status::Failed })); }
         }
         _ => {}
     }
@@ -189,42 +148,64 @@ mod tests {
     use super::*;
     #[test]
     fn unknown_length_progress_and_final_flush() {
-        assert_eq!(total_bytes(-1), None);
-        assert_eq!(total_bytes(0), None);
-        assert_eq!(total_bytes(2048), Some(2048));
         let mut row = json!({"state":"downloading","received":0,"total":null});
-        assert!(update(&mut row, 1024, None, None));
+        assert!(update(&mut row, Some((1024, None)), None));
         assert!(row["total"].is_null());
-        assert!(update(&mut row, 1023, Some(2048), None));
-        assert_eq!(row["received"], 1024);
+        assert!(update(&mut row, Some((1024, Some(2048))), None));
         assert!(row.get("finishedAt").is_none());
-        assert!(update(&mut row, 2048, Some(2048), Some(true)));
+        assert!(update(&mut row, Some((2048, Some(2048))), Some(Status::Done)));
         assert_eq!(row["received"], row["size"]);
         assert_eq!(row["received"], row["total"]);
         assert_eq!(row["state"], "done");
         let finished = row["finishedAt"].clone();
         assert!(chrono::DateTime::parse_from_rfc3339(finished.as_str().unwrap()).is_ok());
-        assert!(!update(&mut row, 1, None, None));
+        assert!(!update(&mut row, Some((1, None)), None));
         assert_eq!(row["finishedAt"], finished);
         assert_eq!(row["received"], 2048);
     }
     #[test]
     fn failed_transfer_keeps_partial_bytes() {
         let mut row = json!({"state":"downloading","received":1024,"total":4096});
-        assert!(update(&mut row, 1536, None, Some(false)));
+        assert!(update(&mut row, Some((1536, Some(4096))), Some(Status::Failed)));
         assert_eq!(row["state"], "failed");
         assert!(chrono::DateTime::parse_from_rfc3339(row["finishedAt"].as_str().unwrap()).is_ok());
         assert_eq!(row["received"], 1536);
         assert_eq!(row["total"], 4096);
-        assert!(!update(&mut row, 4096, Some(4096), Some(true)));
+        assert!(!update(&mut row, Some((4096, Some(4096))), Some(Status::Done)));
         assert_eq!(row["state"], "failed");
     }
     #[test]
+    fn pause_resume_restart_and_cancel_follow_the_native_operation() {
+        let mut row = json!({"state":"downloading","controllable":true,"received":1024,"total":4096});
+        assert!(update(&mut row, Some((1536, Some(4096))), Some(Status::Paused { can_resume: true })));
+        assert!(pending(&row));
+        assert_eq!(row["canResume"], true);
+        assert!(row.get("finishedAt").is_none());
+        assert!(!update(&mut row, Some((2048, Some(4096))), None));
+        assert_eq!(row["received"], 1536);
+        assert!(update(&mut row, Some((0, None)), Some(Status::Downloading)));
+        assert_eq!(row["received"], 0);
+        assert!(row["total"].is_null());
+        assert!(row.get("canResume").is_none());
+        assert!(update(&mut row, None, Some(Status::Waiting { can_resume: false })));
+        assert!(pending(&row));
+        assert!(update(&mut row, None, Some(Status::Downloading)));
+        assert!(update(&mut row, None, Some(Status::Canceled)));
+        assert_eq!(row["state"], "canceled");
+        assert_eq!(row["controllable"], false);
+        assert!(!update(&mut row, None, Some(Status::Downloading)));
+    }
+    #[test]
     fn recovery_dates_only_the_newly_interrupted_rows() {
-        let mut rows = [json!({"state":"done"}), json!({"state":"downloading","startedAt":"2026-11-01T00:00:00.000Z"})];
+        let mut rows = [json!({"state":"done"}), json!({"state":"downloading","startedAt":"2026-11-01T00:00:00.000Z"}),
+            json!({"state":"paused","controllable":true,"canResume":true,"received":1024})];
         assert!(recover(&mut rows));
         assert!(rows[0].get("finishedAt").is_none());
         assert_eq!(rows[1]["state"], "interrupted");
+        assert_eq!(rows[2]["state"], "interrupted");
+        assert_eq!(rows[2]["received"], 1024);
+        assert!(rows[2].get("canResume").is_none());
+        assert_eq!(rows[2]["controllable"], false);
         let finished = rows[1]["finishedAt"].clone();
         assert!(chrono::DateTime::parse_from_rfc3339(finished.as_str().unwrap()).is_ok());
         assert!(!recover(&mut rows)); assert_eq!(rows[1]["finishedAt"], finished);

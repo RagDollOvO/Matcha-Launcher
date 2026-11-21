@@ -45,12 +45,12 @@
     <span class="ic"><Boxes size={16}/></span>
     <div class="txt">
       <button class="name" onclick={onl4n} title="查看整包里的功能">L4N 整包<ChevronRight size={12}/></button>
-      <span class="val">{env ? (needsDownload(env.l4n) ? '未下载' : env.l4n.enabled ? (env.l4n.launchEnabled===false ? '平台启动时跳过' : '平台启动时加载') : env.l4n.installed ? '已停用' : '未安装') : '读取中'}{#if env}<small>{env.l4n.version ? 'v'+env.l4n.version : env.l4n.installed ? '版本待识别' : ''}{#if libraryUpdate(env.l4n)} · 可更新到 v{libraryUpdate(env.l4n)}{/if}{#if app.l4nPlugins?.plugins.length} · {app.l4nPlugins.plugins.filter(p => p.enabled).length}/{app.l4nPlugins.plugins.length} 子插件{/if}{#if app.l4nPlugins?.pending} · 待恢复{/if}</small>{/if}</span>
+      <span class="val">{env ? (needsDownload(env.l4n) ? '未下载' : env.l4n.enabled ? (env.l4n.launchEnabled===false ? '平台启动时跳过' : '平台启动时加载') : env.l4n.installed ? '已停用' : '未安装') : '读取中'}{#if env}<small>{env.l4n.unmanaged ? '手动安装 · ' : ''}{env.l4n.version ? 'v'+env.l4n.version : env.l4n.installed ? '版本未知' : ''}{#if libraryUpdate(env.l4n)} · 可更新到 v{libraryUpdate(env.l4n)}{/if}{#if app.l4nPlugins?.plugins.length} · {app.l4nPlugins.plugins.filter(p => p.enabled).length}/{app.l4nPlugins.plugins.length} 子插件{/if}{#if app.l4nPlugins?.pending} · 待恢复{/if}</small>{/if}</span>
     </div>
     {#if env && needsDownload(env.l4n)}
       {#if pct('l4n')}<span class="dl mono" role="status">{pct('l4n')}</span>{:else}<button class="btn sm" disabled={!!dlLock} title={dlLock || '先确认来源和大小再下载'} onclick={() => app.downloadNativeLibrary('l4n')}>下载</button>{/if}
     {:else if env?.l4n.unmanaged && env.l4n.supportsLaunchToggle}<span class="sw" title="随 Matcha 启动 L4N，仅作用于平台模式"><Toggle on={env.l4n.launchEnabled!==false} disabled={l4nLock} onchange={()=>app.setL4nLaunch(env!.l4n.launchEnabled===false)} label="随 Matcha 启动 L4N"/></span>
-    {:else if env?.l4n.unmanaged}<small>本机已有</small>{:else if env}<span class="sw" title={l4nLock ? (lock || '暂不能切换') : '整体启停，下次启动游戏生效'}><Toggle on={env.l4n.enabled} disabled={l4nLock} onchange={() => app.setNativeLibrary('l4n', !env.l4n.enabled)} label={`${env.l4n.enabled ? '停用' : '启用'} L4N 整包`}/></span>{/if}
+    {:else if env && !env.l4n.unmanaged}<span class="sw" title={l4nLock ? (lock || '暂不能切换') : '整体启停，下次启动游戏生效'}><Toggle on={env.l4n.enabled} disabled={l4nLock} onchange={() => app.setNativeLibrary('l4n', !env.l4n.enabled)} label={`${env.l4n.enabled ? '停用' : '启用'} L4N 整包`}/></span>{/if}
   </div>
 </section>
 

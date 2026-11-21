@@ -3,7 +3,6 @@
   // 签名换了或没签名的新版不给一键更新，先交给茶茶核对。
   import ArrowRight from '@lucide/svelte/icons/arrow-right';
   import { app } from '../stores/app.svelte';
-  import { needsDownload } from '../plugins/native-offer';
 
   let { onopen }: { onopen?: (pluginId: string) => void } = $props();
   const list = $derived(app.dllUpdates);
@@ -13,11 +12,7 @@
 
   function run(u: (typeof list)[number]) {
 
-    if (u.kind === 'library') {
-      const lib = app.nativeLibraries?.l4n;
-      // 按需下载的组件先下新版；随包的直接装随包版本
-      return lib?.download || needsDownload(lib) ? app.downloadNativeLibrary('l4n') : app.setNativeLibrary('l4n', true);
-    }
+    if (u.kind === 'library') return app.updateNativeLibrary();
     const p = plugin(u.id);
     if (p) return app.updatePluginFromSource(p);
   }
@@ -26,7 +21,7 @@
 
 {#if list.length}
   <section class="updates" aria-label="可以更新">
-    <header><h2>可以更新 <span class="n">{list.length}</span></h2><p>更新前会先给你看变化，配置和启停状态保留，旧版本会备份。</p></header>
+    <header><h2>可以更新 <span class="n">{list.length}</span></h2><p>先查看文件变化，再确认更新。旧版本会备份。</p></header>
     <ul>
       {#each list as u (u.key)}
         {@const task = u.kind === 'plugin' ? app.downloadTask(`plugin:${u.id}`) : u.kind === 'library' ? app.downloadTask(`native:${u.id}`) : undefined}
@@ -43,7 +38,7 @@
             {@const v = pct(task.done, task.total)}
             <span class="prog mono" role="status">{task.state === 'verifying' ? '核对中…' : v === null ? '下载中…' : `${v}%`}</span>
           {:else}
-            <button class="btn sm" class:primary={!w} disabled={!!lock} title={lock || undefined} onclick={() => run(u)}>{w ? '让茶茶核对' : '更新…'}</button>
+            <button class="btn sm" class:primary={!w} disabled={!!lock || (u.kind === 'library' && !!app.nativeLibraries?.l4n.pending)} title={lock || undefined} onclick={() => run(u)}>{w ? '让茶茶核对' : u.kind === 'library' && !app.nativeLibraries?.l4n.enabled ? '更新并启用…' : '更新…'}</button>
           {/if}
         </li>
       {/each}

@@ -24,6 +24,8 @@ test('browse query preserves search, category, sort, pagination and collection; 
   const url = new URL(browseUrl({ search: 'AK & 中文', tag: 'Weapons', sort: 'mostrecent', page: 2, kind: 'collection' }));
   assert.equal(url.origin, 'https://steamcommunity.com');
   for (const [k, v] of Object.entries({ appid: '550', searchtext: 'AK & 中文', 'requiredtags[]': 'Weapons', p: '2', section: 'collections', browsesort: 'mostrecent' })) assert.equal(url.searchParams.get(k), v);
+  assert.equal(new URL(browseUrl({ search: ' tank hp ', sort: 'textsearch' })).searchParams.get('browsesort'), 'textsearch');
+  assert.equal(new URL(browseUrl({ search: ' ', sort: 'textsearch' })).searchParams.get('browsesort'), 'trend');
   assert.throws(() => browseUrl({ page: -1 }), { code: 'invalid_argument' });
   const page = parseBrowse(html()); assert.equal(page.page, 2); assert.equal(page.authors.get('456'), '作者');
   assert.equal(parseBrowse(html([], { total_count: 0, total_pages: 0 })).total, 0);

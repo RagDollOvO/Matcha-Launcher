@@ -76,7 +76,7 @@
         .filter(([, v]) => { try { JSON.parse(v); return true; } catch { return false; } });
       if (!entries.length) throw new Error();
     } catch { app.toast('这不是 Matcha 导出的界面偏好文件'); return; }
-    if (!await app.confirm('导入界面偏好', `${file.name}\n\n覆盖这台电脑上的 ${entries.length} 项界面偏好，完成后重新载入界面。壁纸图片和导入的字体文件不在里面。`, '导入并重新载入')) return;
+    if (!await app.confirm('导入界面偏好', `${file.name}\n\n覆盖这台电脑上的 ${entries.length} 项界面偏好，完成后重新载入界面。自选音乐、壁纸和字体文件保留在本机。`, '导入并重新载入')) return;
     try { for (const [k, v] of entries) localStorage.setItem(k, v); }
     catch { app.toast('写入本机存储失败，请检查磁盘空间'); return; }
     location.reload();
@@ -84,8 +84,8 @@
   async function resetPrefs() {
     if (!await app.confirm('恢复界面默认', '', '恢复并重新载入', {
       facts: [
-        { label: '恢复', value: '配色、字体、声音、缩放、聊天和下载提醒等偏好，以及 Mod 页、服务器页的视图' },
-        { label: '保留', value: '游戏目录、启动项、Mod 方案、密钥、浏览器书签、B站关键词，以及导入过的壁纸和字体文件' },
+        { label: '恢复', value: '配色、字体、音量、声音开关、缩放、聊天和下载提醒等偏好，以及 Mod 页、服务器页的视图' },
+        { label: '保留', value: '游戏目录、启动项、Mod 方案、密钥、浏览器书签、B站关键词，以及自选音乐、壁纸和字体文件' },
       ],
     })) return;
     try { for (const k of RESET_KEYS) localStorage.removeItem(k); } catch { /* 读不到存储就没东西可清 */ }

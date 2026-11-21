@@ -45,7 +45,7 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("matcha-annotate-{}-{}", std::process::id(), chrono::Utc::now().timestamp_micros()));
         std::fs::create_dir(&folder).unwrap();
         let state = BrowserState { downloads: vec![json!({"id":"1-0","state":"done","path":"original.zip"})].into(),
-            pages: Default::default(), steam_views: Default::default(), folder, load_error: None };
+            pages: Default::default(), steam_views: Default::default(), routes: Default::default(), folder, load_error: None };
         let video = json!({"source":"bilibili","url":"https://www.bilibili.com/video/BV1xx411c7mD","title":"演示"});
         let fake = json!({"source":"bilibili","url":"https://bilibili.com.example.org/","title":"无效"});
         let result = annotate(&state, "1-0", &json!([fake, video])).unwrap();

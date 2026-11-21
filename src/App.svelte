@@ -5,11 +5,8 @@
   import Toasts from './lib/components/Toasts.svelte';
   import Home from './lib/pages/Home.svelte';
   import Mods from './lib/pages/Mods.svelte';
-  import Workshop from './lib/pages/Workshop.svelte';
-  import Browser from './lib/pages/Browser.svelte';
+  import Discover from './lib/pages/Discover.svelte';
   import Downloads from './lib/pages/Downloads.svelte';
-  import Bilibili from './lib/pages/Bilibili.svelte';
-  import GameMaps from './lib/pages/GameMaps.svelte';
   import Settings from './lib/pages/Settings.svelte';
   import Plugins from './lib/pages/Plugins.svelte';
   import Servers from './lib/pages/Servers.svelte';
@@ -133,16 +130,13 @@
         {#if app.route === 'home'}<Home />
         {:else if app.route === 'mods'}
           {#if app.capabilities.mods}<Mods />{:else}<PendingFeature title="VPK 管理" detail="VPK 扫描、覆盖路径分析和方案应用正在接入。当前可先管理 Matcha DLL 模组。" />{/if}
-        {:else if app.route === 'workshop'}<Workshop />
-        {:else if app.route === 'bilibili'}<Bilibili />
-        {:else if app.route === 'gamemaps'}<GameMaps />
         {:else if app.route === 'downloads'}<Downloads />
         {:else if app.route === 'settings'}<Settings />
         {:else if app.route === 'plugins'}<Plugins />
         {:else if app.route === 'servers'}
           {#if app.capabilities.servers}<Servers />{:else}<PendingFeature title="服务器探测" detail="A2S 服务器探测与收藏功能待接入，实时人数和延迟将在收到探测结果后显示。" />{/if}
         {/if}
-        <Browser />
+        <Discover />
         <SupportPrompt />
       {:else}
         <div class="loading" role="status">{app.error ? '连接本地平台后继续' : '正在检测 Steam 与游戏安装…'}</div>

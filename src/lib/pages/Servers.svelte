@@ -189,7 +189,7 @@
     if (e.key === 'Escape') edit = null;
   }
   function focus(node: HTMLInputElement) { node.focus(); node.select(); }
-  function renameServer(s: Server) { startEdit({ kind: 'server', id: s.id }, s.label || s.name); }
+  function renameServer(s: Server) { startEdit({ kind: 'server', id: s.id }, s.label); }
   function moveTo(ids: string[], gid: string) {
     const list = ids.filter((id) => app.serverPlace.get(id)?.group !== gid);
     if (!list.length) return;
@@ -243,6 +243,7 @@
     items.push({ label: allFav ? '取消收藏' : '收藏', icon: Star, hint: 'F', run: () => app.setServersFavorite(list.map((s) => s.id), !allFav) });
     items.push({ label: '移动到', icon: FolderInput, items: moveItems(list.map((s) => s.id)) });
     if (one) items.push({ label: '编辑备注', icon: Pencil, hint: 'F2', run: () => renameServer(one) });
+    if (one?.label) items.push({ label: '清除备注，恢复原名', run: () => app.renameServer(one.id, '', true) });
     if (!one) items.push({ label: '用这些新建合集', icon: Plus, run: () => newGroupWith(list.map((s) => s.id)) });
     items.push({ kind: 'sep' });
     items.push({ label: one ? '从列表移除' : `移除 ${n} 台`, icon: Trash2, hint: 'Del', danger: true, run: () => app.removeServers(list.map((s) => s.id)) });

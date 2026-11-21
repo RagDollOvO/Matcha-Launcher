@@ -87,7 +87,8 @@ export async function windowAction(action: 'minimize' | 'maximize' | 'close') {
   if (!desktop) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
   const win = getCurrentWindow();
-  if (action === 'maximize') await win.toggleMaximize();
+  if (action === 'maximize' && await win.isFullscreen()) await invoke('browser_call', { action: 'exit-fullscreen' });
+  else if (action === 'maximize') await win.toggleMaximize();
   else await win[action]();
 }
 /** 游戏退出后把最小化的主窗口叫回前台（需要壳放行 unminimize；没放行时退而求其次 show + focus） */

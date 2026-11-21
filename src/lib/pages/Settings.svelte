@@ -218,6 +218,14 @@
   }
 
   const s = sfx.settings;
+  let musicInput: HTMLInputElement;
+  let changingMusic = $state(false);
+  async function chooseMusic(file?: File) {
+    changingMusic = true;
+    try { await sfx.chooseMusic(file); }
+    catch (e) { app.toast(errorText(e)); }
+    finally { changingMusic = false; }
+  }
 </script>
 
 <div class="settings">
@@ -453,6 +461,13 @@
           </div>
           <div class="line"><div class="lt"><b>界面音效</b></div><Toggle on={s.ui} onchange={() => (s.ui = !s.ui)} label="界面音效" /></div>
           <div class="line"><div class="lt"><b>背景音乐</b><span class="sub">游戏运行或窗口收起时暂停</span></div><Toggle on={s.ambient} onchange={() => (s.ambient = !s.ambient)} label="主页音乐" /></div>
+          <div class="line"><div class="lt"><b>播放曲目</b><span class="sub music-name" title={sfx.musicName}>{sfx.musicName || '内置音乐'}</span></div>
+            <div class="music-actions">
+              <input bind:this={musicInput} type="file" hidden accept=".mp3,.m4a,.wav,.ogg,.flac" onchange={() => { const file = musicInput.files?.[0]; musicInput.value = ''; if (file) void chooseMusic(file); }} />
+              {#if sfx.musicName}<button class="btn sm ghost" disabled={changingMusic} onclick={() => chooseMusic()}>恢复内置</button>{/if}
+              <button class="btn sm" disabled={changingMusic} onclick={() => musicInput.click()}>选择音乐…</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -464,6 +479,8 @@
 </div>
 
 <style>
+  .music-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .music-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   /* 目录搜索 */
   .find { position: relative; display: flex; align-items: center; gap: 8px; height: 34px; margin: 0 2px 6px; padding: 0 10px; border-radius: 10px; color: var(--fg-3);
     background: color-mix(in srgb, var(--md-on-surface) 6%, transparent); border: 1px solid transparent; transition: border-color var(--dur), background var(--dur); }

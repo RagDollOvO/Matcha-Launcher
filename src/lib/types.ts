@@ -237,7 +237,7 @@ export interface WorkshopItem {
 
 export interface WorkshopQuery {
   search: string;
-  sort: 'trend' | 'mostrecent' | 'lastupdated' | 'totaluniquesubscribers';
+  sort: 'trend' | 'mostrecent' | 'lastupdated' | 'totaluniquesubscribers' | 'textsearch';
   tag: string;
   kind: 'item' | 'collection';
   page: number;
