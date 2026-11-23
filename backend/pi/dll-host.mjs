@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { readPermissions } from './autonomy.mjs';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 
 /** DLL tools reuse the desktop IPC and its live confirmation/serialization owner. */
 export function dllHost(service, gameRoot) {

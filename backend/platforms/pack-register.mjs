@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { inspectPe } from '../core.mjs';
+import { inspectPe } from '../file-inspection.mjs';
 import { writeJson } from '../mods/files.mjs';
 import { platformPath, relativePath, fail, skeetoCoreVersion } from './files.mjs';
 import lockfile from 'proper-lockfile';

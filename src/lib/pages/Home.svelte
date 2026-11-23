@@ -2,6 +2,8 @@
   import { onMount, untrack } from 'svelte';
   import { launchFx } from '../launch-fx';
   import Play from '@lucide/svelte/icons/play';
+  import Square from '@lucide/svelte/icons/square';
+  import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import ChevronUp from '@lucide/svelte/icons/chevron-up';
   import Check from '@lucide/svelte/icons/check';
   import Blocks from '@lucide/svelte/icons/blocks';
@@ -9,6 +11,7 @@
   import Layers from '@lucide/svelte/icons/layers';
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import CountUp from '../components/CountUp.svelte';
   import { gameSettings } from '../stores/game-settings.svelte';
   import { openSettings } from '../stores/nav.svelte';
@@ -16,7 +19,7 @@
   import { shownMode } from '../launch-modes';
   import { enabledDllMods } from '../plugins/recorded-dll';
   if (gameSettings.status === 'idle') void gameSettings.load();
-  import { app } from '../stores/app.svelte';
+  import { app, ROOT } from '../stores/app.svelte';
   import { theme } from '../theme/theme.svelte';
   import { sfx } from '../sound/sfx.svelte';
   import { welcome } from '../stores/welcome.svelte';
@@ -25,12 +28,13 @@
   let clock = $state(Date.now());
 
   const p = $derived(app.activeProfile!);
-  const conflicts = $derived(app.activeConflicts(p).length);
+  const conflicts = $derived(app.game.installed ? app.conflictReviews[p.id]?.counts.pending : undefined);
   const favorites = $derived(app.servers.filter((s) => s.favorite).slice(0, 3));
   const elapsed = $derived.by(() => {
     if (!app.launchedAt) return '00:00';
     const s = Math.max(0, Math.floor((clock - app.launchedAt) / 1000));
-    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    const two = (n: number) => String(n).padStart(2, '0');
+    return s >= 3600 ? `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}` : `${two(Math.floor(s / 60))}:${two(s % 60)}`;
   });
   const bars = (ping: number | null) => (ping === null ? 0 : ping < 40 ? 4 : ping < 70 ? 3 : ping < 110 ? 2 : 1);
 
@@ -46,6 +50,9 @@
 
   // 启动方式：两种，做成卡片顶上的切换
   const mode = $derived(shownMode(app.launchConfig.mode));
+  const missing = $derived(app.missingMods(p).length);
+  const needsMods = $derived(mode !== 'clean' && missing > 0);
+  const inGame = $derived(app.launchState === 'running' || app.stoppingGame);
   const modeLocked = $derived(!!app.busy || app.launchState !== 'idle');
   const MODES = [
     { id: 'modded', label: 'L4N 平台', icon: Blocks, title: 'L4N 平台启动：加载 Mod、DLL 模组和运行时' },
@@ -53,7 +60,6 @@
   ] as const;
 
   // 玩家卡片的状态
-  const vpkOn = $derived(app.mods.filter((m) => m.enabled === true).length);
   const dll = $derived(enabledDllMods(mode === 'clean', app.runtime, app.plugins, app.l4nPlugins, app.externalPacks, app.platforms));
   const dllHint = $derived(mode === 'clean' ? '纯净对抗：本模式不启用 DLL 模组' :
     `当前模式：Matcha 模组 ${dll.matcha} · L4N 子插件 ${dll.children} · 外来平台 ${dll.registered}`);
@@ -101,17 +107,14 @@
     if (s === 'launching' && lastLaunch === 'idle') untrack(() => launchFx(launchBtn, avatarEl));
     lastLaunch = s;
   });
+  // 强制停止常驻在运行卡右侧（中性圆钮，悬停才转警示色），点了仍走确认框
+  const stopBlock = $derived(app.stoppingGame ? '正在停止游戏' : app.game.pid && app.game.startedAt ? '' : '等待游戏进程信息');
 
-  function launch(addr?: string) {
+  function launch() {
+    if (needsMods) return app.openModPanel('missing', p.id);
     if (!app.game.installed || (!app.runtime.installed && !l4nOk && app.launchConfig.mode !== 'clean')) { app.route = 'plugins'; return; }
     if (app.launchState !== 'idle') return;
-    void app.launch(addr);
-  }
-  function openConflicts() {
-    app.editingProfileId = p.id;
-    app.modFilter.status = 'conflict';
-    app.modFilter.category = 'all';
-    app.route = 'mods';
+    void app.launch();
   }
   function onKey(e: KeyboardEvent) {
     const el = e.target as HTMLElement;
@@ -155,14 +158,14 @@
     </div>
 
     <div class="facts">
-      <button class="fact" data-sfx="tab" title="查看本方案启用的 Mod" onclick={() => { app.editingProfileId = p.id; app.modFilter.status = 'on'; app.route = 'mods'; }}>
-        <b>{app.capabilities.mods ? p.modIds.length : '—'}</b><span>Mod</span>
+      <button class="fact" data-sfx="tab" title="查看本方案启用的 Mod" onclick={() => { app.editingProfileId = p.id; app.modFilter.category = ROOT; app.modFilter.status = 'on'; app.route = 'mods'; }}>
+        <b>{app.capabilities.mods ? p.modIds.length - missing : '—'}</b><span>Mod</span>
       </button>
-      {#if conflicts}
-        <button class="fact danger" data-sfx="tab" title="查看冲突" onclick={openConflicts}><b><CountUp value={conflicts} /></b><span>冲突</span></button>
-      {:else}
-        <span class="fact" title={app.capabilities.mods ? 'VPK 配置里启用的数量' : 'VPK 待扫描'}><b>{app.capabilities.mods ? vpkOn : '—'}</b><span>VPK</span></span>
-      {/if}
+      <button class="fact" class:conflict={!!conflicts} data-sfx="tab" disabled={conflicts === undefined}
+        title={conflicts === undefined ? '扫描 Mod 后显示冲突' : '查看本方案的资源冲突'}
+        onclick={() => app.openModPanel('conflicts', p.id)}>
+        <b>{#if conflicts === undefined}—{:else}<CountUp value={conflicts} />{/if}</b><span>冲突</span>
+      </button>
       <button class="fact" data-sfx="tab" title={dllHint} onclick={() => (app.route = 'plugins')}><b><CountUp value={dll.total} /></b><span>DLL</span></button>
     </div>
     <div class="line">
@@ -173,20 +176,28 @@
       <span>DXVK {dxvk}</span>
     </div>
 
-    {#if app.launchState === 'running'}
-      <div class="running">
-        <span class="live-dot"></span>
-        <span class="rt"><b>游戏运行中</b><small class="mono">{elapsed}</small></span>
-        <button class="btn sm ghost" onclick={() => app.refresh()}>刷新</button>
+    {#if inGame}
+      <div class="session" class:stopping={app.stoppingGame}>
+        <span class="beacon" aria-hidden="true">
+          {#if app.stoppingGame}<LoaderCircle size={17} class="spin" />{:else}<i></i>{/if}
+        </span>
+        <span class="st" role="status">
+          <b>{app.stoppingGame ? '正在停止游戏…' : '游戏运行中'}</b>
+          <small><span class="mono" title="本次运行时长">{elapsed}</span><i></i><span class="pn">{mode === 'clean' ? '纯净对抗' : p.name}</span></small>
+        </span>
+        <button class="stop" type="button" aria-label="强制停止游戏" title={stopBlock || '强制停止游戏'}
+                disabled={!!stopBlock} onclick={() => void app.stopGame()}>
+          <Square size={11} fill="currentColor" strokeWidth={0} /><span>停止</span>
+        </button>
       </div>
     {:else}
-      <button bind:this={launchBtn} class="launch" class:busy={app.launchState === 'launching' || app.launchState === 'requested'} data-sfx="open" title="{meta}{app.game.build ? `\nBUILD ${app.game.build}` : ''}" disabled={!!app.busy || app.launchState === 'launching' || app.launchState === 'requested'} onclick={() => launch()}>
+      <button bind:this={launchBtn} class="launch" class:needs-mods={needsMods} class:busy={app.launchState === 'launching' || app.launchState === 'requested'} data-sfx="open" title={needsMods ? '查看方案中找不到的 VPK' : meta + (app.game.build ? `\nBUILD ${app.game.build}` : '')} disabled={!!app.busy || app.launchState === 'launching' || app.launchState === 'requested'} onclick={launch}>
         <span class="fill"></span>
         <span class="lbl">
           <b>
-            {#if app.launchState === 'launching'}提交中<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>{:else if app.launchState === 'requested'}等待游戏响应<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>{:else if !app.game.installed}选择游戏目录{:else if !app.runtime.installed && !l4nOk && app.launchConfig.mode !== 'clean'}配置 DLL 运行时{:else}<Play size={16} fill="currentColor" />启动游戏{/if}
+            {#if app.launchState === 'launching'}提交中<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>{:else if app.launchState === 'requested'}等待游戏响应<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>{:else if needsMods}<TriangleAlert size={16} />查看缺失 Mod{:else if !app.game.installed}选择游戏目录{:else if !app.runtime.installed && !l4nOk && app.launchConfig.mode !== 'clean'}配置 DLL 运行时{:else}<Play size={16} fill="currentColor" />启动游戏{/if}
           </b>
-          <small>{mode === 'clean' ? '纯净对抗 · Steam 原版' : p.name}</small>
+          <small>{mode === 'clean' ? '纯净对抗 · Steam 原版' : needsMods ? p.name + ' · ' + missing + ' 个文件未找到' : p.name}</small>
         </span>
       </button>
     {/if}
@@ -301,10 +312,10 @@
   .facts { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 14px; }
   .fact { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0; border-radius: 12px; transition: background var(--dur); }
   .fact + .fact { box-shadow: -1px 0 0 0 var(--line); border-top-left-radius: 0; border-bottom-left-radius: 0; }
-  button.fact:hover { background: var(--hover); }
+  button.fact:not(:disabled):hover { background: var(--hover); }
   .fact b { font-size: 20px; font-weight: 700; line-height: 1.15; color: var(--fg); font-variant-numeric: tabular-nums; }
   .fact span { font-size: 11px; color: var(--fg-3); }
-  .fact.danger b, .fact.danger span { color: var(--md-error); }
+  .fact.conflict b { color: var(--md-error); }
   .line { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 8px 0 14px; font-size: 11px; color: var(--fg-3); white-space: nowrap; }
   .line button { color: inherit; transition: color var(--dur); }
   .line button:hover { color: var(--fg); }
@@ -318,6 +329,7 @@
     transition: filter var(--dur), transform 200ms var(--ease-out);
   }
   .launch:hover { filter: brightness(1.07); }
+  .launch.needs-mods { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); box-shadow: none; }
   .launch:active { transform: scale(0.985); }
   .launch:disabled { cursor: default; }
   .launch::after {
@@ -347,11 +359,35 @@
   .dots i:nth-child(3) { animation-delay: 0.28s; }
   @keyframes hopdot { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-5px); opacity: 1; } }
 
-  .running { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 10px 0 20px; border-radius: 18px; background: var(--md-primary-container); color: var(--md-on-primary-container); animation: pop-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
-  @keyframes pop-in { from { opacity: 0; transform: scale(.94) translateY(6px); } to { opacity: 1; transform: none; } }
-  .running .rt { flex: 1; display: flex; flex-direction: column; }
-  .running .rt b { font-size: 15px; }
-  .running .rt small { font-size: 11px; opacity: .8; }
+  /* 运行中：占启动按钮的位置和尺寸，换成安静的容器色；停止是右侧中性胶囊，悬停才转警示色 */
+  .session {
+    position: relative; display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 12px 0 14px; border-radius: 18px;
+    background: color-mix(in srgb, var(--md-primary-container) 72%, var(--md-surface)); color: var(--md-on-primary-container);
+    border: 1px solid color-mix(in srgb, var(--md-primary) 22%, transparent);
+    animation: session-in 420ms var(--ease-out) both;
+  }
+  @keyframes session-in { from { opacity: 0; transform: scale(.97) translateY(4px); } to { opacity: 1; transform: none; } }
+  .beacon { position: relative; display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; color: var(--md-primary); background: color-mix(in srgb, var(--md-primary) 16%, transparent); }
+  .beacon i { position: relative; width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+  .beacon i::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: currentColor; animation: ripple 2s var(--ease-out) infinite; }
+  @keyframes ripple { from { transform: scale(1); opacity: .55; } to { transform: scale(3.4); opacity: 0; } }
+  .st { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .st b { font-size: 15px; font-weight: 700; letter-spacing: .04em; white-space: nowrap; }
+  .st small { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: color-mix(in srgb, currentColor 72%, transparent); white-space: nowrap; }
+  .st small .mono { font-variant-numeric: tabular-nums; }
+  .st small i { flex: none; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: .6; }
+  .st .pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .stop {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 13px 0 12px; border-radius: 17px;
+    font-size: 13px; font-weight: 600; color: var(--md-on-primary-container);
+    background: color-mix(in srgb, var(--md-on-primary-container) 10%, transparent);
+    transition: background var(--dur), color var(--dur), transform 160ms var(--ease-out);
+  }
+  .stop:hover:not(:disabled) { background: var(--md-error-container); color: var(--md-on-error-container); }
+  .stop:active:not(:disabled) { transform: scale(.96); }
+  .stop:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+  .stop:disabled { opacity: .45; cursor: default; }
+  .session.stopping .beacon { color: var(--fg-2); background: var(--hover); }
   .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--md-primary); animation: beat 1.6s ease-in-out infinite; }
   @keyframes beat { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
@@ -391,7 +427,7 @@
   @media (max-height: 700px) { .clock { display: none; } }
 
   @media (prefers-reduced-motion: reduce) {
-    .player, .clock, .live, .rise, .live-dot, .colon, .avatar .ph.loading, .running, .launch.busy .fill, .dots i { animation: none; }
+    .player, .clock, .live, .rise, .live-dot, .session, .beacon i::after, .colon, .avatar .ph.loading, .launch.busy .fill, .dots i { animation: none; }
     .launch.busy .fill { left: 0; }
   }
 </style>

@@ -4,6 +4,7 @@ import { desktop, errorText } from '../api/bridge';
 import { TabsStore, initialState, START_URL } from './dsh/store';
 import { readPersisted, createTabPersist } from './dsh/persist';
 import { normalizeAddress, normalizeLinkAddress, tryParseHttp } from './dsh/url';
+import { settleDownloadTabs } from './download-tabs';
 import { trail, toModCreators, type CreatorPage } from './trail';
 import type { ModCreator } from '../types';
 
@@ -34,6 +35,7 @@ class Browser {
   downloads = $state<BrowserDownload[]>([]);
   loading = $state<Record<string, boolean>>({});
   downloadsOpen = $state(false);
+  historyReady = $state(!desktop);
   initialized = false;
   bookmarks = $state<{ url: string; title: string }[]>(readBookmarks());
   // Drafts live only in this session. Native sync and persisted history still see a start tab.
@@ -85,34 +87,54 @@ class Browser {
   async init() {
     if (this.initialized || !desktop) return;
     this.initialized = true;
-    await listen<any>('browser-event', ({ payload: e }) => {
-      const tab = tabs.getSnapshot().tabs.find(t => t.id === e.id);
-      if (e.type === 'page' && tab && tab.url !== START_URL && tryParseHttp(e.url)) {
-        tabs.observe(e.id, e.url); this.loading[e.id] = e.loading; trail.visit(e.id, e.url);
-      } else if (e.type === 'title' && tab && tab.url !== START_URL) { tabs.observe(e.id, tab.url, e.title); trail.title(e.id, tab.url, e.title); }
-      // 网页里点开的新窗口记下是从哪个标签来的；Steam 加速标签跳出 Steam 时没带 from，就算当前标签
-      else if (e.type === 'open') this.open(e.url, e.from ?? tabs.activeTab()?.id);
-      else if (e.type === 'error') this.error = e.message;
-      else if (e.type === 'download') {
-        const row = e.download as BrowserDownload;
-        const index = this.downloads.findIndex(d => d.id === row.id);
-        // Keep simultaneous transfers in place instead of reordering on every progress event.
-        if (index < 0) { trail.capture(row); this.downloads = [row, ...this.downloads]; void this.saveCreators(row); }
-        else this.downloads[index] = row;
-      }
-    });
-    const saved = await this.call<BrowserDownload[]>('downloads');
-    const current = new Set(this.downloads.map(d => d.id));
-    this.downloads = [...this.downloads, ...saved.filter(d => !current.has(d.id))];
-    // Backfill sources still in this player's existing browser history, without consulting today's tabs.
-    for (const row of saved) if (!current.has(row.id)) await this.saveCreators(row);
+    let history: BrowserDownload[];
+    try {
+      await listen<any>('browser-event', ({ payload: e }) => this.onNativeEvent(e));
+      const saved = await this.call<BrowserDownload[]>('downloads');
+      const current = new Set(this.downloads.map(d => d.id));
+      history = saved.filter(d => !current.has(d.id));
+      this.downloads = [...this.downloads, ...history];
+      this.settleTabs(history);
+    } finally {
+      this.historyReady = true;
+    }
+    // Backfill after tab restore is ready, without consulting today's tabs.
+    for (const row of history) await this.saveCreators(row);
+  }
+  private settleTabs(rows: readonly BrowserDownload[]) {
+    const previous = tabs.getSnapshot();
+    const next = settleDownloadTabs(previous, rows);
+    if (next === previous) return;
+    tabs.set(next);
+    persist.flush();
+  }
+  private onNativeEvent(e: any) {
+    const tab = tabs.getSnapshot().tabs.find(t => t.id === e.id);
+    if (e.type === 'page' && tab && tab.url !== START_URL && tryParseHttp(e.url)) {
+      tabs.observe(e.id, e.url); this.loading[e.id] = e.loading; trail.visit(e.id, e.url);
+    } else if (e.type === 'title' && tab && tab.url !== START_URL) { tabs.observe(e.id, tab.url, e.title); trail.title(e.id, tab.url, e.title); }
+    // 网页里点开的新窗口记下是从哪个标签来的；Steam 加速标签跳出 Steam 时没带 from，就算当前标签
+    else if (e.type === 'open') this.open(e.url, e.from ?? tabs.activeTab()?.id);
+    else if (e.type === 'error') this.error = e.message;
+    else if (e.type === 'download') {
+      const row = e.download as BrowserDownload;
+      const index = this.downloads.findIndex(d => d.id === row.id);
+      // Keep simultaneous transfers in place instead of reordering on every progress event.
+      if (index < 0) {
+        trail.capture(row);
+        this.downloads = [row, ...this.downloads];
+        this.settleTabs([row]);
+        void this.saveCreators(row);
+      } else this.downloads[index] = row;
+    }
   }
   workspace(root: string) {
     root = root || 'global';
     if (tabs.getSnapshot().root === root) return;
     persist.flush();
     const saved = readPersisted(root);
-    tabs.set(saved ? { root, ...saved, tabs: saved.tabs.map(t => ({ ...t, nonce: 0 })) } : initialState(root));
+    const restored = saved ? { root, ...saved, tabs: saved.tabs.map(t => ({ ...t, nonce: 0 })) } : initialState(root);
+    tabs.set(settleDownloadTabs(restored, this.downloads));
   }
   /** from：从哪个标签页（id）或哪个作者页打开的，来源链接着往下记 */
   open(url: string, from?: string | CreatorPage) {

@@ -1,5 +1,5 @@
 import { platformPath, readBytes, relativePath } from './platforms/files.mjs';
-import { PlatformError } from './core.mjs';
+import { PlatformError } from './errors.mjs';
 
 export function imagePath(value) {
   if (typeof value !== 'string' || value.includes('\\') || value.length > 240 || !/\.(png|jpe?g|webp|gif)$/i.test(value)) return null;

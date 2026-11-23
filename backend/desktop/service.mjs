@@ -1,4 +1,4 @@
-import { stamp } from '../mods/files.mjs';
+import { samePath, stamp } from '../mods/files.mjs';
 import { Storage } from './storage.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -14,11 +14,11 @@ import { listSessions, trashSession } from '../pi/session-files.mjs';
 import { platformToolCatalog } from '../pi/platform-extension.mjs';
 import { ModManager } from '../mods/manager.mjs';
 import { ConflictFileIndex } from '../mods/conflicts.mjs';
+import { conflictReviewPage, conflictReviewSummaries } from '../mods/conflict-reviews.mjs';
 import { displayNames } from '../mods/display-names.mjs';
-import { planFavoriteCollection, withoutMembers } from '../mods/favorite-collections.mjs';
-import { bookmarkFiles } from '../mods/favorite-files.mjs';
-import { recycleSources, previewRecycleSources } from '../mods/favorite-recycle.mjs';
-import { favoriteProfilePlan } from '../mods/favorite-profiles.mjs';
+import { changeTrash, combinedTrash } from '../mods/favorite-trash.mjs';
+import { prepareFavorites, migrateFavorites, exportFavoriteVpk } from '../mods/favorite-vault.mjs';
+import { prepareFavoriteWrite, favoriteAsset, favoriteSource, linkFavoriteSource, favoriteRefsView, trashThumbnail } from '../mods/favorites.mjs';
 import { ModTrash } from '../mods/trash.mjs';
 import { TaskManager } from '../mods/tasks.mjs';
 import { ModAudio } from '../mods/audio.mjs';
@@ -26,12 +26,16 @@ import { steamProfile } from '../steam-profile.mjs';
 import { Workshop } from '../mods/workshop.mjs';
 import { Bilibili } from '../bilibili.mjs';
 import { GameMaps, gameMapsId } from '../mods/gamemaps.mjs';
-import { listBrowserArchive, browserImportFiles, creatorFields, releaseExtracted } from '../mods/browser-downloads.mjs';
-import { regular, identity } from '../mods/vpk.mjs';
+import { listBrowserArchive } from '../mods/browser-downloads.mjs';
+import { regular, identity, readVpk } from '../mods/vpk.mjs';
 import { libraryId, workshopId } from '../mods/library.mjs';
 import { extractMod } from '../mods/extract.mjs';
-import { folderSource, packModFolder, packSource } from '../mods/pack.mjs';
+import { packModFolder, packSource } from '../mods/pack.mjs';
+import { packAndImportMod } from '../mods/imports.mjs';
+import { modCommands } from '../mods/commands.mjs';
+import { profileViews, missingModsByProfile, applyModProfile, enableNewMods } from '../mods/profiles.mjs';
 import { ServerManager } from '../servers/manager.mjs';
+import { serverCommands } from '../servers/commands.mjs';
 import { savedGameSummary } from '../saved-game-settings.mjs';
 import { localL4n } from '../local-render.mjs';
 import { l4nLaunchOn, setL4nLaunch } from '../launch-argv.mjs';
@@ -72,8 +76,12 @@ const defaultProfile = () => ({ id: 'default', name: '默认方案', note: 'Matc
 const desktopMode = mode => mode === 'direct' || mode === 'development' ? 'modded' : mode;
 const defaults = () => ({ version: 1, gameRoot: '', profiles: [defaultProfile()], activeProfileId: 'default', categories: [{ id: 'cat-none', name: '未分类', builtin: true }], assignments: {}, modMeta: {}, favoriteCollections: [] });
 const fail = (code, message) => { throw new core.PlatformError(code, message); };
-const samePath = (a, b) => a && b && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 const exists = async p => fs.access(p).then(() => true, () => false);
+const isQuickTestProcess = (root, process) => {
+  if (!process.path || path.basename(process.path).toLowerCase() !== 'left4dead2.exe') return false;
+  const session = path.dirname(process.path), folder = path.dirname(session);
+  return /^[0-9a-f-]{36}$/.test(path.basename(session)) && isFolder(folder, 'tests') && samePath(path.dirname(folder), root);
+};
 
 const defaultDataDir = () => process.env.BEACON_DATA_DIR ?? claimDataDir(DEV_DATA) ?? path.join(projectRoot, DEV_DATA.name);
 /**
@@ -115,6 +123,7 @@ export class DesktopService extends EventEmitter {
       inspectGame: root => this.core.inspectGame(root), fetch: options.platformFetch, beforeWrite: options.platformBeforeWrite });
     this.externalPlatforms.managed = this.platformLifecycle;
     this.serverManager = new ServerManager({ dataDir: this.dataDir, query: options.queryServer, readFriends: options.readFriends });
+    this.serverCommands = serverCommands(this.serverManager, () => this.emit('event', { type: 'servers_changed' }));
     this.quickTest = new QuickTest({ manager: this.modManager, core: this.core, dataDir: this.dataDir });
     this.distRoot = options.distRoot ?? path.join(projectRoot, 'native/build-x86/dist');
     this.nativeLibraries = new NativeLibraries({ dataDir: this.dataDir, inspectGame: root => this.core.inspectGame(root), distRoot: this.distRoot, vendorRoot: options.vendorRoot, fetch: options.nativeFetch ?? ((...args)=>this.workshop.fetch(...args)) });
@@ -153,7 +162,7 @@ export class DesktopService extends EventEmitter {
     this.piBusy = false;
     this.storageOps=0;this.storage=new Storage(this,options.storageNative);
     this.gamemaps.deleteArchives=()=>this.storage.cfg.deleteArchivesAfterImport;
-    this.ready = this.load().then(async()=>{try{await this.storage.load()}catch(e){this.storage.error=e;this.emit('event',{type:'bridge_fault',error:core.errorRecord(e)})}});
+    this.ready = this.load().then(()=>migrateFavorites(this)).then(async()=>{try{await this.storage.load()}catch(e){this.storage.error=e;this.emit('event',{type:'bridge_fault',error:core.errorRecord(e)})}});
     this.sdkTimer=setInterval(()=>{void this.ready.then(()=>this.sdkTargets()).then(ts=>this.sdkUpdates.check(ts)).catch(e=>this.emit('event',{type:'bridge_fault',error:core.errorRecord(e)}));},86400000);
     this.sdkTimer.unref();
   }
@@ -183,21 +192,30 @@ export class DesktopService extends EventEmitter {
     this.launchMode = spec.mode;
     return spec;
   }
+  prepareFavorites(next) { return prepareFavorites(this,next); }
   async save(next) {
+    const favorites = await prepareFavoriteWrite(this, next);
+    next = favorites.next;
     await fs.mkdir(this.dataDir, { recursive: true });
     const staging = `${this.settingsFile}.${randomUUID()}.tmp`;
     try {
       const h = await fs.open(staging, 'wx');
       try { await h.writeFile(JSON.stringify(next, null, 2)); await h.sync(); } finally { await h.close(); }
       await fs.rename(staging, this.settingsFile);
+    } catch (e) {
+      await favorites.discardNewVersions();
+      throw e;
     } finally { await fs.unlink(staging).catch(e => { if (e.code !== 'ENOENT') throw e; }); }
     this.settings = next;
+    await favorites.discardRetiredVersions().catch(e => this.emit('event', { type: 'bridge_fault', error: core.errorRecord(e) }));
   }
   async root() {
     if (this.settings.gameRoot) return this.settings.gameRoot;
     const result = await this.core.discover();
     return result.games[0]?.gameRoot ?? '';
   }
+  async trashEntries(root){return combinedTrash(this.settings,root?await this.modTrash.list(root):[]);}
+  changeTrash(op,ids,confirmation,root){return changeTrash(this,op,ids,confirmation,root);}
   gameSettings() { return validateGameSettings(this.settings.gameSettings ?? defaultGameSettings()); }
   async gameSettingsReply() {
     const settings = this.gameSettings(), root = await this.root();
@@ -254,49 +272,12 @@ export class DesktopService extends EventEmitter {
     if (!root) fail('game_root_required', '请先安装 L4D2，或选择完整的游戏目录。');
     return root;
   }
-  profileViews(mods) {
-    return this.settings.profiles.map(p => p.modsInitialized || p.modIds?.length ? p : {
-      ...p, modIds: mods.filter(m => m.kind !== 'platform-package' && !m.error && m.storage !== 'library' && m.enabled !== false).map(m => m.id),
-    });
-  }
-  async applyModProfile(id, confirmation) {
-    const root = await this.requireRoot();
-    const inventory = await this.modManager.scan(root);
-    const profile = this.profileViews(inventory.mods).find(x => x.id === id);
-    if (!profile) fail('profile_missing', '方案已不存在。');
-    if (profile.modsGameRoot && !samePath(profile.modsGameRoot, root)) fail('profile_game_mismatch', '此 Mod 方案属于另一游戏目录，请先从当前游戏同步方案。');
-    const result = await this.modManager.apply({ gameRoot: root, enabledIds: profile.modIds, confirmation });
-    await this.save({ ...this.settings, activeProfileId: profile.id, profiles: this.settings.profiles.map(x => x.id === profile.id ? { ...profile, modsInitialized: true, modsGameRoot: root } : x) });
-    return result;
-  }
-  /** New Mods default to on: add them to the launch profile (applied on the next launch). Files and
-   *  addonlist stay untouched, inbox marks are kept. Best effort: an import never fails because of this.
-   *  Callers run inside the service queue. Returns the requested IDs enabled in the profile. */
-  async enableNewMods(gameRoot, ids) {
-    try {
-      if (!ids?.length) return [];
-      const inventory = await this.modManager.scan(gameRoot);
-      const profile = this.profileViews(inventory.mods).find(p => p.id === this.settings.activeProfileId);
-      if (!profile || (profile.modsGameRoot && !samePath(profile.modsGameRoot, gameRoot))) return [];
-      const usable = new Set(inventory.mods.filter(m => !m.error && m.kind !== 'platform-package').map(m => m.id));
-      const enabled = [...new Set(ids)].filter(id => usable.has(id));
-      const added = enabled.filter(id => !profile.modIds.includes(id));
-      if (!added.length) return enabled;
-      const next = { ...profile, modIds: [...profile.modIds, ...added], modsInitialized: true, modsGameRoot: gameRoot, updatedAt: new Date().toISOString() };
-      await this.save({ ...this.settings, profiles: this.settings.profiles.map(p => p.id === next.id ? next : p) });
-      return enabled;
-    } catch { return []; }
-  }
-  favoriteSource(id, file) {
-    const ref=this.settings.favoriteRefs?.[id];
-    if (!ref || typeof file !== 'string' || !samePath(ref.absolutePath,file)) fail('favorite_missing','收藏来源已变更，请重新选择。');
-    return ref;
-  }
-  async linkFavoriteSource(id, file, gameRoot, modId) {
-    const refs=this.settings.favoriteRefs ?? {};
-    const ref=id ? refs[id] : Object.values(refs).find(ref=>samePath(ref.absolutePath,file));
-    if (ref && samePath(ref.absolutePath,file)) await this.save({...this.settings,favoriteRefs:{...refs,[ref.id]:{...ref,library:{gameRoot,modId}}}});
-  }
+  profileViews(mods) { return profileViews(this.settings.profiles, mods); }
+  applyModProfile(id, confirmation) { return applyModProfile(this, id, confirmation); }
+  enableNewMods(gameRoot, ids) { return enableNewMods(this, gameRoot, ids); }
+  favoriteAsset(id) { return favoriteAsset(this, id); }
+  favoriteSource(id, file) { return favoriteSource(this, id, file); }
+  linkFavoriteSource(id, file, gameRoot, modId) { return linkFavoriteSource(this, id, file, gameRoot, modId); }
   async bundledPlugins() {
     const root = path.join(this.distRoot, 'bin/l4p/plugins');
     const dirs = await fs.readdir(root, { withFileTypes: true }).catch(e => { if (e.code === 'ENOENT') return []; throw e; });
@@ -660,11 +641,15 @@ export class DesktopService extends EventEmitter {
       catch (e) { issues.push(core.errorRecord(e)); }
     }
     const { plugins, availablePlugins, nativeLibraries, l4nPlugins, runtime, normalProcess, externalPacks } = await this.dllSnapshot(root, inspection, issues);
-    const process = normalProcess ?? inspection?.processes.find(p => p.path && path.basename(p.path).toLowerCase() === 'left4dead2.exe' && (d => samePath(path.dirname(d), root) && isFolder(d, 'tests'))(path.dirname(path.dirname(p.path))));
+    const process = normalProcess ?? inspection?.processes.find(p => isQuickTestProcess(root, p));
     const fileIndex = new ConflictFileIndex();
     let modInventory = { mods: [], conflicts: [], issues: [], writable: false, addonListPath: '' };
+    let modScanComplete = false;
     if (inspection) {
-      try { modInventory = await this.modManager.scan(root, { fileIndex }); }
+      try {
+        modInventory = await this.modManager.scan(root, { fileIndex });
+        modScanComplete = !modInventory.issues.length;
+      }
       catch (e) { issues.push(core.errorRecord(e)); }
     }
     issues.push(...modInventory.issues);
@@ -675,13 +660,14 @@ export class DesktopService extends EventEmitter {
     }
     const categories = this.settings.categories;
     const mods = modInventory.mods.map(m => ({ ...m, origin: this.settings.modOrigins?.[m.id], categoryId: categories.some(c => c.id === this.settings.assignments[m.id]) ? this.settings.assignments[m.id] : 'cat-none' }));
+    const profiles = this.profileViews(mods);
     let servers = [], serverLayout;
     try { ({ servers, serverLayout } = await this.serverManager.snapshot()); }
     catch (e) { issues.push(core.errorRecord(e)); }
     const platforms = [];
-    this.modFileIndex = { root, fileIndex };
+    this.modFileIndex = { root, fileIndex, mods, modsById: new Map(mods.map(mod => [mod.id, mod])) };
     return {
-      game: { installed: !!inspection, root, steamId: '550', build: inspection?.steamBuildId ?? '—', running: !!process, pid: process?.pid },
+      game: { installed: !!inspection, root, steamId: '550', build: inspection?.steamBuildId ?? '—', running: !!process, pid: process?.pid, startedAt: process?.startedAt },
       launch: launchSpec(this.launchMode, undefined, this.gameSettings()),
       installations: discovery.games.map(g => ({ root: g.gameRoot, build: g.steamBuildId ?? '—' })),
       runtime: { installed: inspection?.platform.status === 'installed', status: inspection?.platform.status ?? 'absent',
@@ -689,9 +675,11 @@ export class DesktopService extends EventEmitter {
         pendingOperations: inspection?.pendingOperations ?? [] },
       dxvk: { installed: !!nativeLibraries?.dxvk.installed, enabled: false, version: nativeLibraries?.dxvk.version??'—',
         dll:nativeLibraries?.dxvk.entries.find(e=>e.kind==='dxvk')?.path??'', configured:false },
-      plugins, availablePlugins, platforms, externalPacks, nativeLibraries, l4nPlugins, profiles: this.profileViews(mods), activeProfileId: this.settings.activeProfileId,
-      categories, mods, modMeta: this.settings.modMeta, favoriteCollections: this.settings.favoriteCollections, favoriteRefs: this.settings.favoriteRefs ?? {}, trash, conflicts: modInventory.conflicts, servers, serverLayout, cfg: [],
-      modState: { writable: modInventory.writable, addonListPath: modInventory.addonListPath },
+      plugins, availablePlugins, platforms, externalPacks, nativeLibraries, l4nPlugins, profiles, activeProfileId: this.settings.activeProfileId,
+      categories, mods, modMeta: this.settings.modMeta, favoriteCollections: this.settings.favoriteCollections, favoriteRefs: favoriteRefsView(this), trash:combinedTrash(this.settings,trash), conflicts: modInventory.conflicts, servers, serverLayout, cfg: [],
+      conflictReviews: conflictReviewSummaries(this.modFileIndex, profiles, this.settings.modConflictReviews),
+      modState: { writable: modInventory.writable, addonListPath: modInventory.addonListPath,
+        ...(modScanComplete && { missingByProfile: missingModsByProfile(profiles, mods, root) }) },
       tasks: this.tasks.list(),
       capabilities: { plugins: true, l4nPlugins: true, platforms: false, platformManagement: false, mods: true, servers: true, config: true },
       issues, checkedAt: new Date().toISOString(),
@@ -699,7 +687,7 @@ export class DesktopService extends EventEmitter {
   }
   async dispatch(command,params={},confirmation){
     await this.ready;
-    const writing=/^(browser-import|browser-archive|gamemaps-download|workshop-download|task-(?:retry|resume)|recycle-favorite-files|pack-favorite-folder|select-game|pack-mod-folder|extract-mod|start-extract|import-mod|library-|plugin-|cache-clear|pi-command|set-mod|apply-profile)/.test(command);
+    const writing=/^(browser-import|browser-archive|gamemaps-download|workshop-download|task-(?:retry|resume)|recycle-favorite-files|pack-favorite-folder|select-game|pack-mod-folder|extract-mod|start-extract|import-favorite-copy|import-mod|library-|plugin-|cache-clear|pi-command|set-mod|apply-profile)/.test(command);
     if(this.storage.error&&(command.startsWith('storage-')||writing&&command!=='select-game'))throw this.storage.error;
     if(command==='storage-move' && this.storage.busy())fail('storage_busy','传输或导入正在进行。');
     if(writing && this.storage.cfg?.move)fail('storage_busy','请先完成下载与缓存搬家。');
@@ -728,8 +716,6 @@ export class DesktopService extends EventEmitter {
       const row=await this.tasks.completed(taskId);return this.dllIntake.view(await this.dllIntake.record(row.intakeId));
     }
     if (command === 'update-check') return checkUpdate(this.appVersion, this.updateRepository, this.workshop.fetch);
-    if (command === 'friend-servers') return this.serverManager.friends.list();
-    if (command === 'friend-server-info') return this.serverManager.friends.detail(params.id);
     if (command === 'steam-profile') return steamProfile({ gameRoot: this.settings.gameRoot });
     if (command === 'task-list') return this.tasks.list();
     if (command === 'download-settings-get') return { ...this.tasks.settings };
@@ -765,42 +751,30 @@ export class DesktopService extends EventEmitter {
       return { status: 'opened' };
     }
     if (command === 'mod-conflict-files') {
+      if (params.profileId !== undefined) return conflictReviewPage(this, params);
       if (!this.modFileIndex || this.modFileIndex.root !== params.gameRoot)
         fail('context_changed', 'Mod 清单已变化，请重新扫描。');
       return this.modFileIndex.fileIndex.page(params);
     }
     if (command === 'mod-sounds' || command === 'mod-sound') {
-      const ref=this.settings.favoriteRefs?.[params.id], source=ref?.referenceKind==='vpk' ? ref.absolutePath : undefined;
+      const source=this.favoriteAsset(params.id);
       const root=source ? this.settings.gameRoot || path.dirname(source) : await this.requireRoot();
       return command==='mod-sounds' ? this.audio.list(root,params.id,source) : this.audio.sound(root,params.id,params.path,source);
     }
     if (command === 'mod-thumbnail') {
-      const ref = this.settings.favoriteRefs?.[params.id];
-      if (ref?.referenceKind === 'vpk') return this.modManager.localThumbnail(ref.absolutePath);
+      const source=this.favoriteAsset(params.id);
+      if(source)return this.modManager.localThumbnail(source);
       return this.modManager.thumbnail(await this.requireRoot(), params.id);
     }
-    if (command === 'trash-thumbnail') return this.modTrash.thumbnail(await this.requireRoot(), params.trashId);
+    if (command === 'trash-thumbnail') return trashThumbnail(this, params.trashId);
     if (['pi-connect', 'pi-reconnect', 'pi-close', 'pi-sessions', 'pi-session-delete', 'pi-settings-set', 'pi-auth-set', 'pi-auth-remove', 'pi-models-set'].includes(command)
       || (command === 'pi-command' && ['new_session', 'switch_session', 'fork', 'clone', 'set_model', 'set_thinking_level', 'set_auto_compaction', 'set_auto_retry'].includes(params.type))) {
       return this.piLifecycle(() => this.piCommand(command, params));
     }
     if (command.startsWith('pi-')) return this.piCommand(command, params);
-    // Network queries have their own bounded queue; Steam/Mod snapshots stay responsive.
-    if (['server-state', 'list-servers', 'add-server', 'update-server', 'remove-server', 'favorite-server', 'favorite-friend-server', 'save-server-layout', 'query-servers'].includes(command)) {
-      const manager = this.serverManager;
-      let result;
-      if (command === 'server-state') return manager.snapshot();
-      if (command === 'list-servers') return manager.list();
-      if (command === 'add-server') result = await manager.add(params);
-      if (command === 'update-server') result = await manager.update(params);
-      if (command === 'save-server-layout') result = await manager.saveLayout(params.layout, { expected: params.expected });
-      if (command === 'remove-server') result = await manager.remove(params.id);
-      if (command === 'favorite-friend-server') result = await manager.favoriteFriend(params.id);
-      if (command === 'favorite-server') result = await manager.favorite(params.id, params.favorite);
-      if (command === 'query-servers') result = await manager.query(params.ids);
-      this.emit('event', { type: 'servers_changed' });
-      return result;
-    }
+    // Server writes and probes use their own queues, outside the core/Mod queue.
+    const serverCommand = this.serverCommands.get(command);
+    if (serverCommand) return serverCommand(params);
     // Serialize reads with writes so a snapshot cannot show a half-applied operation.
     return this.serial(() => this.execute(command, params, confirmation));
   }
@@ -824,6 +798,57 @@ export class DesktopService extends EventEmitter {
     const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); [Environment]::GetFolderPath("Desktop")'], { windowsHide: true, timeout: 5000, encoding: 'utf8' });
     const value = stdout.trim(); if (!value || !path.isAbsolute(value)) fail('desktop_required', '桌面位置读取失败，请选择输出父目录。');
     return value;
+  }
+  async copyModFiles({ ids, gameRoot, favorites }) {
+    if (!Array.isArray(ids) || !ids.length || ids.some(id => typeof id !== 'string')) fail('invalid_argument', '请选择要复制的 Mod。');
+    let root;
+    const files = new Map();
+    for (const id of new Set(ids)) {
+      let source;
+      if (favorites === true && this.settings.favoriteRefs?.[id]) source = this.favoriteAsset('fav-asset:' + id);
+      else {
+        root ??= await this.requireRoot();
+        if (typeof gameRoot !== 'string' || !samePath(root, gameRoot)) fail('game_changed', '游戏目录已切换，请重新选择 Mod。');
+        source = await this.modManager.resolve(root, id);
+      }
+      // Standalone VPKs can be copied even if they failed to scan; split VPKs
+      // need their referenced volumes in the same Explorer clipboard operation.
+      await regular(source);
+      const paths = /_dir\.vpk$/i.test(source) ? (await this.modManager.cached(source)).files.map(f => f.file) : [source];
+      for (const file of paths) files.set(file.toLowerCase(), file);
+    }
+    return { paths: [...files.values()] };
+  }
+  async queueVpkDrop(paths) {
+    if (!Array.isArray(paths) || !paths.length || paths.some(file => typeof file !== 'string' || !path.isAbsolute(file)))
+      fail('invalid_argument', '请拖入本地 VPK 或素材文件夹。');
+    const desktop = await this.getDesktop(), seen = new Set(), errors = [];
+    let queued = 0;
+    for (let file of paths) {
+      try {
+        file = path.resolve(file);
+        const stat = await fs.lstat(file);
+        if (stat.isSymbolicLink()) fail('unsafe_path', '请拖入实际文件或文件夹。');
+        if (stat.isDirectory()) {
+          const input = await packSource(file), key = input.file.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await this.tasks.create('pack', { file: input.file, sourceStamp: input.sourceStamp, exportDir: desktop, gameRoot: '' }, input.name);
+        } else {
+          if (!stat.isFile() || !/\.vpk$/i.test(file)) fail('invalid_argument', '请选择 VPK 或素材文件夹。');
+          const index = file.replace(/_\d{3,5}\.vpk$/i, '_dir.vpk');
+          if (index !== file && await exists(index)) file = index;
+          const key = file.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const vpk = await readVpk(file);
+          const title = path.basename(file).replace(/(?:_dir)?\.vpk$/i, '') || vpk.title;
+          await this.tasks.create('extract', { gameRoot: '', title, target: desktop, source: vpk.file, sourceVersion: vpk.files.map(f => f.identity) }, title);
+        }
+        queued++;
+      } catch (e) { errors.push(`${path.basename(file) || file}：${e.message}`); }
+    }
+    return { queued, errors };
   }
   async runTask(kind, request, ctx) {
     if(kind==='platform-download' && request.sourceId==='native:'+request.id && ['l4n','dxvk'].includes(request.id)){
@@ -850,25 +875,9 @@ export class DesktopService extends EventEmitter {
     });
     if (kind === 'extract') return extractMod(this.modManager, request, ctx);
     if (kind === 'pack') {
+      if(request.favoriteExport)return exportFavoriteVpk(this,request.favoriteExport,ctx,request.exportDir);
       if(request.exportDir) return packModFolder(request,ctx);
-      const checkRoot = async () => {
-        if (!samePath(request.gameRoot, await this.requireRoot())) fail('game_changed', '游戏目录已切换，请在目标目录重新拖入。');
-      };
-      await checkRoot(); await this.modManager.idle(request.gameRoot);
-      return packModFolder(request, ctx, file => this.serial(async () => {
-        await checkRoot();
-        const { id, replaced } = await this.modManager.importPacked({ gameRoot: request.gameRoot, file, replaceExisting: request.replaceExisting === true, confirmation: { approved: true, source: 'user' } });
-        await this.linkFavoriteSource(request.favoriteId,request.file,request.gameRoot,id);
-        if (request.favoriteId) return {modId:id};
-        const enabled = await this.enableNewMods(request.gameRoot, [id]);
-        const category = this.settings.categories.find(c => !c.builtin && c.id === request.categoryId)?.id ?? (replaced ? this.settings.assignments[id] : null) ?? 'cat-none';
-        if ((this.settings.assignments[id] ?? 'cat-none') !== category || this.settings.modOrigins?.[id]) {
-          const modOrigins = { ...this.settings.modOrigins }; delete modOrigins[id];
-          try { await this.save({ ...this.settings, modOrigins, assignments: { ...this.settings.assignments, [id]: category } }); }
-          catch (e) { return { modId: id, warning: `VPK 已导入，分类资料保存失败：${e.message}` }; }
-        }
-        return { modId: id, ...(!enabled.includes(id) && { warning: 'VPK 已导入，尚未加入当前启动方案。请检查方案的游戏目录和 Mod 状态。' }) };
-      }));
+      return packAndImportMod(this, request, ctx);
     }
     if (kind === 'download' && request.source === 'gamemaps') return this.gamemaps.download(request, ctx, (receipt, saveReceipt) => this.serial(async () => {
       const imported = [];
@@ -914,6 +923,8 @@ export class DesktopService extends EventEmitter {
     return { mode, profileId, serverId, connect, remote: remoteTarget(connect), modeId: server?.modeId ?? '' };
   }
   async execute(command, p, confirmation) {
+    const modCommand = modCommands.get(command);
+    if (modCommand) return modCommand(this, p, confirmation);
     switch (command) {
       case 'plugin-record-set-enabled': this.confirm(confirmation);return this.switchRecordedDll(p.id,p.enabled,p.gameRoot);
       case 'storage-get': return this.storage.status();
@@ -1064,9 +1075,14 @@ export class DesktopService extends EventEmitter {
       case 'test-options': return this.quickTest.describe(await this.requireRoot(), p.modIds, p.mapModId);
       case 'test-status': return this.quickTest.status(await this.requireRoot());
       case 'start-test': return this.quickTest.start(await this.requireRoot(), p.preset, confirmation);
+      case 'copy-mod-files': return this.copyModFiles(p);
+      case 'vpk-drop': {
+        this.confirm(confirmation);
+        return this.queueVpkDrop(p.paths);
+      }
       case 'extract-mod': {
         this.confirm(confirmation);
-        const ref=this.settings.favoriteRefs?.[p.id], source=ref?.referenceKind==='vpk'?ref.absolutePath:undefined;
+        const source=this.favoriteAsset(p.id);
         const gameRoot=source ? this.settings.gameRoot || path.dirname(source) : await this.requireRoot();
         const vpk = await this.modManager.cached(source ?? await this.modManager.resolve(gameRoot, p.id));
         const title = !vpk.hasTitle && p.id.startsWith('library:workshop:') ? (await this.modManager.library.read(gameRoot, p.id.slice('library:workshop:'.length))).title : vpk.title;
@@ -1115,168 +1131,6 @@ export class DesktopService extends EventEmitter {
         this.emit('event', { type: 'context_changed' });
         return this.snapshot();
       }
-      case 'save-profile': {
-        const profile = p.profile;
-        if (!profile || typeof profile.id !== 'string' || typeof profile.name !== 'string' || !profile.name.trim()) fail('invalid_profile', '方案需要 ID 和名称。');
-        if (!Array.isArray(profile.modIds) || profile.modIds.some(id => typeof id !== 'string')) fail('invalid_profile', '方案需要有效的 Mod ID 列表。');
-        const previous = this.settings.profiles.find(x => x.id === profile.id);
-        const profiles = this.settings.profiles.filter(x => x.id !== profile.id);
-        profiles.push({ ...profile, name: profile.name.trim() });
-        // Only Mods the player adds in this save count as organized. New Mods are on by default,
-        // so members that were already in the profile keep their inbox mark.
-        const kept = new Set(previous?.modsInitialized || previous?.modIds?.length ? previous.modIds : []);
-        const modMeta = { ...this.settings.modMeta };
-        for (const id of profile.modIds) if (!kept.has(id) && modMeta[id]?.inbox) modMeta[id] = { ...modMeta[id], inbox: false };
-        await this.save({ ...this.settings, profiles, modMeta });
-        return { status: 'saved', applies: 'draft' };
-      }
-      case 'select-profile': {
-        if (!this.settings.profiles.some(x => x.id === p.id)) fail('profile_missing', '方案已不存在。');
-        await this.save({ ...this.settings, activeProfileId: p.id });
-        return { status: 'saved' };
-      }
-      case 'delete-profile': {
-        const profiles = this.settings.profiles.filter(x => x.id !== p.id);
-        if (!profiles.length) fail('last_profile', '至少保留一个方案。');
-        await this.save({ ...this.settings, profiles, activeProfileId: this.settings.activeProfileId === p.id ? profiles[0].id : this.settings.activeProfileId });
-        return { status: 'saved' };
-      }
-      case 'save-categories': {
-        const modMeta = { ...this.settings.modMeta };
-        for (const [id, category] of Object.entries(p.assignments ?? {})) if (category !== this.settings.assignments[id] && modMeta[id]?.inbox) modMeta[id] = { ...modMeta[id], inbox: false };
-        await this.save({ ...this.settings, modMeta, categories: p.categories, assignments: { ...this.settings.assignments, ...p.assignments } });
-        return { status: 'saved' };
-      }
-      case 'favorite-to-profiles': {
-        this.confirm(confirmation);
-        const root=await this.requireRoot();
-        if (!samePath(root,p.gameRoot)) fail('game_changed','游戏目录已切换，请重新选择方案。');
-        const {mods}=await this.modManager.scan(root,{conflicts:false});
-        const plan=favoriteProfilePlan(this.settings,mods,this.profileViews(mods),root,p);
-        if (plan.added) await this.save(plan.next);
-        return {added:plan.added,lines:plan.lines};
-      }
-      case 'pack-favorite-folder': {
-        this.confirm(confirmation);
-        const ref=this.settings.favoriteRefs?.[p.id];
-        if(ref?.referenceKind!=='folder')fail('favorite_missing','请选择收藏的素材文件夹。');
-        const input=await packSource(ref.absolutePath), exportDir=await this.getDesktop();
-        return this.tasks.create('pack',{file:input.file,sourceStamp:input.sourceStamp,exportDir,gameRoot:this.settings.gameRoot||''},ref.title);
-      }
-      case 'preview-recycle-favorites':
-      case 'recycle-favorite-files': {
-        if(command==='recycle-favorite-files')this.confirm(confirmation);
-        const plan=await previewRecycleSources(this,p.ids,projectRoot);
-        if(command==='preview-recycle-favorites')return plan;
-        if(!isDeepStrictEqual(plan,p.plan))fail('file_changed','来源文件已变化，请重新核对删除清单。');
-        return recycleSources(plan,path.join(projectRoot,'native/build-x86/dist/tools/matcha_recycle.exe'));
-      }
-      case 'bookmark-files': {
-        const root = await this.root();
-        const mods = root && await exists(path.join(root, 'left4dead2')) ? (await this.modManager.scan(root,{conflicts:false})).mods : [];
-        const plan = await bookmarkFiles(this.settings, mods, this.modManager, p);
-        await this.save(plan.next);
-        return { count:plan.count, skipped:plan.skipped };
-      }
-      case 'edit-favorite-collection': {
-        const mods = Array.isArray(p.modIds) && p.modIds.some(id => !this.settings.favoriteRefs?.[id]) ? (await this.modManager.scan(await this.requireRoot(),{conflicts:false})).mods : [];
-        const plan = planFavoriteCollection(this.settings, p, mods);
-        await this.save(plan.next);
-        return { id: plan.collectionId, favoriteCollections: plan.next.favoriteCollections };
-      }
-      case 'save-mod-meta': {
-        if (!p.patch || typeof p.patch !== 'object' || Array.isArray(p.patch)) fail('invalid_argument', '需要按 Mod ID 保存的标记。');
-        const modMeta = { ...this.settings.modMeta };
-        for (const [id, value] of Object.entries(p.patch)) {
-          if (!id || ['__proto__', 'prototype', 'constructor'].includes(id) || (value !== null && (typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([key, v]) => !['favorite', 'inbox'].includes(key) || typeof v !== 'boolean')))) fail('invalid_argument', 'Mod 标记需要 favorite / inbox 布尔值或 null。');
-          // Each supplied ID replaces its complete record; omitted fields are cleared.
-          if (value === null) delete modMeta[id]; else modMeta[id] = { ...value };
-        }
-        const unstarred = new Set(Object.keys(p.patch).filter(id => !modMeta[id]?.favorite));
-        const favoriteRefs = { ...this.settings.favoriteRefs };
-        for (const id of unstarred) delete favoriteRefs[id];
-        await this.save({ ...this.settings, modMeta, favoriteRefs, favoriteCollections: withoutMembers(this.settings.favoriteCollections, unstarred) });
-        return { status: 'saved' };
-      }
-      case 'preview-delete-mods': return this.modTrash.preview(await this.requireRoot(), p.ids);
-      case 'delete-mods': return this.modTrash.delete(await this.requireRoot(), p.ids, confirmation);
-      case 'restore-mods': return this.modTrash.restore(await this.requireRoot(), p.trashIds, confirmation);
-      case 'purge-trash': return this.modTrash.purge(await this.requireRoot(), p.trashIds, confirmation);
-      case 'browser-import': {
-        this.confirm(confirmation);
-        const gameRoot = await this.requireRoot();
-        // Check before extracting as well as immediately before each publication.
-        await this.modManager.idle(gameRoot);
-        const { row, files } = await browserImportFiles(this.dataDir, p.id, p.selected,this.storage.downloadRoots('browser'));
-        const manual = creatorFields(p.creators);
-        const origin = { pageUrl: row.pageUrl, title: row.pageTitle || row.name, downloadId: row.id,
-          ...(manual.creators ? manual : creatorFields(row.creators)) };
-        const imported = [], errors = [], completed = [];
-        for (const [i,file] of files.entries()) {
-          try {
-            const result = await this.modManager.import({ gameRoot, file, ownedDownload:true, confirmation });
-            imported.push(result.id);
-            await this.save({ ...this.settings,
-              modMeta: { ...this.settings.modMeta, [result.id]: { ...this.settings.modMeta[result.id], inbox: true } },
-              modOrigins: { ...this.settings.modOrigins, [result.id]: origin },
-            });
-            if(p.selected)completed.push([...new Set(p.selected)][i]);
-          } catch (e) { errors.push(`${path.basename(file)}：${e.message}`); }
-        }
-        if (!imported.length && errors.length) fail('browser_import_failed', errors.join('\n'));
-        await this.enableNewMods(gameRoot, imported);
-        if(completed.length && /\.zip$/i.test(row.path)){
-          try{if(!errors.length)await releaseExtracted(row.path,files);const {items}=await listBrowserArchive(this.dataDir,p.id,this.storage.downloadRoots('browser'));
-            const prior=row.selectionStamp===row.importStamp?row.importedNames??[]:[];
-            const names=[...new Set([...prior,...completed])];await this.storage.patchBrowser(p.id,row.path,{selectionStamp:row.importStamp,importedNames:names});
-            if(!errors.length && items.every(i=>names.includes(i.name)))await this.storage.browserImported(row);
-          }catch(e){errors.push('Mod 已导入，压缩包清理待处理：'+e.message)}
-        }
-        return { imported, errors };
-      }
-      case 'preview-mod': return this.modManager.preview(p.file);
-      case 'preview-mod-input': {
-        if (typeof p.file !== 'string' || !path.isAbsolute(p.file)) fail('invalid_argument', '请提供 VPK 或素材文件夹的完整路径。');
-        const s = await fs.lstat(p.file);
-        if (s.isSymbolicLink()) fail('unsafe_path', '请拖入实际文件或文件夹。');
-        if (s.isDirectory()) return folderSource(p.file, await this.requireRoot(), p.replaceExisting === true);
-        if (!s.isFile() || !/\.vpk$/i.test(p.file)) return { kind: 'unsupported' };
-        const numbered = /_\d{3}\.vpk$/i.test(p.file);
-        if (numbered && await exists(p.file.replace(/_\d{3}\.vpk$/i, '_dir.vpk'))) return { kind: 'shard' };
-        try {
-          const input = await this.modManager.preview(p.file);
-          const targetExists = p.replaceExisting === true && await exists(path.join(await this.requireRoot(), 'left4dead2', 'addons', input.name));
-          return { ...input, kind: 'vpk', targetExists };
-        }
-        catch (e) { if (numbered && e.code === 'invalid_vpk') return { kind: 'shard' }; throw e; }
-      }
-      case 'pack-mod-folder': {
-        if (p.favoriteId) { this.favoriteSource(p.favoriteId,p.file); if(p.replaceExisting) fail('file_exists','请先处理 Mod 库中的同名文件。'); }
-        this.confirm(confirmation);
-        const gameRoot = await this.requireRoot();
-        if (!samePath(p.gameRoot, gameRoot)) fail('game_changed', '游戏目录已切换，请重新拖入。');
-        await this.modManager.idle(gameRoot);
-        const input = await folderSource(p.file, gameRoot, p.replaceExisting === true);
-        if (p.sourceStamp !== input.sourceStamp) fail('file_changed', '素材文件夹已变化，请重新拖入。');
-        return this.tasks.create('pack', { file: input.file, ...(p.favoriteId && {favoriteId:p.favoriteId}), replaceExisting: p.replaceExisting === true, sourceStamp: input.sourceStamp,
-          gameRoot, categoryId: this.settings.categories.find(c => !c.builtin && c.id === p.categoryId)?.id ?? 'cat-none' }, input.name);
-      }
-      case 'import-mod': {
-        if (p.favoriteId) { this.favoriteSource(p.favoriteId,p.file); if(p.replaceExisting) fail('file_exists','请先处理 Mod 库中的同名文件。'); }
-        const gameRoot = await this.requireRoot();
-        if (p.gameRoot && !samePath(gameRoot, p.gameRoot)) fail('game_changed', '游戏目录已切换，请重新导入。');
-        const result = await this.modManager.import({ gameRoot, file: p.file, confirmation, replaceExisting: p.replaceExisting === true });
-        if (this.settings.modOrigins?.[result.id]) {
-          const modOrigins = { ...this.settings.modOrigins }; delete modOrigins[result.id];
-          await this.save({ ...this.settings, modOrigins });
-        }
-        // addonlist keeps the new entry off until the launch profile is applied.
-        await this.linkFavoriteSource(p.favoriteId,p.file,gameRoot,result.id);
-        if (p.favoriteId) return {...result,enabled:false};
-        const enabled = (await this.enableNewMods(gameRoot, [result.id])).includes(result.id);
-        return { ...result, enabled, ...(enabled ? { applies: 'next-launch', profileId: this.settings.activeProfileId } : {}) };
-      }
-      case 'apply-mod-profile': return this.applyModProfile(p.id, confirmation);
       case 'plan-install': {
         const plan = await this.core.planInstall({ gameRoot: await this.requireRoot(), distRoot: this.distRoot });
         this.plans.clear(); this.plans.set(plan.id, plan);
@@ -1330,6 +1184,18 @@ export class DesktopService extends EventEmitter {
         return this.core.setPluginEnabled({ gameRoot: await this.requireRoot(), pluginId: p.pluginId, enabled: p.enabled, confirmation });
       }
       case 'invoke': return this.core.invokePlugin({ gameRoot: await this.requireRoot(), pid: p.pid, pluginId: p.pluginId, actionId: p.actionId, args: p.args, confirmation });
+      case 'stop-game': {
+        this.confirm(confirmation);
+        const gameRoot = await this.requireRoot();
+        if (typeof p.gameRoot !== 'string' || !samePath(p.gameRoot, gameRoot)) fail('game_changed', '游戏目录已切换，请刷新后再试。');
+        if (!Number.isInteger(p.pid) || typeof p.startedAt !== 'string') fail('game_process_changed', '请刷新游戏进程后再试。');
+        const inspection = await this.core.inspectGame(gameRoot);
+        const games = inspection.processes.filter(process => samePath(process.path, path.join(gameRoot, 'left4dead2.exe')) || isQuickTestProcess(gameRoot, process));
+        const target = games.find(process => process.pid === p.pid && process.startedAt === p.startedAt);
+        if (target) return this.core.stopGameProcess(target);
+        if (games.length) fail('game_process_changed', '游戏进程已变化，请刷新后再试。');
+        return { status: 'exited' };
+      }
       case 'launch': {
         this.confirm(confirmation);
         const mode = launchSpec(desktopMode(p.mode ?? this.launchMode)).mode;

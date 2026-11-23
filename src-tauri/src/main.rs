@@ -8,6 +8,7 @@ use tokio::sync::oneshot;
 mod browser;
 mod agent_window;
 mod launcher;
+mod vpk_drop;
 mod gamemaps;
 mod legacy;
 #[cfg(windows)]
@@ -196,6 +197,47 @@ async fn chat_clipboard_files(webview: tauri::Webview) -> Result<Value, String> 
     Ok(json!({ "paths": files, "folders": folders }))
 }
 
+#[tauri::command]
+async fn mod_clipboard_read(webview: tauri::Webview) -> Result<Vec<PathBuf>, String> {
+    browser::require_shell(&webview)?;
+    #[cfg(windows)]
+    return tauri::async_runtime::spawn_blocking(clipboard::file_list).await.map_err(|e| e.to_string())?;
+    #[cfg(not(windows))]
+    Ok(Vec::new())
+}
+
+#[tauri::command]
+async fn mod_clipboard_write(webview: tauri::Webview, paths: Vec<PathBuf>) -> Result<(), String> {
+    browser::require_shell(&webview)?;
+    #[cfg(windows)]
+    {
+        let owner = webview.window().hwnd().map_err(|e| e.to_string())?.0 as isize;
+        return tauri::async_runtime::spawn_blocking(move || clipboard::write_file_list(owner, &paths))
+            .await.map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))]
+    Err("请在 Windows 桌面版复制 VPK 文件。".into())
+}
+
+/// Mod 卡片拖出窗口：交给系统拖放复制 VPK 到桌面 / 资源管理器。拖放循环必须跑在窗口的 UI 线程上，
+/// 松手后才返回；true 表示目标接收了复制。
+#[tauri::command]
+async fn mod_drag_out(webview: tauri::Webview, paths: Vec<PathBuf>) -> Result<bool, String> {
+    browser::require_shell(&webview)?;
+    #[cfg(windows)]
+    {
+        let window = webview.window();
+        let (tx, rx) = oneshot::channel();
+        webview.app_handle().run_on_main_thread(move || {
+            let result = window.hwnd().map_err(|e| e.to_string()).and_then(|hwnd| clipboard::drag_file_list(hwnd.0 as isize, &paths));
+            let _ = tx.send(result);
+        }).map_err(|e| e.to_string())?;
+        return rx.await.map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))]
+    Err("请在 Windows 桌面版拖出 VPK 文件。".into())
+}
+
 /// 动态壁纸只记本机视频路径（不复制进 WebView 存储，C 盘紧张）。选择窗口放行只管本次运行，
 /// 重启后主窗口用这个命令再放行一次；只认视频文件。
 #[tauri::command]
@@ -255,10 +297,14 @@ fn main() {
     // 必须在 Builder 之前：WebView2 的存储目录按 identifier 定位。
     let context = tauri::generate_context!();
     if context.config().identifier != BETA_ID { legacy::migrate_data_dir(); }
-    let app = tauri::Builder::default()
+    let vpk_drop::LaunchRequest { paths, show_window } = vpk_drop::launch_request(std::env::args_os());
+    let builder = tauri::Builder::default().manage(vpk_drop::Drops::new(paths));
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _| vpk_drop::forward(app, args)));
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .setup(|app| {
+        .setup(move |app| {
             launcher::setup(app)?;
             let handle = app.handle().clone();
             app.notification().on_action(move |action| {
@@ -276,9 +322,10 @@ fn main() {
                 Err(error) => BridgeState { bridge: None, error: Some(format!("本地服务启动失败：{}。请从完整的 Matcha 文件夹启动程序。", error)) },
             };
             app.manage(state);
+            if show_window { launcher::show(app.handle()); }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![chat_attachment, chat_clipboard_files, wallpaper_video, wallpaper_images, beacon_call, browser::browser_call, agent_window::dock_agent_window])
+        .invoke_handler(tauri::generate_handler![chat_attachment, chat_clipboard_files, mod_clipboard_read, mod_clipboard_write, mod_drag_out, vpk_drop::take_vpk_drops, wallpaper_video, wallpaper_images, beacon_call, browser::browser_call, agent_window::dock_agent_window])
         .on_window_event(|window, event| match (window.label(), event) {
             ("main", WindowEvent::CloseRequested { api, .. }) => {
                 api.prevent_close();

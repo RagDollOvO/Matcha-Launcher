@@ -1,11 +1,11 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 import { inspectMod, compareMods } from './mod-inspect.mjs';
 import { planMetadata } from './mod-metadata.mjs';
 import { commitMetadata, historyEntries, undoPreview, undoMetadata } from './mod-history.mjs';
 import { ACQUIRE_OPS, acquireMod } from './mod-acquire.mjs';
-import { bookmarkFiles } from '../mods/favorite-files.mjs';
+import { bookmarkFiles, collectionPlan } from '../mods/favorite-files.mjs';
 
 const fail = (code, message) => { throw new PlatformError(code, message); };
 const sameRoot = (a, b) => !!a && !!b && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
@@ -73,7 +73,7 @@ export function modHost(service, gameRoot) {
       const { mods } = await scan(false), { favoriteCollections = [], modMeta } = service.settings;
       const group = favoriteCollections.find(c => c.id === params.collectionId);
       if (params.collectionId && !group) fail('collection_missing', '请选择现有收藏合集。');
-      const favorites = [...mods.filter(m => modMeta[m.id]?.favorite), ...Object.values(service.settings.favoriteRefs ?? {})];
+      const favorites = [...mods.filter(m => modMeta[m.id]?.favorite && !service.settings.favoriteRefs?.[m.id]), ...Object.values(service.settings.favoriteRefs ?? {})];
       return { collections: favoriteCollections.map(c => ({ id: c.id, name: c.name, count: favorites.filter(m => c.modIds.includes(m.id)).length })),
         favorites: favorites.filter(m => !group || group.modIds.includes(m.id)).map(({ id, title, referenceKind }) => ({ id, title, ...(referenceKind && { referenceKind }), collectionIds: favoriteCollections.filter(c => c.modIds.includes(id)).map(c => c.id) })) };
     }
@@ -85,10 +85,20 @@ export function modHost(service, gameRoot) {
     }
     if (operation === 'organize-preview') return organize(params.moves);
     if (operation === 'delete-preview') return deletion(params.modIds);
-    if (operation === 'trash-list') return { entries: await service.modTrash.list(gameRoot) };
+    if (operation === 'trash-list') return { entries: await service.trashEntries(gameRoot) };
     const metadata = async () => {
       const inventory = await scan(!['favorite-collection','bookmark-files','favorite-to-profiles','mark'].includes(params.kind));
       if (params.kind === 'bookmark-files') return bookmarkFiles(service.settings, inventory.mods, service.modManager, params);
+      if(params.kind==='favorite-collection')return collectionPlan(service.settings,inventory.mods,service.modManager,params,gameRoot);
+      if(params.kind==='mark' && params.favorite===true){
+        const paths=ids(params.modIds).map(id=>inventory.mods.find(m=>m.id===id)?.absolutePath??fail('mod_missing','请从 Mod 库选择要收藏的文件。'));
+        const plan=await bookmarkFiles(service.settings,inventory.mods,service.modManager,{paths},gameRoot);
+        if(params.sorted!==undefined){
+          const flags=planMetadata('mark',{...params,favorite:undefined},plan.next,inventory,gameRoot,service.profileViews(inventory.mods));
+          plan.next=flags.next;plan.lines.push(...flags.lines);plan.expected.flags=flags.expected;
+        }
+        return plan;
+      }
       return planMetadata(params.kind, params, service.settings, inventory, gameRoot, service.profileViews(inventory.mods));
     };
     if (operation === 'metadata-preview') {
@@ -165,11 +175,11 @@ export function modHost(service, gameRoot) {
       service.emit('event', { type: 'objects_changed' }); return result;
     }
     if (operation === 'restore' || operation === 'purge') {
-      const selected = ids(params.trashIds), entries = await service.modTrash.list(gameRoot);
+      const selected = ids(params.trashIds), entries = await service.trashEntries(gameRoot);
       const current = selected.map(id => entries.find(e => e.trashId === id) ?? fail('trash_missing', '回收条目已变化，请刷新。'));
       if (!equal(params.expected, current)) fail('mod_plan_changed', '回收条目刚有变化，请重新预览并确认。');
       aborted(signal);
-      const result = await service.modTrash[operation](gameRoot, selected, confirmation);
+      const result = await service.changeTrash(operation,selected,confirmation,gameRoot);
       service.emit('event', { type: 'objects_changed' }); return result;
     }
     fail('COMMAND_SCOPE', '未知的 Mod 管理操作。');

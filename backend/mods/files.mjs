@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 
 export const fail = (code, message) => { throw new PlatformError(code, message); };
 export const exists = p => fs.lstat(p).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; });
+export const samePath = (a, b) => a && b && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 export const stamp = s => `${s.dev}:${s.ino}:${s.size}:${s.mtimeMs}`;
 export async function directory(p, create = false) {
   if (create) await fs.mkdir(p).catch(e => { if (e.code !== 'EEXIST') throw e; });

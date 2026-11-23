@@ -2,15 +2,15 @@
 
 日常使用双击桌面 **Matcha** 快捷方式，或发布目录内的 `Matcha.exe`。页面已嵌入程序，Node.js 和 Pi CLI 随发布文件夹提供；移动时保留整个文件夹。设置和方案继续使用 `%LOCALAPPDATA%\com.matcha.launcher`。
 
-## 开发入口
+## 开发与打包
 
-在 `D:\Launcher` 打开终端：
+在源码仓库根目录打开终端：
 
 ```powershell
 npm run desktop
 ```
 
-桌面开发入口会复用正在运行的 Matcha Vite 服务，或启动它。`npm run dev` 单独提供浏览器开发界面；两种入口使用同一份能力服务。桌面版使用 Windows WebView2、Tauri 2 和本机 Node.js 22+，Pi 使用单独安装的 `@earendil-works/pi-coding-agent` CLI。
+桌面开发入口会复用正在运行的 Matcha Vite 服务，或启动它。`npm run dev` 单独提供浏览器开发界面；两种入口使用同一份能力服务。开发环境使用 Windows WebView2、Tauri 2 和本机 Node.js，茶茶连接独立安装的 `@earendil-works/pi-coding-agent` CLI。正式便携包与内测包的命令见[预检与构建](PACKAGING.md)。
 
 ## 下载放在哪个盘
 
@@ -32,6 +32,8 @@ npm run desktop
 5. 在游戏里按 **Ctrl + F7** 打开已加载模块的设置。试用物资雷达及配置迁移见 [轻量模组与物资雷达](LIGHTWEIGHT_MODS.md)。既有插件声明的桌面动作继续可用。
 
 游戏运行期间，安装、导入、启停和恢复入口会锁定。运行时已加载状态与下次启动的启用配置分开显示。当前使用 `render-init` 阶段。L4N 整包与 DXVK 本机版本识别见 [组件接入说明](NATIVE_LIBRARIES.md)。
+
+游戏卡住时，回到主页，在原「启动游戏」位置点 **强制停止** 并确认。Matcha 会结束当前检测到的游戏进程，Steam 继续运行；未保存的游戏进度可能丢失。
 
 “恢复原入口”保留插件、配置和日志。需要返回模组游玩时，在运行环境中选择“重新启用 DLL 运行时”。
 
@@ -67,16 +69,14 @@ pi
 
 对 Pi 说「记住：新下载的 Mod 先给我看分类预览」，下次开新对话仍会沿用。也可以说「把这条改成……」或「忘掉这条」。本机笔记是 Pi 配置目录里的 `MEMORY.md`（默认 `%LOCALAPPDATA%\com.matcha.launcher\pi\MEMORY.md`）。可以直接编辑其中的列表；对话时这些偏好会随上下文提供给所选模型。
 
-## 数据与开发入口
+## 数据与日志
 
 - 浏览器开发数据：`%LOCALAPPDATA%\Matcha`。
 - `launch.json`：独立保存启动方式；原方案的 `launchOptions` 草稿继续保留，当前生效参数由所选启动方式生成。
 - Tauri 桌面数据：Tauri 为 `com.matcha.launcher` 解析的本地数据目录；Pi 面板显示该入口的实际配置路径。
 - `BEACON_DATA_DIR`：仅供开发/夹具指定服务数据目录。
-- `BEACON_NODE`：桌面壳可指定 Node 可执行文件；默认使用本机 PATH 中的 `node`。
+- `BEACON_NODE`：桌面壳可指定 Node 可执行文件。开发版默认用 PATH 中的 `node`，便携包默认用同目录下的 `runtime\node.exe`。
 - `BEACON_PI_ENTRY`：可指定本机 Pi CLI 入口。默认探测当前 Node 安装旁和 npm 用户全局目录。
-
-`npm run desktop:package` 构建嵌入前端的 Windows 程序，再生成带 Node / Pi 的完整便携文件夹，位置记录在 `release/latest.json`。`npm run desktop` 保留为开发入口。安装器与自动更新留待发布阶段。
 
 服务启动问题会显示在界面；隐藏 Node 子进程的错误写入 `%LOCALAPPDATA%\com.matcha.launcher\logs\desktop-service.log`。
 

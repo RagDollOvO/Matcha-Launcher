@@ -35,6 +35,8 @@ export function historyEntries(settings, root) {
   return (store?.entries ?? []).filter(e => rootKey(e.gameRoot) === rootKey(root));
 }
 export async function commitMetadata(service, root, label, next) {
+  historyEntries(service.settings,root);
+  next=await service.prepareFavorites(next);
   const changes = metadataDelta(service.settings, next, root);
   if (!changes.length) return { historyId: null, changeCount: 0 };
   historyEntries(service.settings, root);

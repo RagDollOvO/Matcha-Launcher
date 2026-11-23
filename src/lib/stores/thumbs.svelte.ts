@@ -3,7 +3,7 @@ import type { Mod, TrashEntry } from '../types';
 
 export type ThumbMod = Pick<Mod, 'id' | 'title' | 'dirs' | 'updatedAt' | 'workshopId' | 'hasThumbnail'> & { trashId?: string };
 export const trashThumb = (t: TrashEntry): ThumbMod => ({
-  id: t.modId, title: t.title, dirs: [], updatedAt: t.deletedAt, trashId: t.trashId, hasThumbnail: t.state === 'trashed',
+  id: t.modId, title:t.title, dirs:t.favorite?.dirs??[], updatedAt:t.deletedAt, trashId:t.trashId, hasThumbnail:t.state==='trashed' && (t.favorite?.hasThumbnail??true),
 });
 
 // 本地封面按需读取；工坊条目与数字工坊 ID 文件缺图时补齐并缓存，最多 4 路并发。
@@ -24,7 +24,8 @@ const queued = new Set<string>();
 let running = 0;
 let unsupported = false;
 
-const key = (m: ThumbMod) => m.trashId ? `trash:${m.trashId}` : `${m.id}@${m.updatedAt}`;
+const asset=(m:ThumbMod)=>('referenceKind' in m?'fav-asset:':'')+m.id;
+const key = (m: ThumbMod) => m.trashId ? `trash:${m.trashId}` : `${asset(m)}@${m.updatedAt}`;
 const artDirs = $state<Record<string, string[]>>({});
 
 function put(k: string, url: string | null) {
@@ -74,7 +75,7 @@ function pump() {
     (m.trashId ? api.trashThumbnail(m.trashId).then(r => {
       if (r.dirs?.length) artDirs[k] = r.dirs;
       return r;
-    }) : api.modThumbnail(m.id))
+    }) : api.modThumbnail(asset(m)))
       .then(async (r) => put(k, r?.dataUrl ? await shrink(r.dataUrl) : null))
       .catch((e) => { if (!m.trashId && (e as { code?: string })?.code === 'unsupported_capability') unsupported = true; })
       .finally(() => { running--; queued.delete(k); pump(); });

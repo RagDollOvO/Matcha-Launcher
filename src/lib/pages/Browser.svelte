@@ -44,7 +44,7 @@
     const params = { tabs: tabState.tabs.map(t => ({ id: t.id, url: t.url })), activeId: tabState.activeId,
       visible: visible && attached && !!bounds && !isHome && !app.confirmation && !app.friendsOpen, bounds };
     const next = JSON.stringify([params, downloadViews]);
-    if (desktop && attached && next !== lastSync) {
+    if (desktop && attached && browser.historyReady && next !== lastSync) {
       lastSync = next;
       void browser.call('sync', params).catch(() => { lastSync = ''; });
     }

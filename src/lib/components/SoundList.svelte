@@ -35,7 +35,7 @@
     return () => { dead = true; };
   });
 
-  const dirOf = (p: string) => p.slice('sound/'.length, p.lastIndexOf('/') + 1) || '/';
+  const dirOf = (p: string) => p.slice(0, p.lastIndexOf('/') + 1).replace(/^sound\//i, '') || '/';
   const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
   function groups(r: ModSound[]) {
     const map = new Map<string, ModSound[]>();

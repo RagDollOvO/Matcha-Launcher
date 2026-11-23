@@ -6,8 +6,10 @@
   import Self from './Menu.svelte';
   import type { MenuItem } from './menu';
 
-  let { items, x = 0, y = 0, onclose, anchor = null, depth = 0, onback, focusFirst = false }: {
+  let { items, x = 0, y = 0, onclose, trigger, anchor = null, depth = 0, onback, focusFirst = false }: {
     items: MenuItem[]; x?: number; y?: number; onclose: () => void;
+    /** 按钮打开的根菜单：右边对齐，底部空间不足时向上展开 */
+    trigger?: HTMLElement;
     /** 子菜单：贴着父条目右侧展开 */
     anchor?: DOMRect | null; depth?: number; onback?: () => void; focusFirst?: boolean;
   } = $props();
@@ -26,14 +28,27 @@
     if (anchor) {
       left = anchor.right - 2; top = anchor.top - 5;
       if (left + r.width > W - m) left = anchor.left - r.width + 2;
+    } else if (trigger) {
+      const button = trigger.getBoundingClientRect();
+      left = button.right - r.width;
+      top = button.bottom + 5;
+      if (top + r.height > H - m) top = button.top - r.height - 5;
     }
     pos = { left: Math.max(m, Math.min(left, W - r.width - m)), top: Math.max(m, Math.min(top, H - r.height - m)) };
-    if (focusFirst) void tick().then(() => buttons()[0]?.focus());
-    else el!.focus({ preventScroll: true });
+    // 定位完成前菜单是隐藏的，浏览器会忽略此时的 focus，包括右键后的 Del。
+    void tick().then(() => {
+      if (!el?.isConnected) return;
+      if (focusFirst) buttons()[0]?.focus();
+      else el.focus({ preventScroll: true });
+    });
     if (depth > 0) return () => clearTimeout(timer);
 
     // 根菜单负责全局关闭：点外面、窗口失焦、缩放、外部滚动
-    const outside = (e: Event) => { if (!(e.target as Element).closest?.('.ctx-menu')) onclose(); };
+    const outside = (e: Event) => {
+      const target = e.target as Element | null;
+      if (e.type === 'pointerdown' && trigger?.contains(target)) return;
+      if (!target?.closest?.('.ctx-menu')) onclose();
+    };
     window.addEventListener('pointerdown', outside, true);
     window.addEventListener('scroll', outside, true);
     window.addEventListener('resize', onclose);
@@ -62,6 +77,11 @@
   }
   function onKey(e: KeyboardEvent) {
     const list = buttons();
+    if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.target as Element).closest('.ctx-menu') === el) {
+      const i = items.findIndex(it => it.kind !== 'sep' && it.kind !== 'label' && !it.disabled && it.shortcut === e.key);
+      const button = i >= 0 && el?.querySelector<HTMLButtonElement>(`:scope > .mi[data-i="${i}"]`);
+      if (button) { e.preventDefault(); e.stopPropagation(); activate(i, button, true); return; }
+    }
     const at = list.indexOf(document.activeElement as HTMLButtonElement);
     const move = (d: number) => list[(at + d + list.length) % list.length]?.focus();
     if (e.key === 'ArrowDown') move(1);

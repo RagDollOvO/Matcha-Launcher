@@ -1,5 +1,4 @@
 <script lang="ts">
-  import X from '@lucide/svelte/icons/x';
   import Link from '@lucide/svelte/icons/link';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -11,11 +10,11 @@
   import { app, mib } from '../stores/app.svelte';
   import { parseWorkshopIds } from '../workshop';
   import type { WorkshopItem } from '../types';
+  import WorkDialog from './WorkDialog.svelte';
 
   /** initial：Ctrl+V 粘贴进来的文字，有 ID 时直接解析 */
   let { initial = '', onclose }: { initial?: string; onclose: () => void } = $props();
 
-  let dialog = $state<HTMLDialogElement>();
   // 只取打开时传进来的文字，之后由用户编辑
   let text = $state(untrack(() => initial));
   const ids = $derived(parseWorkshopIds(text));
@@ -26,7 +25,6 @@
   const checked = new SvelteSet<string>();
 
   onMount(() => {
-    dialog?.showModal();
     if (initial && ids.length) void resolve();
   });
 
@@ -88,35 +86,21 @@
   }
 </script>
 
-<dialog bind:this={dialog} class="ws" aria-labelledby="ws-title"
-        oncancel={(e) => { e.preventDefault(); if (phase !== 'sending') onclose(); }}>
-  <header>
-    <h2 id="ws-title">从创意工坊下载</h2>
-    <button class="icon-btn" type="button" aria-label="关闭" disabled={phase === 'sending'} onclick={onclose}><X size={16} /></button>
-  </header>
-
+<WorkDialog title="从创意工坊下载" lead="单个条目和合集链接都可以批量读取。" wide locked={phase === 'sending'} {onclose}>
+  {#snippet symbol()}<Link size={22} />{/snippet}
   {#if phase === 'edit' || phase === 'resolving'}
     <div class="body">
-      <p class="hint">粘贴创意工坊链接或条目 ID，一行一个。合集链接会展开成里面的 Mod。</p>
-      <textarea bind:value={text} rows="7" spellcheck="false" disabled={phase === 'resolving'} onkeydown={onKey}
-                placeholder={'https://steamcommunity.com/sharedfiles/filedetails/?id=…\n2468013579'}></textarea>
-      <p class="parse" class:warn={ids.length > 100}>
-        {#if ids.length}识别到 {ids.length} 个 ID{ids.length > 100 ? '，每次最多解析前 100 个' : ''}{:else}还没有识别到链接或 ID{/if}
-      </p>
-      {#if error}<p class="err">{error}</p>{/if}
+      <label class="paste"><strong>工坊链接或条目 ID</strong>
+        <textarea bind:value={text} rows="5" spellcheck="false" disabled={phase === 'resolving'} onkeydown={onKey}
+                  placeholder={'一行一个，例如：\nhttps://steamcommunity.com/sharedfiles/filedetails/?id=2468013579'}></textarea>
+      </label>
+      {#if error}<p class="err" role="alert">{error}</p>{/if}
     </div>
-    <footer>
-      <span class="grow"></span>
-      <button class="btn" type="button" onclick={onclose}>取消</button>
-      <button class="btn primary" type="button" disabled={!ids.length || phase === 'resolving'} onclick={resolve}>
-        {#if phase === 'resolving'}<LoaderCircle size={14} class="spin" />正在读取…{:else}读取 {Math.min(ids.length, 100) || ''} 项{/if}
-      </button>
-    </footer>
   {:else}
     <div class="head">
       <button class="btn sm ghost" type="button" disabled={phase === 'sending'} onclick={() => (phase = 'edit')}><ArrowLeft size={13} />修改链接</button>
       <span class="grow"></span>
-      <span class="count">{items.length} 项 · 可下载 {downloadable.length}</span>
+      <span class="count">{items.length} 项 · {downloadable.length} 项可下载</span>
       {#if downloadable.length}
         <button class="btn sm ghost" type="button" onclick={() => { if (checked.size === downloadable.length) checked.clear(); else downloadable.forEach((i) => checked.add(i.id)); }}>
           {checked.size === downloadable.length ? '全不选' : '全选可下载'}
@@ -129,7 +113,7 @@
         {@const kids = coll ? childrenOf(it) : []}
         {@const on = coll ? kids.length > 0 && kids.every((id) => checked.has(id)) : checked.has(it.id)}
         {@const mixed = coll && !on && kids.some((id) => checked.has(id))}
-        <label class="item" class:dim={!it.downloadable && !coll} style:padding-left="{10 + depth * 22}px">
+        <label class="item" class:dim={!it.downloadable && !coll} class:selected={on || mixed} style:margin-left="{depth * 16}px">
           <input type="checkbox" checked={on} indeterminate={mixed}
                  disabled={coll ? !kids.length : !it.downloadable} onchange={() => (coll ? toggleCollection(it) : toggle(it.id))} />
           <span class="pv">
@@ -149,50 +133,49 @@
         </label>
       {/each}
     </div>
-    <footer>
-      <span class="note">{over ? `下载队列还能放 ${room} 项，请少选一些` : '下载到 Matcha 的独立库，放进「新下载」，不加入任何方案'}</span>
-      <span class="grow"></span>
-      <button class="btn" type="button" disabled={phase === 'sending'} onclick={onclose}>取消</button>
+  {/if}
+  {#snippet footer()}
+    {#if phase === 'edit' || phase === 'resolving'}
+      <span class="note" class:warn={ids.length > 100} aria-live="polite">{ids.length > 100 ? `已识别 ${ids.length} 项，本次读取前 100 项` : ids.length ? `已识别 ${ids.length} 项` : 'Ctrl + Enter 读取链接'}</span>
+      <button class="btn ghost" type="button" onclick={onclose}>取消</button>
+      <button class="btn primary" type="button" disabled={!ids.length || phase === 'resolving'} onclick={resolve}>
+        {#if phase === 'resolving'}<LoaderCircle size={14} class="spin" />正在读取…{:else}{ids.length ? '读取 ' + Math.min(ids.length, 100) + ' 项' : '读取链接'}{/if}
+      </button>
+    {:else}
+      <span class="note" class:warn={over}>{over ? `下载队列还能放 ${room} 项，请少选一些` : '下载后在 Mod 页的「新下载」里整理'}</span>
+      <button class="btn ghost" type="button" disabled={phase === 'sending'} onclick={onclose}>取消</button>
       <button class="btn primary" type="button" disabled={!checked.size || over || phase === 'sending'} onclick={download}>
         {#if phase === 'sending'}<LoaderCircle size={14} class="spin" />{/if}下载 {checked.size} 项{checked.size ? ` · ${mib(pickedSize)}` : ''}
       </button>
-    </footer>
-  {/if}
-</dialog>
+    {/if}
+  {/snippet}
+</WorkDialog>
 
 <style>
-  .ws { width: min(680px, 92vw); max-height: min(720px, 86vh); padding: 0; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg-1); color: var(--fg); display: flex; flex-direction: column; overflow: hidden; }
-  .ws:not([open]) { display: none; }
-  .ws::backdrop { background: #000c; }
   .btn:disabled, .icon-btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px 20px; }
-  h2 { margin: 0; font-size: 16px; font-weight: 500; }
-  .body { padding: 0 20px; display: flex; flex-direction: column; gap: 8px; }
-  .hint { margin: 0; font-size: 13px; color: var(--fg-2); }
-  textarea { width: 100%; min-height: 140px; resize: vertical; padding: 10px 12px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r); color: var(--fg); }
-  textarea:focus { outline: none; border-color: var(--fg-3); }
-  .parse { margin: 0; font-size: 12px; color: var(--fg-3); }
-  .parse.warn, .err { color: var(--danger); }
-  .err { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
-  footer { display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--line); margin-top: 16px; }
+  .body, .paste { display: grid; gap: 8px; }
+  textarea { width: 100%; min-height: 125px; resize: vertical; padding: 10px 12px; font: 13px/1.65 var(--font-mono); background: var(--md-surface-container-low); }
+  .note.warn, .err { color: var(--danger); }
+  .err { margin: 0; overflow-wrap: anywhere; }
   .grow { flex: 1; }
-  .note { font-size: 12px; color: var(--fg-3); min-width: 0; }
-  .head { display: flex; align-items: center; gap: 8px; padding: 0 20px 10px; }
-  .count { font-size: 12px; color: var(--fg-3); }
-  .list { flex: 1; min-height: 0; overflow-y: auto; border-top: 1px solid var(--line); padding: 6px 10px; }
-  .list + footer { margin-top: 0; }
-  .item { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 10px; border-radius: var(--r); cursor: pointer; }
-  .item:hover { background: var(--bg-2); }
+  .note { margin-right: auto; color: var(--fg-2); min-width: 0; }
+  .head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 10px; }
+  .count { color: var(--fg-2); }
+  .list { display: grid; gap: 3px; padding: 5px; border-radius: 12px; background: var(--md-surface-container-low); }
+  .item { display: flex; align-items: center; gap: 10px; min-height: 55px; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+  .item:hover, .item:focus-within { background: var(--bg-2); }
+  .item.selected { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .item.dim { cursor: default; }
   .item.dim .t { color: var(--fg-3); }
-  input[type='checkbox'] { width: 14px; height: 14px; flex: none; margin: 0; accent-color: var(--fg); cursor: pointer; }
+  input[type='checkbox'] { width: 15px; height: 15px; flex: none; margin: 0; accent-color: var(--md-primary); cursor: pointer; }
   input:disabled { cursor: default; opacity: .4; }
-  .pv { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--bg); color: var(--fg-3); }
+  .pv { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 7px; overflow: hidden; background: var(--bg-2); color: var(--fg-2); }
   .pv img { width: 100%; height: 100%; object-fit: cover; }
   .ini { font-family: var(--font-display); font-size: 20px; color: var(--fg-4); }
   .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .t { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .m { font-size: 12px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .selected .m, .selected .id { color: inherit; }
   .id { color: var(--fg-4); }
   .why { font-size: 12px; color: var(--fg-2); }
   .why.bad { color: var(--danger); }

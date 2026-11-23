@@ -2,6 +2,10 @@ import { spawn } from 'node:child_process';
 import { readVpk, readResource, assertVpkUnchanged } from './vpk.mjs';
 import { fail } from './files.mjs';
 
+// Favorite copies may contain loose audio (for example, weapons/... without a sound/ root).
+export const isPreviewableSound = (resource, favorite = false) => typeof resource === 'string'
+  && /\.(wav|mp3)$/i.test(resource) && (favorite || /^sound\/.+/i.test(resource));
+
 function wavInfo(body) {
   if (body.toString('ascii', 0, 4) !== 'RIFF' || body.toString('ascii', 8, 12) !== 'WAVE') return null;
   let fmt, data;
@@ -31,11 +35,11 @@ export class ModAudio {
   async list(root, id, source) {
     return this.manager.reading(root, async () => {
       const vpk = await readVpk(source ?? await this.manager.resolve(root, id), { includeEntries: true });
-      return [...vpk.entries].filter(([p]) => /^sound\/.+\.(wav|mp3)$/.test(p)).map(([path, e]) => ({ path, bytes: e.size })).sort((a, b) => a.path.localeCompare(b.path));
+      return [...vpk.entries].filter(([p]) => isPreviewableSound(p, !!source)).map(([path, e]) => ({ path, bytes: e.size })).sort((a, b) => a.path.localeCompare(b.path));
     });
   }
   async sound(root, id, resource, source) {
-    if (typeof resource !== 'string' || !/^sound\/.+\.(wav|mp3)$/i.test(resource)) fail('invalid_argument', '请选择包内 WAV / MP3 声音。');
+    if (!isPreviewableSound(resource, !!source)) fail('invalid_argument', '请选择包内 WAV / MP3 声音。');
     return this.manager.reading(root, async () => {
       const file = source ?? await this.manager.resolve(root, id), vpk = await readVpk(file, { includeEntries: true });
       const entry = vpk.entries.get(resource.toLowerCase());

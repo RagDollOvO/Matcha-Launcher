@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import lockfile from 'proper-lockfile';
 import { isDeepStrictEqual } from 'node:util';
-import { PlatformError } from './core.mjs';
+import { PlatformError } from './errors.mjs';
 import { directory, writeJson } from './mods/files.mjs';
 import { regular, identity } from './mods/vpk.mjs';
 import { platformPath, readBytes } from './platforms/files.mjs';

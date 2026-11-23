@@ -112,11 +112,11 @@ export function platformTools(gameRoot = process.env.L4P_GAME_ROOT, { modRequest
     },
   });
   registerTool({
-    name: 'mod_trash', label: '查看 Mod 回收站', description: '只读列出 Matcha 回收站、文件、原分类、方案引用和未完成操作。', parameters: object({}),
+    name: 'mod_trash', label: '查看 Matcha 回收站', description: '列出回收的 Mod 和收藏、原分类或合集、文件和仅记录条目。', parameters: object({}),
     async execute(_id, _params, signal) { checkAbort(signal); return result(await modRequest('trash-list', {}, undefined, signal)); },
   });
   for (const [operation, name, label, description] of [
-    ['restore', 'mod_restore', '还原 Mod', '确认后从 Matcha 回收站还原所选条目、分类和方案草稿。文件默认停用，游戏退出后执行；同名冲突保留现场。'],
+    ['restore', 'mod_restore', '还原回收条目', '确认后，收藏回到收藏夹和原合集；库内 Mod 恢复分类和方案草稿，需先退出游戏。同名冲突保留在回收站。'],
     ['purge', 'mod_purge', '永久删除回收条目', '用户明确要求永久删除或清空回收站时使用。先列文件与大小，再单独确认永久移除。'],
   ]) registerTool({
     write: true, name, label, description,
@@ -125,9 +125,9 @@ export function platformTools(gameRoot = process.env.L4P_GAME_ROOT, { modRequest
       checkAbort(signal);
       const { entries } = await modRequest('trash-list', {}, undefined, signal);
       const chosen = params.trashIds.map(id => { const entry = entries.find(e => e.trashId === id); if (!entry) throw new Error('回收条目已变化，请刷新。'); return entry; });
-      const confirmation = await approve(ctx, operation === 'purge' ? '永久删除回收条目' : '还原 Mod', chosen.map(m =>
-        `${m.title} [${m.trashId}]\n${(m.sizeBytes / 1048576).toFixed(1)} MiB\n${m.files.map(f => f.file).join('\n')}`
-      ).join('\n\n') + (operation === 'purge' ? '\n\n确认后将彻底移除这些回收文件。' : '\n\n恢复分类与方案草稿，文件保持停用。'), signal, operation === 'purge' ? 'ask' : 'routine');
+      const confirmation = await approve(ctx, operation === 'purge' ? '永久删除回收条目' : '还原回收条目', chosen.map(m =>
+        `${m.title} [${m.trashId}]\n${m.favorite ? '收藏夹' : 'Mod 库'} · ${m.favorite?.recordOnly?'仅收藏记录':(m.sizeBytes / 1048576).toFixed(1)+' MiB'}\n${m.files.map(f => f.file).join('\n')}`
+      ).join('\n\n') + (operation === 'purge' ? '\n\n确认后将永久删除所选回收条目及其中的文件。' : '\n\n收藏还原到收藏夹和原合集；库内 Mod 恢复原分类和方案草稿。'), signal, operation === 'purge' ? 'ask' : 'routine');
       if (!confirmation) return declined();
       return result(await modRequest(operation, { ...params, expected: chosen }, confirmation, signal));
     },

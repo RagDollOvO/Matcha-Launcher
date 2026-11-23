@@ -7,7 +7,7 @@ export async function extractMod(manager, request, ctx) {
   const { gameRoot, id, target } = request;
   if (typeof target !== 'string' || !path.isAbsolute(target)) fail('desktop_required', '请指定已存在的输出父目录。');
   await directory(target);
-  return manager.reading(gameRoot, async () => {
+  const extract = async () => {
     const source = request.source ?? await manager.resolve(gameRoot, id), vpk = await readVpk(source, { includeEntries: true });
     if (request.sourceVersion && JSON.stringify(vpk.files.map(f => f.identity)) !== JSON.stringify(request.sourceVersion)) fail('file_changed', '源 Mod 在任务创建后已变化，请重新创建解包任务。');
     const entries = [...vpk.entries.values()], total = entries.reduce((n, e) => n + e.size, 0);
@@ -43,5 +43,6 @@ export async function extractMod(manager, request, ctx) {
         fail('file_exists', '同名目录过多，请更换输出目录。');
       });
     } finally { if (!published) await removeTaskDirectory(stage, ctx.taskId); }
-  });
+  };
+  return gameRoot ? manager.reading(gameRoot, extract) : extract();
 }

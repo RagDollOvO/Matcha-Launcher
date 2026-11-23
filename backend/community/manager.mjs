@@ -8,7 +8,7 @@ import tls from 'node:tls';
 import { randomUUID, X509Certificate } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import lockfile from 'proper-lockfile';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 import manifest from './steampp-manifest.json' with { type: 'json' };
 import imageRoute from './image-route.json' with { type: 'json' };
 

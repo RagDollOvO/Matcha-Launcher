@@ -26,7 +26,7 @@ export function planMetadata(kind, params, settings, inventory, root, views) {
     if (!Array.isArray(params.modIds) || !params.modIds.length || new Set(params.modIds).size !== params.modIds.length) fail('invalid_argument', '需要去重的 Mod ID 清单。');
     return params.modIds.map(id => {
       const ref = kind === 'mark' && settings.favoriteRefs?.[id];
-      if (ref && params.sorted !== undefined) fail('invalid_argument', '本地收藏记录只支持收藏操作。');
+      if (ref && !inventory.mods.some(m=>m.id===id) && params.sorted !== undefined) fail('invalid_argument', '本地收藏记录只支持收藏操作。');
       const mod = inventory.mods.find(mod => mod.id === id) ?? ref;
       if (!mod || mod.kind === 'platform-package') fail('mod_missing', '请选择当前库中的普通 VPK Mod。');
       return mod;
@@ -70,8 +70,8 @@ export function planMetadata(kind, params, settings, inventory, root, views) {
     }
     for (const mod of mods) {
       if (settings.favoriteRefs?.[mod.id]) {
-        if (params.favorite === false) { delete next.favoriteRefs[mod.id]; lines.push('取消收藏 · ' + mod.title + '（保留原文件）'); }
-        continue;
+        if (params.favorite === false) { delete next.favoriteRefs[mod.id]; lines.push('收藏移到 Matcha 回收站 · ' + mod.title + '（保留原文件）'); }
+        if(!inventory.mods.some(m=>m.id===mod.id) && !settings.modMeta[mod.id])continue;
       }
       const before = settings.modMeta[mod.id] ?? {}, value = { ...before };
       if (params.favorite !== undefined) { if (params.favorite) value.favorite = true; else delete value.favorite; }

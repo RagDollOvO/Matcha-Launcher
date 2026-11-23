@@ -9,7 +9,9 @@ Svelte 5 UI
   │   └─ 开发浏览器：同源 Vite adapter
   └─ agent/cli-pi.ts → Pi CLI RPC
              ↓
-backend/desktop/service.mjs
+backend/desktop/service.mjs（桌面与 Vite 共用）
+  ├─ backend/mods/commands.mjs → 导入、方案、收藏与回收
+  ├─ backend/servers/commands.mjs → 与茶茶共用 ServerManager
   ├─ backend/core.mjs → Steam / 插件部署 / Runtime 管道
   └─ backend/pi/transport.mjs → Pi CLI → 可信平台扩展
 ```
@@ -22,7 +24,7 @@ Svelte 负责视图、确认和反馈；Tauri 负责窗口、目录选择与子�
 
 - `src/lib/api/index.ts`：类型化业务入口。
 - `src/lib/api/bridge.ts`：Tauri IPC / 本机同源开发桥接、目录选择和窗口操作。
-- `src/lib/stores/app.svelte.ts`：已观测状态、写操作回执、用户确认和轮询。
+- `src/lib/stores/app.svelte.ts`：接收快照、处理通用确认和轮询，并把旧页面入口转发到对应模块。
 - `src/lib/agent/cli-pi.ts`：真实 Pi 连接、命令回执与事件转发。
 - `src/lib/agent/chat.svelte.ts`：流式内容、最终消息校准、工具结果和独立确认控件。
 - `src-tauri/`：Matcha 桌面壳。
@@ -30,15 +32,28 @@ Svelte 负责视图、确认和反馈；Tauri 负责窗口、目录选择与子�
 
 原有页面布局、Scene 动画、字体和音效保留。`mock/data.ts` 与 `mock-pi.ts` 留作演示参考，实际入口已切换到真实服务。
 
+## 按功能找代码
+
+| 要改的行为 | 前端入口 | 后端入口 |
+| --- | --- | --- |
+| 服务器收藏、合集与草稿冲突 | `src/lib/stores/servers.svelte.ts` | `backend/servers/commands.mjs` 分发；`manager.mjs` 保存 `servers.json`、管理查询队列 |
+| VPK 导入、同名替换与素材打包 | `src/lib/mods/import.ts` | `backend/mods/imports.mjs` 协调导入和任务发布 |
+| 启动方案与编辑草稿 | `src/lib/mods/profiles.svelte.ts` | `backend/mods/profiles.mjs` 保存、应用并接收导入回写 |
+| Mod 收藏、合集、回收 | `src/lib/mods/favorites.svelte.ts` | `backend/mods/commands.mjs` 分发；`favorites.mjs` 协调设置写入，副本和回收分别在 `favorite-vault.mjs`、`favorite-trash.mjs` |
+
+服务器查询沿用独立队列；Mod 写入和打包任务发布使用桌面服务的串行队列。茶茶沿用同一数据和保存流程。启动方式、用户确认和实际启动由现有启动链处理。
+
+底层模块需要 PE 信息、KeyValues 或错误回包时，直接使用 `backend/file-inspection.mjs`、`keyvalues.mjs`、`errors.mjs`；发行校验在 `backend/release-verification.mjs`。旧调用继续沿用原导出。DLL 接线另见[来源接入交接](dll-source-handoff.md)与[子插件与状态接口](dll-runtime-handoff.md)。
+
 ## 当前页面能力
 
-已接入游戏发现、安装状态、Beacon 首次部署/恢复、DLL 导入/启停、manifest 动作表单与 Pi CLI。VPK 已接入 `backend/mods/`，提供真实扫描、导入、方案应用和资源路径重叠。服务器页通过 `backend/servers/` 接入 A2S、收藏及确认后的连接，详见 [服务器契约](platform/SERVERS.md)。CFG 页面显示待接入。
+已接入游戏发现、安装状态、Beacon 首次部署/恢复、DLL 导入/启停、manifest 动作表单与 Pi CLI。VPK 已接入 `backend/mods/`，提供真实扫描、导入、方案应用和资源路径重叠。服务器页通过 `backend/servers/` 接入 A2S、收藏及确认后的连接，详见 [服务器契约](platform/SERVERS.md)。启动项与 autoexec.cfg 管理段见 [游戏设置](platform/GAME_SETTINGS.md)。
 
-- 保存方案是本地草稿操作；VPK 方案支持显式应用，主页启动前也应用选中的 VPK 草稿。DLL 和 CFG 仍独立管理。
+- 保存方案是本地草稿操作；VPK 方案支持显式应用，主页以 L4N 平台启动时也会先应用当前启动方案。DLL 和 CFG 各自管理。
 - 插件启停更新 `enabled.txt`，独立显示配置状态与运行时状态。
 - 启动先显示 `requested`，实际 PID 和连接由观测更新。
 - DXVK 状态来自入口检查及 Runtime 的 factory 初始化观测。
-- 游戏退出由用户负责；页面提供刷新状态。
+- 正常退出由玩家在游戏里操作；游戏卡住时，主页可确认强制停止当前检测到的游戏进程。
 
 ## Pi 能力与交互
 
@@ -69,7 +84,7 @@ Mod 页新增图标视图（默认）与列表视图，卡片显示 VPK 缩略�
 
 后端优先读取同目录同名 `.jpg`，再读取包内 `addonimage.jpg`（支持预载字节、VPK v1/v2 和分卷）。缺图、超出上限或非 JPEG 返回 `null`；仅有 VTF 时 `hasThumbnail` 为 `false`。`updatedAt` 纳入分卷和旁置图片时间，刷新后可使图片缓存失效。
 
-收藏通过 snapshot `modMeta` 和 `save-mod-meta` 持久化到现有设置。回收站后端和前端接入清单见 [Mod 库规划](mod-library-plan.md) §3.6。
+收藏副本与合集通过 `bookmark-files` 和 `edit-favorite-collection` 持久化；`snapshot` 提供收藏、标记和回收站。回收站与最初接入契约见 [Mod 库规划](mod-library-plan.md) §3.6。
 
 ### P2 后端就绪：前端接入入口
 
@@ -101,7 +116,7 @@ Mod 页新增图标视图（默认）与列表视图，卡片显示 VPK 缩略�
 
 ### 拖入导入
 
-- 桌面版用 Tauri `onDragDropEvent` 拿到完整路径，走现有 `preview-mod` / `import-mod`。多个文件只确认一次，然后逐个导入；分卷的 `_000.vpk` 等数据文件会被忽略，只认 `_dir.vpk`。
+- 桌面版用 Tauri `onDragDropEvent` 拿到完整路径，走 `preview-mod-input`。多个输入只确认一次，VPK 逐个走 `import-mod`，素材文件夹走 `pack-mod-folder` 交给后台；分卷的 `_000.vpk` 等数据文件会被忽略，只认 `_dir.vpk`。
 - Tauri 在 Windows 上默认拦截 HTML5 拖拽，所以「Mod 拖到类别」改成了指针拖拽，不依赖 `dragDropEnabled`。
 - 浏览器预览拿不到文件路径，拖入后会提示改用路径粘贴。
 
@@ -121,11 +136,11 @@ Mod 页新增图标视图（默认）与列表视图，卡片显示 VPK 缩略�
 | 位置 | 字段 / 命令 | 说明 | 未接入时前端行为 |
 | --- | --- | --- | --- |
 | snapshot | `serverLayout?: ServerLayout` | `{ groups: { id, name, serverIds[] }[], loose: string[] }`。一台服务器最多占一个位置；`loose` 是未分组的手动顺序。随服务器列表原子写入 `servers.json`；旧文件默认返回空布局 | 存在本机 `localStorage['flare.serverLayout.pending']`；首次收到后端布局时推送待保存副本，收到成功回执后清理 |
-| bridge | `save-server-layout { layout }` → `{ status: 'saved' }` | 整份覆盖保存，保留合集和服务器顺序、空合集；校验结构及 ID 唯一性。`remove-server` 同时从合集和 `loose` 清理该 id | 同上 |
+| bridge | `save-server-layout { layout, expected? }` → `{ status: 'saved' }` | 整份覆盖保存，保留合集和服务器顺序、空合集；新页面提交 `expected`，由后端核对当前布局和成员。`remove-server` 同时从合集和 `loose` 清理该 id | 同上 |
 | bridge | `update-server { id, label, gamePort }` → `Server[]` | 改备注 / 连接端口，保留 id、收藏与探测缓存 | 收到 `unsupported_capability` 时退回「移除 → 同地址重新添加 → 恢复收藏和合集位置」 |
 | `Server` | `playerList?: { name, seconds, score }[] \| null` | A2S_PLAYER 原始名单，含协议返回的 Bot（GameDig `requestPlayers: true`、`requestPlayersRequired: false`）。名字为空表示正在连接；空服返回 `[]`，暂无可用名单返回 `null`。时长单位为秒 | 卡片显示座位格（玩家数 / 上限） |
 
-本机迁移包含纯未分组排序；布局保存按提交顺序执行，待保存副本在成功回执前保留。失败时保留当前布局并在下次 snapshot 重试；重新打开页面时也会提交待保存副本。
+本机迁移包含纯未分组排序；布局保存按提交顺序执行，待保存副本在成功回执前保留。一般保存失败时保留草稿，后续快照可触发重试。遇到 `server_layout_stale`，保留本机草稿，等用户重试或采用已保存分类。整理交接要等布局保存完成，再发送本次选中的范围。
 
 查询中（`status: 'querying'`）保留上次探测缓存，前端继续显示上次在线结果。编辑备注保留原始探测名称，清空备注后恢复显示；修改或清空连接端口立即按当前配置 / 缓存的 EDF 端口计算连接地址，在途查询完成后同样采用最新配置。
 

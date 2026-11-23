@@ -45,7 +45,7 @@ pub fn behavior(_app: &tauri::AppHandle, cmd: &str, params: Option<&Value>) -> i
     }
     Ok(json!({"closeToTray":true,"autostart":registered()?}))
 }
-fn show(app: &tauri::AppHandle) {
+pub fn show(app: &tauri::AppHandle) {
     if let Some(main) = app.get_webview_window("main") { let _ = main.show(); let _ = main.unminimize(); let _ = main.set_focus(); }
 }
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -56,6 +56,5 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(icon) = app.default_window_icon() { tray = tray.icon(icon.clone()); }
     tray.on_menu_event(|app,e| match e.id.as_ref() { "show"=>show(app), "quit"=>app.exit(0), _=>{} })
         .on_tray_icon_event(|tray,e| if matches!(e,TrayIconEvent::Click{button:MouseButton::Left,button_state:MouseButtonState::Up,..}) {show(tray.app_handle())}).build(app)?;
-    if !std::env::args_os().any(|v| v == "--tray") { show(app.handle()); }
     Ok(())
 }

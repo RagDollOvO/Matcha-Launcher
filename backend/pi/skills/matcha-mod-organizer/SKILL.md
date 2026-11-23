@@ -59,7 +59,7 @@ description: 在 Matcha 中管理 Left 4 Dead 2 的 VPK Mod：查看包内内容
 
 ## 收藏、已整理和分类维护
 
-「收藏」只整理独立收藏夹。已有库条目用星标或合集工具；玩家给本机 VPK、素材文件夹路径时，用 `mod_bookmark_files {paths, collectionId?}` 记录原位置。它们可入合集、可取消收藏，保留原文件。玩家另外明确要求安装、加入方案或启停时，再处理对应操作。
+「收藏」只整理独立收藏夹。已有库条目用星标或合集工具；玩家给本机 VPK、素材文件夹路径时，用 `mod_bookmark_files {paths, collectionId?}` 保存独立副本；遇到同名时展示替换来源，由玩家选择替换或取消。它们可入合集、可取消收藏，保留原文件。玩家另外明确要求安装、加入方案或启停时，再处理对应操作。
 
 玩家要求“把收藏应用到方案”时，先按所选条目或合集查询收藏 ID，再用 `mod_favorites_to_profiles {favoriteIds, profileIds}` 一次追加到指定方案。外部文件请先在收藏夹的应用窗口导入 Mod 库。收藏夹自身不作为启动方案，之后的成员增删各自独立。
 
@@ -70,8 +70,8 @@ description: 在 Matcha 中管理 Left 4 Dead 2 的 VPK Mod：查看包内内容
 - 恢复当前原名用 `"name":null`；撤销上一次改名用 `mod_undo`。游戏内的附加内容菜单仍由 VPK 决定。
 
 - 玩家说“把收藏里的三套 MAC10 音效放进一个合集”时，先用 `mod_favorite_collections {}` 找到收藏项的实际 ID，再用 `mod_favorite_collection` 提交 `{"action":"create","name":"MAC10 音效","modIds":[…]}`。有同名合集时用其 `collectionId` 和 `add`。已有合集支持 `rename`、`add`、`remove`、`delete`；查询单个合集时传 `collectionId`。这里整理收藏页，保留 Mod 分类和方案。移出成员和解散合集保留星标，整理记录可撤销。
-- `mod_mark {"modIds":["ID"],"favorite":true}` 收藏选中项，保留新下载标记；`favorite:false` 取消收藏并移出其收藏合集。
-- `mod_mark {"modIds":["ID"],"sorted":true}` 标记已整理。要放回新下载，用 `sorted:false`；收藏项同时明确 `favorite:false`。
+- `mod_mark {"modIds":["ID"],"favorite":true}` 收藏选中项，保留新下载标记；`favorite:false` 把收藏移到 Matcha 回收站，保留原文件和方案。`mod_restore` 可将收藏恢复到收藏夹和仍存在的原合集；标有「仅记录」的收藏需重新定位原文件。
+- `mod_mark {"modIds":["ID"],"sorted":true}` 标记已整理。要放回新下载，用 `sorted:false`。仅在玩家要求取消收藏时传 `favorite:false`。
 - `mod_category` 支持 `rename`、`move`、`merge`、`delete`。提供分类 ID；重命名用 `name`，移动用 `parentId`（最外层为 null），合并用 `targetId`。
 - 删除分类默认把其中条目和直接子分类接到原上级，可指定接收分类。预览会列明去向，Mod 文件与方案选择保留。新分类沿用上面的 `mod_organize` 建立。
 

@@ -26,7 +26,8 @@
   import { agentWin, showAgentWindow, hideAgentWindow, onMainMessage, sendToAgent } from './lib/agent/window.svelte';
   import { browser } from './lib/browser/browser.svelte';
   import { openSettings } from './lib/stores/nav.svelte';
-  import { desktop } from './lib/api/bridge';
+  import { desktop, errorText } from './lib/api/bridge';
+  import { watchShortcutDrops } from './lib/api/vpk-shell';
   import { startCheckup } from './lib/agent/checkup.svelte';
   import { initSettingsSync } from './lib/stores/settings-sync.svelte';
 
@@ -44,8 +45,13 @@
     document.addEventListener('visibilitychange', onVisibility);
     // Keep the CLI connection independent of whether the assistant panel is open.
     agent.connect();
-    let dispose: (() => void) | undefined, stopped = false;
-    void app.init().then(fn => { if (stopped) fn(); else dispose = fn; });
+    let dispose: (() => void) | undefined, offVpk: (() => void) | undefined, stopped = false;
+    void app.init().then(fn => {
+      if (stopped) { fn(); return; }
+      dispose = fn;
+      if (desktop) void watchShortcutDrops(paths => app.vpkDrop(paths), e => app.toast(errorText(e)))
+        .then(off => { if (stopped) off(); else offVpk = off; }).catch(e => app.toast(errorText(e)));
+    });
     // 茶茶改了设置（启动项、CFG、下载、界面偏好…）时，让对应的页面和存储跟上
     const offSync = initSettingsSync();
     const timer = setInterval(() => { if (!app.busy && !app.confirmation) void app.refresh(); }, 5000);
@@ -61,7 +67,7 @@
         else if (m.type === 'checkup') void startCheckup();
       }).then((u) => { if (stopped) u(); else offAgent = u; });
     }
-    return () => { stopped = true; dispose?.(); offAgent?.(); offSync(); clearInterval(timer); sfx.setMusicHost(false); document.removeEventListener('visibilitychange', onVisibility); };
+    return () => { stopped = true; dispose?.(); offVpk?.(); offAgent?.(); offSync(); clearInterval(timer); sfx.setMusicHost(false); document.removeEventListener('visibilitychange', onVisibility); };
   });
 
   // 助手：桌面版在主窗口右边弹出独立窗口；打不开（浏览器预览、壳没放行）时退回主窗口内分栏

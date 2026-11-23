@@ -1,7 +1,15 @@
-import { api, type LocalModInput, type Snapshot } from '../api';
+import { api, type Snapshot } from '../api';
+import { importLocalMods } from '../mods/import';
+import { ModProfilesStore } from '../mods/profiles.svelte';
+import { ModFavoritesStore } from '../mods/favorites.svelte';
+import { conflictReviewNotice, type ReviewScope } from '../mods/conflict-reviews';
+import type { ConfirmExtra, ToastAction } from '../feedback';
+import { mib } from '../format-size';
 import { serverApi } from '../api/servers';
+import { ServerStore } from './servers.svelte';
 import type { IntakeResult, L4nPluginPlan, LaunchConfiguration, LaunchMode, PlatformChangePlan } from '../types';
 import { desktop, errorText, onBridgeEvent, pickDll, restoreWindow, windowAction } from '../api/bridge';
+import { readFileClipboard, writeFileClipboard } from '../api/vpk-shell';
 import { prefs } from './prefs.svelte';
 import { sfx } from '../sound/sfx.svelte';
 import { systemNotify } from './system-notify';
@@ -10,7 +18,7 @@ import { modeLabel } from '../launch-modes';
 import { isMissingCommand } from '../api/launcher';
 import { libraryUpdate, markOfferNotified, needsDownload, offerDismissed, offerNotified, sizeLabel } from '../plugins/native-offer';
 import { screeningConfirm } from '../plugins/safety';
-import type { Category, CfgEntry, Conflict, ExternalPlatform, Mod, ModMeta, ModTask, PlatformOperation, PlatformPlan, PlatformPlugin, PlatformRelease, PluginAction, Profile, Route, Server, ServerGroup, ServerLayout, TrashEntry } from '../types';
+import type { Category, CfgEntry, Conflict, ConflictReviewSummary, ExternalPlatform, Mod, ModTask, PlatformOperation, PlatformPlan, PlatformPlugin, PlatformRelease, PluginAction, Profile, Route, Server } from '../types';
 
 /** Mod 页最外层（不属于任何分类） */
 export const ROOT = 'all';
@@ -18,23 +26,9 @@ export const ROOT = 'all';
 export const FAV = 'fav';
 export const INBOX = 'inbox';
 export const TRASH = 'trash';
-/** 服务器页「未分组」：不在任何合集里的服务器，固定排在最后 */
-export const LOOSE = 'loose';
-export interface ServerSection { id: string; name: string; servers: Server[]; loose?: boolean }
+export { LOOSE, type ServerSection } from './servers.svelte';
 
-/** 确认框里的结构化内容：删除、永久删除用 */
-export interface ConfirmExtra {
-  /** 要处理的条目；modId 对得上库里的 Mod 时显示缩略图 */
-  items?: { modId?: string; trashId?: string; title: string; files: { file: string; size: number }[]; sizeBytes: number }[];
-  /** 条目超出显示上限的数量 */
-  more?: number;
-  /** 要点：左边标签、右边内容 */
-  facts?: { label: string; value: string; danger?: boolean }[];
-  /** 需要用户先处理的事，例如在 Steam 取消订阅；links 可逐条复制 */
-  warn?: { title: string; text: string; links?: string[] };
-  /** 带标题的两列清单：平台计划的文件变化、模块调整等 */
-  lists?: { title: string; rows: { k: string; v: string }[] }[];
-}
+export type { ConfirmExtra, ToastAction } from '../feedback';
 
 const bytesLabel = (n: number) => n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KiB` : `${(n / 1024 ** 2).toFixed(1)} MiB`;
 const verificationLabel = (v?: { state: string; integrity?: string }) =>
@@ -80,31 +74,21 @@ class AppState {
   }
   /** 下载页「查看」：Mod 页打开时定位到这个 Mod 并展开详情 */
   focusMod = $state<string | null>(null);
+  /** 替换提示「去查看」：Mod 页打开时滚到这个 Mod、选中并高亮一下（不开详情，免得详情盖住卡片） */
+  locateMod = $state<string | null>(null);
+  showMod(id: string) { this.locateMod = id; this.route = 'mods'; }
   agentOpen = $state(false);
   friendsOpen = $state(false);
 
   game = $state<Snapshot['game']>(null!);
   mods = $state<Snapshot['mods']>([]);
   modState = $state<Snapshot['modState']>({ writable: false, addonListPath: '' });
-  lastModBackup = $state('');
+  conflictReviews = $state.raw<Record<string, ConflictReviewSummary>>({});
   categories = $state<Snapshot['categories']>([]);
-  /** 收藏等跨方案标记；后端未接入 modMeta 前存在本机 */
-  modMeta = $state<Record<string, ModMeta>>({});
-  favoriteCollections = $state<NonNullable<Snapshot['favoriteCollections']>>([]);
-  favoriteRefs = $state<NonNullable<Snapshot['favoriteRefs']>>({});
-  favoriteEntries = $derived([...this.mods.filter(m => !!this.modMeta[m.id]?.favorite), ...Object.values(this.favoriteRefs)]);
-  private metaRemote = false;
-  private metaLoaded = false;
-  /** Matcha 回收站 */
-  trash = $state<TrashEntry[]>([]);
   /** 后台任务：创意工坊下载、解包 */
   tasks = $state<ModTask[]>([]);
   private doneDownloads: ModTask[] = [];
   private doneTimer: ReturnType<typeof setTimeout> | undefined;
-  profiles = $state<Snapshot['profiles']>([]);
-  activeProfileId = $state('');
-  /** Mod 页正在编辑的方案，可与启动方案不同 */
-  editingProfileId = $state('');
   conflicts = $state<Snapshot['conflicts']>([]);
   runtime = $state<Snapshot['runtime']>(null!);
   dxvk = $state<Snapshot['dxvk']>(null!);
@@ -118,42 +102,39 @@ class AppState {
   externalPacks = $state<import('../types').ExternalPackRecord[]>([]);
   /** 插件页正在查看的外部平台；null = 插件列表 */
   platformOpen = $state<string | null>(null);
-  servers = $state<Snapshot['servers']>([]);
-  /** 服务器合集；本机保留待保存副本，收到后端回执后清理 */
-  serverLayout = $state<ServerLayout>({ groups: [], loose: [] });
-  private layoutRemote = false;
-  private layoutLoaded = false;
-  /** 正在保存的布局请求数；期间不让轮询回来的旧布局盖掉刚拖好的顺序 */
-  private layoutSaving = 0;
-  private layoutDirty = false;
-  private layoutBase: ServerLayout | undefined;
-  serverLayoutConflict = $state(readLocal<boolean>('flare.serverLayout.conflict', false));
-  private layoutWrites: Promise<void> = Promise.resolve();
-  /** 规范化后的合集：只含现存服务器、不重复；未分组在最后 */
-  serverSections = $derived.by(() => sectionsOf(this.serverLayout, this.servers));
-  /** 服务器 id → 所在合集与序号（从 1 开始），卡片编号用 */
-  serverPlace = $derived.by(() => {
-    const out = new Map<string, { group: string; index: number }>();
-    for (const sec of this.serverSections) sec.servers.forEach((s, i) => out.set(s.id, { group: sec.id, index: i + 1 }));
-    return out;
-  });
-  private queuedQueries = new Set<string>();
   cfg = $state<CfgEntry[]>([]);
   cfgDirty = $state(false);
 
   launchState = $state<LaunchState>('idle');
+  stoppingGame = $state(false);
   /** 这次启动后按设置把窗口最小化了；游戏退出时据此叫回前台 */
   private minimizedForGame = false;
   launchConfig = $state<LaunchConfiguration>({ mode: 'modded', label: 'L4N 平台启动', route: 'game-exe', vacMode: 'game-default', launchOptions: gameSettings.args('modded') });
   requestedMode: LaunchMode = 'development';
   launchedAt = $state<number | null>(null);
   requestedAt = 0;
-  serversRefreshing = $state(false);
-  modFilter = $state<{ category: string; status: 'all' | 'on' | 'off' | 'conflict'; q: string }>({ category: 'all', status: 'all', q: '' });
+  modFilter = $state<{ category: string; status: 'all' | 'on' | 'off'; q: string }>({ category: 'all', status: 'all', q: '' });
+  modPanel = $state<'conflicts' | 'missing' | null>(null);
   toasts = $state<Toast[]>([]);
 
-  activeProfile = $derived(this.profiles.find((p) => p.id === this.activeProfileId));
-  editingProfile = $derived(this.profiles.find((p) => p.id === this.editingProfileId));
+  private readonly modProfiles = new ModProfilesStore(this, () => newId('p'));
+  private readonly modFavorites = new ModFavoritesStore(this, {
+    pendingRefresh: () => this.pendingRefresh,
+    openTrash: () => { this.modFilter.category = TRASH; this.route = 'mods'; },
+  });
+
+  get profiles() { return this.modProfiles.profiles; }
+  get activeProfileId() { return this.modProfiles.activeProfileId; }
+  get editingProfileId() { return this.modProfiles.editingProfileId; }
+  set editingProfileId(id: string) { this.modProfiles.editingProfileId = id; }
+  get activeProfile() { return this.modProfiles.activeProfile; }
+  get editingProfile() { return this.modProfiles.editingProfile; }
+  get lastModBackup() { return this.modProfiles.lastModBackup; }
+  get modMeta() { return this.modFavorites.modMeta; }
+  get favoriteCollections() { return this.modFavorites.favoriteCollections; }
+  get favoriteRefs() { return this.modFavorites.favoriteRefs; }
+  get favoriteEntries() { return this.modFavorites.favoriteEntries; }
+  get trash() { return this.modFavorites.trash; }
 
   async init() {
     await this.refresh();
@@ -161,21 +142,15 @@ class AppState {
       if (event.type === 'objects_changed') void this.refresh();
       if (event.type === 'open_downloads') this.route = 'downloads';
       if (event.type === 'task_progress') { const { type: _, ...task } = event; this.onTask(task as ModTask); }
-      if (event.type === 'servers_changed') void serverApi.state().then(state => {
-        this.servers = state.servers; this.acceptLayout(state.serverLayout);
-      }).catch(e => {
-        if ((e as { code?: string }).code === 'unsupported_capability') void serverApi.list().then(rows => { this.servers = rows; }).catch(error => this.toast(errorText(error)));
-        else this.toast(errorText(e));
-      });
+      if (event.type === 'servers_changed') void this.serverStore.refreshState();
       if (event.type === 'bridge_exit') this.error = '本地服务已退出，请重新打开 Matcha。';
     });
   }
   private accept(s: Snapshot) {
     Object.assign(this, {
-      game: s.game, mods: s.mods, modState: s.modState ?? { writable: false, addonListPath: '' }, categories: s.categories, profiles: s.profiles,
-      activeProfileId: s.activeProfileId,
+      game: s.game, mods: s.mods, modState: s.modState ?? { writable: false, addonListPath: '' }, categories: s.categories,
       launchConfig: s.launch ?? this.launchConfig,
-      conflicts: s.conflicts, runtime: s.runtime, dxvk: s.dxvk, plugins: s.plugins, servers: s.servers, cfg: s.cfg,
+      conflicts: s.conflicts, conflictReviews: s.conflictReviews ?? {}, runtime: s.runtime, dxvk: s.dxvk, plugins: s.plugins, cfg: s.cfg,
       issues: s.issues, installations: s.installations, capabilities: s.capabilities, checkedAt: s.checkedAt,
       platforms: s.platforms ?? [],
       externalPacks: s.externalPacks ?? [],
@@ -183,14 +158,11 @@ class AppState {
       nativeLibraries: s.nativeLibraries,
       l4nPlugins: s.l4nPlugins,
     });
-    this.acceptMeta(s.modMeta);
-    this.favoriteCollections = s.favoriteCollections ?? [];
-    this.favoriteRefs = s.favoriteRefs ?? {};
+    this.modProfiles.acceptSnapshot(s.profiles, s.activeProfileId);
+    this.modFavorites.acceptSnapshot(s);
     this.offerNativeOnce();
-    this.trash = s.trash ?? [];
     this.acceptTasks(s.tasks);
-    this.acceptLayout(s.serverLayout);
-    if (!this.profiles.some(p => p.id === this.editingProfileId)) this.editingProfileId = s.activeProfileId;
+    this.serverStore.acceptSnapshot(s.servers, s.serverLayout);
     if (s.game.running) {
       // 从 Matcha 发起的启动，检测到游戏进程：按设置把启动器收起来
       if ((this.launchState === 'requested' || this.launchState === 'launching') && desktop && prefs.afterLaunch === 'minimize') {
@@ -226,16 +198,19 @@ class AppState {
   answerConfirmation(approved: boolean) {
     this.confirmation?.resolve(approved); this.confirmation = null;
   }
-  async perform<T>(label: string, fn: () => Promise<T>, success?: string): Promise<T | undefined> {
+  async perform<T>(label: string, fn: () => Promise<T>, success?: string, {rescan = true} = {}): Promise<T | undefined> {
     if (this.busy) return;
     this.busy = label; this.error = '';
     try {
       const result = await fn();
-      await this.pendingRefresh;
-      await this.refresh();
+      if (rescan) { await this.pendingRefresh; await this.refresh(); }
       if (success) this.notify({ text: success, kind: 'ok' });
       return result;
-    } catch (e) { this.error = errorText(e); this.notify({ text: this.error, kind: 'error', ms: 5000 }); }
+    } catch (e) {
+      if (!await this.showMissingAfterRescan(e)) {
+        this.error = errorText(e); this.notify({ text: this.error, kind: 'error', ms: 5000 });
+      }
+    }
     finally { this.busy = ''; }
   }
   async selectGame(root: string) {
@@ -356,7 +331,27 @@ class AppState {
 
   // ---------- 查询 ----------
   mod(id: string): Mod | undefined { return this.mods.find((m) => m.id === id); }
-  profile(id: string): Profile | undefined { return this.profiles.find((p) => p.id === id); }
+  profile(id: string) { return this.modProfiles.profile(id); }
+
+  openModPanel(panel: 'conflicts' | 'missing', profileId: string) {
+    this.editingProfileId = profileId;
+    this.modFilter.category = ROOT;
+    if (panel === 'missing') { this.modFilter.status = 'all'; this.modFilter.q = ''; }
+    this.modPanel = panel;
+    this.route = 'mods';
+  }
+  private async showMissingAfterRescan(error: unknown) {
+    const fault = error as { code?: string; details?: { profileId?: string } } | null;
+    const id = fault?.details?.profileId;
+    if (fault?.code !== 'mod_missing' || typeof id !== 'string') return false;
+    await this.pendingRefresh;
+    await this.refresh();
+    if (this.refreshFailed || !this.modState.missingByProfile) return false;
+    const profile = this.profile(id);
+    if (profile && this.missingMods(profile).length) this.openModPanel('missing', id);
+    else this.toast('Mod 清单已更新，请重新操作。');
+    return true;
+  }
 
   /** 只有两边都在该方案里启用，冲突才算“生效中” */
   activeConflicts(profile: Profile | undefined): Conflict[] {
@@ -364,250 +359,78 @@ class AppState {
     const on = new Set(profile.modIds);
     return this.conflicts.filter((c) => on.has(c.a) && on.has(c.b));
   }
-  conflictsOf(modId: string, profile: Profile | undefined): Conflict[] {
-    return this.activeConflicts(profile).filter((c) => c.a === modId || c.b === modId);
+  acceptConflictReview({ gameRoot, profileId }: ReviewScope, summary: ConflictReviewSummary) {
+    if (this.game.root === gameRoot && this.profile(profileId)) {
+      this.conflictReviews = { ...this.conflictReviews, [profileId]: summary };
+    }
   }
   categoryCount(catId: string): number { return this.mods.filter((m) => m.categoryId === catId).length; }
 
-  // ---------- 方案 ----------
-  async setActiveProfile(id: string, silent = false) {
-    try { await api.selectProfile(id); } catch (e) { this.toast(errorText(e)); return; }
-    this.activeProfileId = id;
-    if (!silent) this.toast(`启动方案已切换为「${this.profile(id)?.name}」`);
+  // ---------- 方案与收藏：沿用既有页面入口 ----------
+  setActiveProfile(id: string, silent?: boolean) { return this.modProfiles.setActiveProfile(id, silent); }
+  cycleProfile(step: 1 | -1) { return this.modProfiles.cycleProfile(step); }
+  createProfile(name: string, fromId?: string, opts?: Parameters<ModProfilesStore['createProfile']>[2]) {
+    return this.modProfiles.createProfile(name, fromId, opts);
   }
-  /** 主页左右切换方案 */
-  cycleProfile(step: 1 | -1) {
-    const i = this.profiles.findIndex((p) => p.id === this.activeProfileId);
-    const next = this.profiles[(i + step + this.profiles.length) % this.profiles.length];
-    this.setActiveProfile(next.id, true);
+  freshProfileName(base?: string) { return this.modProfiles.freshProfileName(base); }
+  renameProfile(id: string, name: string) { return this.modProfiles.renameProfile(id, name); }
+  deleteProfile(id: string) { return this.modProfiles.deleteProfile(id); }
+  isEnabled(id: string, profile?: Profile) { return this.modProfiles.isEnabled(id, profile); }
+  setModsEnabled(ids: string[], enabled: boolean, profile?: Profile, message?: string) {
+    return this.modProfiles.setModsEnabled(ids, enabled, profile, message);
   }
-  /** opts.modIds：新方案直接带上这些 Mod；opts.open = false 时不切换正在编辑的方案 */
-  createProfile(name: string, fromId?: string, opts: { modIds?: string[]; open?: boolean } = {}) {
-    const src = fromId ? this.profile(fromId) : undefined;
-    const p: Profile = {
-      id: newId('p'), name, note: src ? `复制自「${src.name}」` : '',
-      modIds: opts.modIds ? [...opts.modIds] : src ? [...src.modIds] : [], pluginIds: src ? [...src.pluginIds] : [],
-      launchOptions: src?.launchOptions ?? '', updatedAt: today(), modsInitialized: true, modsGameRoot: this.game.root,
-    };
-    this.profiles.push(p);
-    if (opts.open !== false) this.editingProfileId = p.id;
-    void api.saveProfile(p).catch(e => this.toast(errorText(e)));
-    return this.profiles[this.profiles.length - 1];
-  }
-  freshProfileName(base = '新方案') {
-    for (let i = 1; ; i++) { const n = i === 1 ? base : `${base} ${i}`; if (!this.profiles.some((p) => p.name === n)) return n; }
-  }
-  renameProfile(id: string, name: string) {
-    const p = this.profile(id);
-    if (!p || !name.trim()) return;
-    p.name = name.trim();
-    this.touch(p);
-  }
-  async deleteProfile(id: string) {
-    if (this.profiles.length <= 1) return this.toast('至少保留一个方案');
-    try { await api.deleteProfile(id); } catch (e) { this.toast(errorText(e)); return; }
-    const name = this.profile(id)?.name;
-    this.profiles = this.profiles.filter((p) => p.id !== id);
-    if (this.activeProfileId === id) this.activeProfileId = this.profiles[0].id;
-    if (this.editingProfileId === id) this.editingProfileId = this.profiles[0].id;
-    this.toast(`已删除方案「${name}」`);
-  }
+  toggleMod(id: string) { return this.modProfiles.toggleMod(id); }
+  syncMods(profile?: Profile) { return this.modProfiles.syncMods(profile); }
+  applyMods(profile?: Profile) { return this.modProfiles.applyMods(profile); }
+  missingMods(profile?: Profile) { return this.modProfiles.missingMods(profile); }
+  removeMissingMods(profile?: Profile) { return this.modProfiles.removeMissingMods(profile); }
 
-  // ---------- Mod ----------
-  isEnabled(modId: string, profile = this.editingProfile) { return !!profile?.modIds.includes(modId); }
-  async setModsEnabled(ids: string[], enabled: boolean, profile = this.editingProfile, message?: string) {
-    if (!profile) return;
-    const set = new Set(profile.modIds);
-    ids.forEach((id) => (enabled ? set.add(id) : set.delete(id)));
-    const next = { ...$state.snapshot(profile), modIds: [...set], modsInitialized: true, modsGameRoot: this.game.root, updatedAt: today() };
-    await this.perform('保存 Mod 方案', () => api.saveProfile(next), message ?? `已保存到「${profile.name}」`);
+  isFavorite(id: string) { return this.modFavorites.isFavorite(id); }
+  favoriteIds() { return this.modFavorites.favoriteIds(); }
+  favoriteMod(id: string) { return this.modFavorites.favoriteMod(id); }
+  repairFavorite(id: string, selected?: string) { return this.modFavorites.repairFavorite(id, selected); }
+  importFavoriteSources(ids: string[]) { return this.modFavorites.importFavoriteSources(ids); }
+  applyFavorites(ids: string[], profiles: string[]) { return this.modFavorites.applyFavorites(ids, profiles); }
+  bookmarkFiles(paths: string[], collectionId?: string, repairId?: string) {
+    return this.modFavorites.bookmarkFiles(paths, collectionId, repairId);
   }
+  editFavoriteCollection(edit: Parameters<typeof api.editFavoriteCollection>[0]) { return this.modFavorites.editFavoriteCollection(edit); }
+  moveFavoriteCollection(id: string, targetId: string, after: boolean) { return this.modFavorites.moveFavoriteCollection(id, targetId, after); }
+  collectMods(ids: string[], group?: string) { return this.modFavorites.collectMods(ids, group); }
+  setFavorite(ids: string[], favorite: boolean) { return this.modFavorites.setFavorite(ids, favorite); }
+  isInbox(id: string) { return this.modFavorites.isInbox(id); }
+  inboxIds() { return this.modFavorites.inboxIds(); }
+  markSorted(ids: string[]) { return this.modFavorites.markSorted(ids); }
 
-  // ---------- 收藏（modMeta） ----------
-  isFavorite(id: string) { return !!this.modMeta[id]?.favorite || !!this.favoriteRefs[id]; }
-  favoriteIds(): string[] { return this.favoriteEntries.map(m => m.id); }
-  favoriteMod(id: string) {
-    const ref=this.favoriteRefs[id];
-    return ref ? (ref.library?.gameRoot.toLowerCase()===this.game.root.toLowerCase() ? this.mod(ref.library!.modId) : undefined) : this.mod(id);
+  async copyModFiles(ids: string[], favorites = false) {
+    try {
+      const { paths } = await api.copyModFiles(ids, this.game.root, favorites);
+      await writeFileClipboard(paths);
+      this.toast(`已复制 ${ids.length} 个 Mod，可粘贴到任意文件夹`);
+    } catch (e) { this.notify({ kind: 'error', text: errorText(e) }); }
   }
-  importFavoriteSources(ids:string[]) {
-    const root=this.game.root;
-    return this.perform('导入收藏文件',async()=>{
-      for (const id of ids) {
-        const ref=this.favoriteRefs[id];
-        if (!ref || this.favoriteMod(id)) continue;
-        const input=await api.previewModInput(ref.absolutePath);
-        if (input.kind!=='vpk' && input.kind!=='folder') throw new Error('收藏的来源文件已变化：'+ref.title);
-        if (input.targetExists) throw new Error('Mod 库里已有「'+input.name+'」。请在库里确认现有版本，或给来源改名后重新收藏。');
-        if (input.kind==='folder') {
-          const task=await api.packModFolder(input,root,ROOT,id);
-          const done=await this.waitTask(task.taskId);
-          if (done.state!=='done') throw new Error(done.error?.message??'文件夹打包未完成');
-        } else await api.importMod(input,root,id);
-      }
-      return true;
-    }).then(async result=>{ if (!result) await this.refresh(); return result; });
+  async pasteModFiles(receive: (paths: string[]) => void | Promise<void>) {
+    try {
+      const paths = await readFileClipboard();
+      if (paths.length) await receive(paths);
+    } catch (e) { this.notify({ kind: 'error', text: errorText(e) }); }
   }
-  applyFavorites(ids:string[],profiles:string[]) {
-    return this.perform('保存方案成员',()=>api.favoriteToProfiles(ids,profiles,this.game.root));
+  async vpkDrop(paths: string[]) {
+    try {
+      const { queued, errors } = await api.queueVpkDrop(paths);
+      if (queued) this.toast(`${queued} 项已加入 VPK 处理队列`, { label: '查看进度', run: () => { this.route = 'downloads'; } });
+      if (errors.length) this.notify({ kind: 'error', title: queued ? '部分文件未加入队列' : '未能处理拖入的文件', text: errors.slice(0, 3).join('；') + (errors.length > 3 ? ' 等 ' + errors.length + ' 项' : ''), ms: 8000 });
+    } catch (e) { this.notify({ kind: 'error', text: errorText(e), ms: 6000 }); }
   }
-  async bookmarkFiles(paths: string[], collectionId?: string) {
-    const result = await this.perform('保存到收藏夹', () => api.bookmarkFiles(paths, collectionId));
-    if (result) this.notify({kind:result.skipped.length ? 'info' : 'ok', text:'已收进' + (this.favoriteCollections.find(c => c.id === collectionId)?.name ?? '收藏夹') + ' · ' + result.count + ' 项' + (result.skipped.length ? '；' + result.skipped.join('；') : '')});
-    return result;
-  }
-  editFavoriteCollection(edit: Parameters<typeof api.editFavoriteCollection>[0]) {
-    return this.perform('保存收藏合集', () => api.editFavoriteCollection(edit));
-  }
-  setFavorite(ids: string[], favorite: boolean) {
-    this.patchMeta(ids, (m) => { if (favorite) m.favorite = true; else delete m.favorite; });
-    if (!favorite) {
-      const removed = new Set(ids);
-      for (const id of removed) delete this.favoriteRefs[id];
-      for (const c of this.favoriteCollections) c.modIds = c.modIds.filter(id => !removed.has(id));
-    }
-    // 单个点星标有即时视觉反馈，不再弹提示
-    if (ids.length > 1) this.toast(favorite ? `已收藏 ${ids.length} 个 Mod` : `已取消收藏 ${ids.length} 个 Mod`);
-  }
-
-  // ---------- 新下载（modMeta.inbox）：下载完成、还没整理 ----------
-  isInbox(id: string) { return !!this.modMeta[id]?.inbox; }
-  inboxIds(): string[] { return this.mods.filter((m) => this.isInbox(m.id)).map((m) => m.id); }
-  /** 「标记已整理」：离开新下载，其余标记不变 */
-  markSorted(ids: string[]) {
-    const list = ids.filter((id) => this.isInbox(id));
-    if (!list.length) return;
-    this.patchMeta(list, (m) => { delete m.inbox; });
-    if (list.length > 1) this.toast(`${list.length} 个 Mod 已标记为整理过`);
-  }
-  /** 改分类、加入方案后后端会自动清掉 inbox；这里先在本地同步，不用等下一次快照 */
-  private dropInbox(ids: string[]) {
-    const list = ids.filter((id) => this.isInbox(id));
-    if (!list.length) return;
-    if (this.metaRemote) for (const id of list) { const next = { ...this.modMeta[id] }; delete next.inbox; this.modMeta[id] = next; }
-    else this.patchMeta(list, (m) => { delete m.inbox; });
-  }
-  /** 按 id 改标记；改完为空的记录发 null 删除 */
-  private patchMeta(ids: string[], edit: (m: ModMeta) => void) {
-    const patch: Record<string, ModMeta | null> = {};
-    for (const id of ids) {
-      const next: ModMeta = { ...this.modMeta[id] };
-      edit(next);
-      for (const k of Object.keys(next) as (keyof ModMeta)[]) if (next[k] === undefined || next[k] === false) delete next[k];
-      if (Object.keys(next).length) { this.modMeta[id] = next; patch[id] = next; }
-      else { delete this.modMeta[id]; patch[id] = null; }
-    }
-    this.persistMeta(patch);
-  }
-  private acceptMeta(remote: Snapshot['modMeta']) {
-    if (remote) {
-      this.metaRemote = true;
-      const local = readLocalMeta();
-      if (Object.keys(local).length) {
-        // 后端接入后，把之前暂存在本机的标记合并上去一次
-        this.modMeta = { ...remote, ...local };
-        void api.saveModMeta(local).then(() => clearLocalMeta()).catch(e => this.toast(errorText(e)));
-      } else this.modMeta = remote;
-    } else if (!this.metaLoaded) {
-      this.modMeta = readLocalMeta();
-    }
-    this.metaLoaded = true;
-  }
-  private persistMeta(patch: Record<string, ModMeta | null>) {
-    if (this.metaRemote) void api.saveModMeta(patch).catch(e => { this.toast(errorText(e)); void this.refresh(); });
-    else writeLocalMeta($state.snapshot(this.modMeta));
-  }
-  toggleMod(id: string) { this.setModsEnabled([id], !this.isEnabled(id)); }
-  async syncMods(profile = this.editingProfile) {
-    if (!profile) return;
-    await this.perform('同步游戏启用项', async () => {
-      if (!await this.confirm('从游戏同步 Mod 方案', `用游戏的 Mod 设置覆盖「${profile.name}」的勾选。尚未登记的有效 VPK 默认勾选。`)) return;
-      const next = { ...$state.snapshot(profile), modIds: this.mods.filter(m => !m.error && m.enabled !== false).map(m => m.id), modsInitialized: true, modsGameRoot: this.game.root, updatedAt: today() };
-      await api.saveProfile(next); this.toast('已从游戏同步');
-    });
-  }
-  async applyMods(profile = this.editingProfile) {
-    if (!profile) return;
-    await this.perform('应用 Mod 方案', async () => {
-      const conflicts = this.activeConflicts(profile).length;
-      if (!await this.confirm('应用 Mod 方案', `「${profile.name}」· ${profile.modIds.length} 个启用项\n${this.modState.addonListPath}\n\n备份原配置，写入 Mod 启停状态，并设为启动方案。其余条目保留，下次完整启动生效。${conflicts ? `\n\n此方案有 ${conflicts} 组资源路径重叠，游戏将按实际加载顺序处理。` : ''}`)) return;
-      const result = await api.applyModProfile(profile.id);
-      this.lastModBackup = result.backup ?? '';
-      this.toast('Mod 方案已应用，下次完整启动生效');
-    });
-  }
-  /** 一次确认：现成 VPK 直接导入，散装素材交给后台打包。分类在松手时确定。 */
-  async importMods(paths: string[], categoryId = ROOT) {
-    const root = this.game.root;
-    const imported = await this.perform('准备导入 Mod', async () => {
-      const inputs: LocalModInput[] = [], notes: string[] = [];
-      let shards = 0;
-      for (const file of new Set(paths)) {
-        const name = file.split(/[\\/]/).pop() || file;
-        try {
-          const item = await api.previewModInput(file);
-          if (item.kind === 'vpk' || item.kind === 'folder') inputs.push(item);
-          else if (item.kind === 'shard') shards++;
-          else notes.push(`${name}：请选择 VPK 或素材文件夹。`);
-        } catch (e) { notes.push(`${name}：${errorText(e)}`); }
-      }
-      if (shards) notes.push(`已跳过 ${shards} 个分卷数据文件；分卷包请选择 _dir.vpk。`);
-      if (!inputs.length) throw new Error(notes.join('\n') || '请选择 VPK 或素材文件夹。');
-      const names = new Set<string>();
-      for (const item of inputs) {
-        const key = item.name.toLowerCase();
-        if (names.has(key)) throw new Error(`选中的素材会生成同一个文件「${item.name}」。请一次只导入其中一份。`);
-        names.add(key);
-      }
-      const only = inputs.length === 1 ? inputs[0] : null;
-      const conflicts = inputs.filter(item => item.targetExists);
-      const title = conflicts.length ? (only ? '替换同名 Mod？' : `有 ${conflicts.length} 个同名 Mod，确认替换？`) : only?.kind === 'folder' ? '打包并导入文件夹' : only ? '导入 VPK Mod' : `导入 ${inputs.length} 个 Mod`;
-      const target = root + '\\left4dead2\\addons';
-      const facts = only ? [
-        { label: '来源', value: only.file },
-        ...(only.kind === 'folder' ? [
-          { label: '生成', value: only.name },
-          { label: '包内', value: only.prefix ? `保留 ${only.prefix}/ 目录` : '保留文件夹内的目录结构' },
-        ] : [{ label: 'VPK', value: `${only.title} · ${mib(only.sizeMB * 1048576)} · ${only.fileCount} 个资源 · 复制 ${only.files.length} 个文件` }]),
-      ] : [];
-      facts.push({ label: '目标', value: target });
-      const category = this.categories.find(c => !c.builtin && c.id === categoryId);
-      const previous = only?.targetExists ? this.mod(only.name.toLowerCase()) : undefined;
-      if (category || previous) facts.push({ label: '导入后分类', value: this.categoryLabel(category?.id ?? previous!.categoryId) });
-      const rows = inputs.map(item => ({
-        k: item.name, v: conflicts.length ? (item.targetExists ? '替换旧包' : '新增') : item.kind === 'folder' ? '文件夹 → VPK' : `${mib(item.sizeMB * 1048576)} · ${item.fileCount} 个资源`,
-      }));
-      for (const item of inputs) if (item.kind === 'vpk' && item.warning) notes.push(`${item.name}：${item.warning}`);
-      const explanation = conflicts.length
-        ? `${only ? `目标目录已有「${only.name}」。` : ''}确认后，Matcha 会先备份同名旧包及其分卷，再用新包替换。导入的 Mod 会在当前启动方案中启用，下次启动游戏时生效。`
-        : '导入后在当前启动方案中启用，下次启动游戏时生效。';
-      const action = conflicts.length ? (only?.kind === 'folder' ? '打包并替换' : only ? '确认替换' : '确认导入并替换') : only?.kind === 'folder' ? '打包并导入' : '导入';
-      if (!await this.confirm(title, explanation, action, {
-        facts, lists: only ? [] : [{ title: '导入内容', rows }], ...(notes.length ? { warn: { title: '导入提示', text: notes.join('\n') } } : {}),
-      })) return [];
-      const ids: string[] = [], failed: string[] = []; let queued = 0, replaced = 0;
-      for (const item of inputs) {
-        try {
-          if (item.kind === 'folder') { await api.packModFolder(item, root, categoryId); queued++; }
-          else {
-            const r = await api.importMod(item, root); ids.push(r.id); if (r.replaced) replaced++;
-            if (!r.enabled) failed.push(`${item.name} 已导入，尚未加入当前启动方案。请检查方案的游戏目录和 Mod 状态。`);
-          }
-        } catch (e) { failed.push(`${item.name}：${errorText(e)}`); }
-      }
-      const message = [ids.length > replaced && `已导入 ${ids.length - replaced} 个 VPK`, replaced && `已替换 ${replaced} 个同名 Mod`, queued && `${queued} 个文件夹已加入打包队列`, ...failed].filter(Boolean).join('；');
-      if (ids.length || failed.length) this.notify({ kind: failed.length ? 'error' : 'ok', text: message });
-      return ids;
-    });
-    if (imported?.length && this.game.root === root && this.categories.some(c => c.id === categoryId && !c.builtin))
-      this.moveToCategory(imported, categoryId);
+  importMods(paths: string[], categoryId = ROOT) {
+    return importLocalMods(this, paths, categoryId);
   }
   /** catId 为 ROOT 或 'cat-none' 时移出分类，放回最外层 */
   moveToCategory(ids: string[], catId: string) {
     const target = catId === ROOT ? 'cat-none' : catId;
     const moved = this.mods.filter((m) => ids.includes(m.id) && m.categoryId !== target);
     for (const m of moved) m.categoryId = target;
-    this.dropInbox(moved.map((m) => m.id));
+    this.modFavorites.dropInbox(moved.map((m) => m.id));
     this.persistCategories();
   }
 
@@ -629,7 +452,10 @@ class AppState {
     if (ids.every((k, i) => k === siblings[i])) return;
     const ranks = new Map(ids.map((k, i) => [k, i]));
     const categories = $state.snapshot(this.categories).map(c => ranks.has(c.id) ? {...c, order:ranks.get(c.id)!} : c);
-    await this.perform('保存分类顺序', () => api.saveCategories(categories, {}));
+    // 先在本地排好（卡片立刻滑到新位置），保存不用整库重扫；失败时重新读取恢复
+    this.categories = categories;
+    const saved = await this.perform('保存分类顺序', async () => { await api.saveCategories(categories, {}); return true; }, undefined, { rescan: false });
+    if (!saved) void this.refresh();
   }
   /** 从最外层到 id 的路径（不含最外层） */
   categoryPath(id: string): Category[] {
@@ -706,75 +532,9 @@ class AppState {
     void api.saveCategories($state.snapshot(this.categories), Object.fromEntries(this.mods.map((m) => [m.id, m.categoryId]))).catch(e => this.toast(errorText(e)));
   }
 
-  // ---------- 删除 → Matcha 回收站 ----------
-  /** 返回是否真的删除了（用户取消、失败时为 false） */
-  async deleteMods(ids: string[]): Promise<boolean> {
-    if (!ids.length) return false;
-    if (this.game.running) { this.toast('游戏运行中，退出后再删除'); return false; }
-    let done = false;
-    await this.perform('删除 Mod', async () => {
-      const { mods: list, sizeBytes } = await api.previewDeleteMods(ids);
-      if (!list.length) return;
-      const one = list.length === 1 ? list[0] : null;
-      const files = list.flatMap((t) => t.files);
-      const names = [...new Set(list.flatMap((t) => t.profileIds))].map((id) => this.profile(id)?.name).filter(Boolean);
-      const subscribed = list.filter((t) => t.files.some((f) => f.file.startsWith('workshop/')));
-      const extra: ConfirmExtra = {
-        items: list.slice(0, 12).map((t) => ({ modId: t.modId, title: t.title, files: t.files, sizeBytes: t.sizeBytes })),
-        more: Math.max(0, list.length - 12),
-        facts: [
-          { label: '文件', value: `${files.length} 个 · ${mib(sizeBytes)}` },
-          { label: '方案', value: names.length ? `从 ${names.join('、')} 中移除` : '不在任何方案里' },
-          { label: '去向', value: 'Matcha 回收站，可以还原或永久删除' },
-        ],
-        warn: subscribed.length ? {
-          title: one ? '这是 Steam 创意工坊订阅项' : `其中 ${subscribed.length} 个是 Steam 创意工坊订阅项`,
-          text: '只删文件的话，Steam 会重新下载。请先在 Steam 里取消订阅。',
-          links: subscribed.map((t) => workshopLink(t.workshopId ?? '')),
-        } : undefined,
-      };
-      if (!await this.confirm(one ? `删除「${one.title}」` : `删除 ${list.length} 个 Mod`, '', '移到回收站', extra)) return;
-      const { trashed } = await api.deleteMods(list.map((t) => t.modId));
-      done = true;
-      const trashIds = trashed.map((t) => t.trashId);
-      this.toast(one ? `「${one.title}」已移到回收站` : `${trashed.length} 个 Mod 已移到回收站`, { label: '撤销', run: () => void this.restoreTrash(trashIds) });
-    });
-    return done;
-  }
-  async restoreTrash(trashIds: string[]) {
-    if (!trashIds.length) return;
-    if (this.game.running) return this.toast('游戏运行中，退出后再还原');
-    const list = this.trash.filter((t) => trashIds.includes(t.trashId));
-    await this.perform('还原 Mod', async () => {
-      const { restored, conflicts } = await api.restoreMods(trashIds);
-      const drafts = list.some((t) => restored.includes(t.modId) && t.profileIds.length);
-      const what = restored.length === 1 ? `「${list.find((t) => t.modId === restored[0])?.title ?? restored[0]}」` : ` ${restored.length} 个 Mod`;
-      if (conflicts.length) this.toast(`${restored.length ? `已还原${what}；` : ''}${conflicts.length} 个没有还原：${conflicts[0].reason}`, undefined, 6000);
-      else this.toast(`已还原${what}${drafts ? '，已恢复方案里的勾选' : ''}`, undefined, drafts ? 5000 : undefined);
-    });
-  }
-  /** 永久删除，不可撤销；'all' = 清空回收站 */
-  async purgeTrash(trashIds: string[] | 'all') {
-    const list = trashIds === 'all' ? this.trash : this.trash.filter((t) => trashIds.includes(t.trashId));
-    if (!list.length) return;
-    if (this.game.running) return this.toast('游戏运行中，退出后再删除');
-    await this.perform('永久删除', async () => {
-      const files = list.flatMap((t) => t.files);
-      const size = files.reduce((n, f) => n + f.size, 0);
-      const title = trashIds === 'all' ? '清空回收站' : list.length === 1 ? `永久删除「${list[0].title}」` : `永久删除 ${list.length} 个 Mod`;
-      const extra: ConfirmExtra = {
-        items: list.slice(0, 12).map((t) => ({ trashId: t.trashId, title: t.title, files: t.files, sizeBytes: t.sizeBytes })),
-        more: Math.max(0, list.length - 12),
-        facts: [
-          { label: '文件', value: `${files.length} 个 · ${mib(size)}` },
-          { label: '结果', value: '从磁盘上删除，无法撤销', danger: true },
-        ],
-      };
-      if (!await this.confirm(title, '', '永久删除', extra)) return;
-      const { purged } = await api.purgeTrash(trashIds === 'all' ? 'all' : list.map((t) => t.trashId));
-      this.toast(purged.length === 1 && list.length === 1 ? `已永久删除「${list[0].title}」` : `已永久删除 ${purged.length} 个 Mod`);
-    });
-  }
+  deleteMods(ids: string[]) { return this.modFavorites.deleteMods(ids); }
+  restoreTrash(ids: string[]) { return this.modFavorites.restoreTrash(ids); }
+  purgeTrash(ids: string[] | 'all') { return this.modFavorites.purgeTrash(ids); }
 
   // ---------- 后台任务：下载、解包 ----------
   /** 快照里的任务列表按 taskId 合并；比快照新的事件结果保留 */
@@ -796,7 +556,9 @@ class AppState {
     if (!prev || prev.state === t.state || ended(prev)) return;
     if (t.kind === 'platform-download' && t.sourceId?.startsWith('native:')) void this.onLibraryDownload(t);
     if (t.kind === 'pack' && t.state === 'done') {
-      this.notify({ kind: t.warning ? 'error' : 'ok', title: '打包完成', text: t.output ? '已打包到桌面：'+t.output : t.warning || (t.favoriteImport ? `${t.title} 已导入 Mod 库，可选择目标方案` : `${t.title} 已导入并启用，下次启动生效`) });
+      const output = t.output;
+      this.notify({ kind: t.warning ? 'error' : 'ok', title: '打包完成', text: output ? `「${output.split(/[\\/]/).pop()}」已保存到桌面` : t.warning || (t.favoriteImport ? `${t.title} 已导入 Mod 库，可选择目标方案` : `${t.title} 已导入并启用，下次启动生效`),
+        actions: output ? [{ label: '在文件夹中显示', run: () => this.reveal(output) }] : [] });
     }
     if (t.state === 'done' && t.kind === 'extract') {
       const dir = t.dir;
@@ -1232,274 +994,41 @@ class AppState {
     });
   }
 
-  // ---------- 服务器 ----------
-  /** 正在查询时再请求的 id 排队，本轮结束后补查，不丢 */
-  async refreshServers(ids = this.servers.map(s => s.id)) {
-    if (!this.capabilities.servers || !ids.length) return;
-    if (this.serversRefreshing) { ids.forEach(id => this.queuedQueries.add(id)); return; }
-    this.serversRefreshing = true;
-    try { this.servers = await serverApi.query(ids); }
-    catch (e) { this.toast(errorText(e)); }
-    finally {
-      this.serversRefreshing = false;
-      const next = [...this.queuedQueries].filter(id => this.servers.some(s => s.id === id));
-      this.queuedQueries.clear();
-      if (next.length) void this.refreshServers(next);
-    }
-  }
-  async toggleFavorite(id: string) {
-    const s = this.servers.find((x) => x.id === id);
-    if (s) await this.setServersFavorite([id], !s.favorite);
-  }
-  async setServersFavorite(ids: string[], favorite: boolean) {
-    const list = ids.filter(id => { const s = this.servers.find(x => x.id === id); return s && s.favorite !== favorite; });
-    if (!list.length) return;
-    try { for (const id of list) this.servers = await serverApi.favorite(id, favorite); }
-    catch (e) { this.toast(errorText(e)); return; }
-    if (list.length > 1) this.toast(favorite ? `已收藏 ${list.length} 台服务器` : `已取消收藏 ${list.length} 台服务器`);
-  }
-  /** 逐个添加；新服务器放进合集 groupId（LOOSE = 未分组）。备注和连接端口只在单个添加时使用 */
-  async addServers(addresses: string[], opts: { label?: string; gamePort?: string; groupId?: string; onProgress?: (done: number) => void } = {}) {
-    const added: string[] = [], failed: { address: string; message: string; code?: string }[] = [];
-    const single = addresses.length === 1;
-    for (const [i, address] of addresses.entries()) {
-      const before = new Set(this.servers.map(s => s.id));
-      try {
-        this.servers = await serverApi.add(address, single ? opts.label ?? '' : '', single ? opts.gamePort ?? '' : '');
-        const id = this.servers.find(s => !before.has(s.id))?.id;
-        if (id) added.push(id);
-      } catch (e) {
-        const code = (e as { code?: string }).code;
-        failed.push({ address, message: errorText(e), code });
-        if (code === 'server_limit') break;
-      }
-      opts.onProgress?.(i + 1);
-    }
-    if (added.length && opts.groupId && opts.groupId !== LOOSE) this.moveServers(added, opts.groupId);
-    if (added.length) void this.refreshServers(added);
-    return { added, failed };
-  }
-  async removeServers(ids: string[]) {
-    const list = this.servers.filter(s => ids.includes(s.id));
-    if (!list.length) return;
-    const what = list.length === 1 ? `「${list[0].name}」` : ` ${list.length} 台服务器`;
-    const names = list.length > 1 ? '\n\n' + list.slice(0, 8).map(s => `· ${s.name}`).join('\n') + (list.length > 8 ? `\n· …另 ${list.length - 8} 台` : '') : '';
-    if (!await this.confirm('移除服务器', `从 Matcha 列表移除${what}？\n收藏和合集位置一并删除，之后可重新添加。${names}`)) return;
-    const done = await this.dropServers(list.map(s => s.id));
-    if (done > 1) this.toast(`已移除 ${done} 台服务器`);
-  }
-  removeServer(id: string) { return this.removeServers([id]); }
-  private async dropServers(ids: string[]) {
-    let done = 0;
-    try { for (const id of ids) { this.servers = await serverApi.remove(id); done++; } }
-    catch (e) { this.toast(errorText(e)); }
-    this.pruneLayout();
-    return done;
-  }
-  /** 改备注。后端还没有 update-server 时，移除后用同一地址重新添加，再恢复收藏和合集位置 */
-  async renameServer(id: string, label: string, inPlaceOnly = false) {
-    const s = this.servers.find(x => x.id === id);
-    const next = label.trim();
-    if (!s || next === s.label || (!s.label && next === s.name)) return;
-    if (next.length > 80) return this.toast('备注最多 80 个字符');
-    try { this.servers = await serverApi.update(id, next, s.gamePort); return; }
-    catch (e) { if ((e as { code?: string }).code !== 'unsupported_capability') return this.toast(errorText(e)); }
-    if (inPlaceOnly) return this.toast('当前服务版本较旧，请升级后再清除备注。');
-    const layout = this.explicitLayout();
-    const port = s.gamePort === null ? '' : String(s.gamePort);
-    let list: Server[];
-    try {
-      list = await serverApi.remove(id);
-      const before = new Set(list.map(x => x.id));
-      try { list = await serverApi.add(s.addr, next, port); }
-      catch (e) { this.toast(errorText(e)); list = await serverApi.add(s.addr, s.label, port); }
-      const fresh = list.find(x => !before.has(x.id))?.id;
-      if (!fresh) { this.servers = list; return; }
-      if (s.favorite) list = await serverApi.favorite(fresh, true);
-      const swap = (ids: string[]) => ids.map(x => (x === id ? fresh : x));
-      this.serverLayout = { groups: layout.groups.map(g => ({ ...g, serverIds: swap(g.serverIds) })), loose: swap(layout.loose) };
-      this.persistLayout();
-      this.servers = list;
-      void this.refreshServers([fresh]);
-    } catch (e) { this.toast(errorText(e)); void serverApi.list().then(rows => { this.servers = rows; }); }
-  }
+  // ---------- 服务器（沿用页面入口，状态和写入由 ServerStore 管理） ----------
+  private readonly serverStore = new ServerStore({
+    canQuery: () => this.capabilities.servers,
+    confirm: (title, message, ok, extra) => this.confirm(title, message, ok, extra),
+    toast: (text, action) => this.toast(text, action),
+    openServerPage: () => { this.route = 'servers'; },
+  });
+  get servers() { return this.serverStore.servers; }
+  get serverLayout() { return this.serverStore.serverLayout; }
+  get serverLayoutConflict() { return this.serverStore.serverLayoutConflict; }
+  get serverSections() { return this.serverStore.serverSections; }
+  get serverPlace() { return this.serverStore.serverPlace; }
+  get serversRefreshing() { return this.serverStore.serversRefreshing; }
+  refreshServers(ids?: string[]) { return this.serverStore.refreshServers(ids); }
+  toggleFavorite(id: string) { return this.serverStore.toggleFavorite(id); }
+  setServersFavorite(ids: string[], favorite: boolean) { return this.serverStore.setServersFavorite(ids, favorite); }
+  toggleFriendFavorite(friend: Pick<Server, 'id' | 'addr'>) { return this.serverStore.toggleFriendFavorite(friend); }
+  addServers(addresses: string[], opts?: Parameters<ServerStore['addServers']>[1]) { return this.serverStore.addServers(addresses, opts); }
+  removeServers(ids: string[]) { return this.serverStore.removeServers(ids); }
+  removeServer(id: string) { return this.serverStore.removeServer(id); }
+  renameServer(id: string, label: string, inPlaceOnly?: boolean) { return this.serverStore.renameServer(id, label, inPlaceOnly); }
+  serverGroup(id: string) { return this.serverStore.serverGroup(id); }
+  serverSection(id: string) { return this.serverStore.serverSection(id); }
+  freshServerGroupName(base?: string) { return this.serverStore.freshServerGroupName(base); }
+  createServerGroup(name: string, ids?: string[]) { return this.serverStore.createServerGroup(name, ids); }
+  renameServerGroup(id: string, name: string) { return this.serverStore.renameServerGroup(id, name); }
+  shiftServerGroup(id: string, step: -1 | 1) { return this.serverStore.shiftServerGroup(id, step); }
+  deleteServerGroup(id: string) { return this.serverStore.deleteServerGroup(id); }
+  deleteServerGroupWithServers(id: string) { return this.serverStore.deleteServerGroupWithServers(id); }
+  moveServers(ids: string[], groupId: string, index?: number) { return this.serverStore.moveServers(ids, groupId, index); }
+  flushServerLayout() { return this.serverStore.flushServerLayout(); }
+  retryServerLayoutDraft() { return this.serverStore.retryServerLayoutDraft(); }
+  useSavedServerLayout() { return this.serverStore.useSavedServerLayout(); }
+  bestServer(list: Server[]) { return this.serverStore.bestServer(list); }
 
-  // ---------- 服务器合集 ----------
-  serverGroup(id: string) { return this.serverLayout.groups.find(g => g.id === id); }
-  serverSection(id: string) { return this.serverSections.find(s => s.id === id); }
-  freshServerGroupName(base = '新合集') {
-    for (let i = 1; ; i++) { const n = i === 1 ? base : `${base} ${i}`; if (!this.serverGroupTaken(n)) return n; }
-  }
-  private serverGroupTaken(name: string, except?: string) {
-    return name === '未分组' || this.serverLayout.groups.some(g => g.name === name && g.id !== except);
-  }
-  createServerGroup(name: string, ids: string[] = []): ServerGroup | undefined {
-    const n = name.trim().slice(0, 40);
-    if (!n) return;
-    if (this.serverGroupTaken(n)) { this.toast(`已有合集「${n}」`); return; }
-    const id = newId('sg');
-    this.serverLayout.groups.push({ id, name: n, serverIds: [] });
-    if (ids.length) this.moveServers(ids, id); else this.persistLayout();
-    return this.serverGroup(id);
-  }
-  renameServerGroup(id: string, name: string) {
-    const g = this.serverGroup(id);
-    const n = name.trim().slice(0, 40);
-    if (!g || !n || n === g.name) return;
-    if (this.serverGroupTaken(n, id)) return this.toast(`已有合集「${n}」`);
-    g.name = n;
-    this.persistLayout();
-  }
-  shiftServerGroup(id: string, step: -1 | 1) {
-    const groups = this.serverLayout.groups;
-    const i = groups.findIndex(g => g.id === id), j = i + step;
-    if (i < 0 || j < 0 || j >= groups.length) return;
-    [groups[i], groups[j]] = [groups[j], groups[i]];
-    this.persistLayout();
-  }
-  /** 只删合集本身，里面的服务器回到未分组 */
-  deleteServerGroup(id: string) {
-    const g = this.serverGroup(id);
-    if (!g) return;
-    const layout = this.explicitLayout();
-    const moved = layout.groups.find(x => x.id === id)?.serverIds ?? [];
-    this.serverLayout = { groups: layout.groups.filter(x => x.id !== id), loose: [...layout.loose, ...moved] };
-    this.persistLayout();
-    this.toast(moved.length ? `已删除合集「${g.name}」，${moved.length} 台服务器移到未分组` : `已删除合集「${g.name}」`);
-  }
-  async deleteServerGroupWithServers(id: string) {
-    const g = this.serverGroup(id), sec = this.serverSection(id);
-    if (!g || !sec) return;
-    if (!sec.servers.length) return this.deleteServerGroup(id);
-    if (!await this.confirm('删除合集和其中的服务器', `删除合集「${g.name}」，并从 Matcha 移除其中 ${sec.servers.length} 台服务器？\n收藏状态一并删除，之后可重新添加。`)) return;
-    const name = g.name;
-    this.serverLayout.groups = this.serverLayout.groups.filter(x => x.id !== id);
-    const done = await this.dropServers(sec.servers.map(s => s.id));
-    this.toast(`已删除合集「${name}」和 ${done} 台服务器`);
-  }
-  /** 把服务器移到合集（LOOSE = 未分组）的第 index 位；index 按去掉这些服务器后的目标列表计，缺省放到最后 */
-  moveServers(ids: string[], groupId: string, index?: number) {
-    const moving = new Set(ids);
-    const layout = this.explicitLayout();
-    const lists = new Map<string, string[]>([...layout.groups.map(g => [g.id, g.serverIds] as const), [LOOSE, layout.loose]]);
-    const order = [...lists.values()].flat().filter(id => moving.has(id));
-    const target = lists.get(groupId);
-    if (!order.length || !target) return;
-    for (const [k, v] of lists) lists.set(k, v.filter(id => !moving.has(id)));
-    const rest = lists.get(groupId)!;
-    rest.splice(index === undefined ? rest.length : Math.max(0, Math.min(index, rest.length)), 0, ...order);
-    this.serverLayout = { groups: layout.groups.map(g => ({ ...g, serverIds: lists.get(g.id)! })), loose: lists.get(LOOSE)! };
-    this.persistLayout();
-  }
-  /** 当前布局写成显式列表（未分组里没登记顺序的也写进去），便于原位替换和移动 */
-  private explicitLayout(): ServerLayout {
-    const ids = (sec: ServerSection | undefined) => sec?.servers.map(s => s.id) ?? [];
-    return {
-      groups: this.serverLayout.groups.map(g => ({ id: g.id, name: g.name, serverIds: ids(this.serverSection(g.id)) })),
-      loose: ids(this.serverSection(LOOSE)),
-    };
-  }
-  /** 只在确认移除后调用；列表临时为空（如查询失败）时不清理，避免丢布局 */
-  private pruneLayout() {
-    const alive = new Set(this.servers.map(s => s.id));
-    this.serverLayout = {
-      groups: this.serverLayout.groups.map(g => ({ id: g.id, name: g.name, serverIds: g.serverIds.filter(id => alive.has(id)) })),
-      loose: this.serverLayout.loose.filter(id => alive.has(id)),
-    };
-    this.persistLayout();
-  }
-  private acceptLayout(remote: ServerLayout | undefined) {
-    if (remote && Array.isArray(remote.groups)) {
-      if (this.layoutSaving) return;
-      const clean = cleanLayout(remote);
-      const local = readLocal<unknown>(LAYOUT_KEY, null);
-      if (!this.layoutRemote && local) {
-        // 首次接入或重试未完成的保存，收到回执后再清理本机副本。
-        this.layoutRemote = true;
-        this.layoutBase = structuredClone(remote);
-        this.serverLayout = cleanLayout(local);
-        this.layoutDirty = true;
-        if (this.serverLayoutConflict) this.markLayoutConflict(); else this.persistLayout();
-      } else if (this.layoutDirty) {
-        if (this.layoutBase && JSON.stringify(this.layoutBase) !== JSON.stringify(remote)) this.markLayoutConflict();
-        else if (!this.serverLayoutConflict) this.persistLayout();
-      } else {
-        this.layoutBase = structuredClone(remote);
-        if (JSON.stringify(clean) !== JSON.stringify($state.snapshot(this.serverLayout))) this.serverLayout = clean;
-        this.serverLayoutConflict = false; removeLocal('flare.serverLayout.conflict');
-      }
-      this.layoutRemote = true;
-    } else if (!this.layoutLoaded) {
-      this.serverLayout = cleanLayout(readLocal<unknown>(LAYOUT_KEY, null));
-    }
-    this.layoutLoaded = true;
-  }
-  private persistLayout() {
-    const layout = $state.snapshot(this.serverLayout) as ServerLayout;
-    writeLocal(LAYOUT_KEY, layout);
-    this.layoutDirty = true;
-    if (!this.layoutRemote) return;
-    this.layoutSaving++;
-    this.layoutWrites = this.layoutWrites.then(async () => {
-      try {
-        if (this.serverLayoutConflict) return;
-        await serverApi.saveLayout(layout, this.layoutBase);
-        this.layoutBase = structuredClone(layout);
-        if (this.layoutSaving === 1) { this.layoutDirty = false; removeLocal(LAYOUT_KEY); }
-      } catch (e) {
-        if ((e as { code?: string }).code === 'server_layout_stale') this.markLayoutConflict();
-        else this.toast(errorText(e));
-      }
-      finally { this.layoutSaving--; }
-    });
-  }
-  private markLayoutConflict() {
-    const notify = !this.serverLayoutConflict;
-    this.serverLayoutConflict = true; writeLocal('flare.serverLayout.conflict', true);
-    if (notify) this.toast('分类有新变化，本机草稿已保留，请在服务器页处理草稿。', { label: '查看草稿', run: () => { this.route = 'servers'; } });
-  }
-  async flushServerLayout(): Promise<boolean> {
-    await this.layoutWrites;
-    if (!this.layoutDirty && !this.serverLayoutConflict) return true;
-    this.toast('分类草稿仍待保存，请先在服务器页处理草稿。'); return false;
-  }
-  async retryServerLayoutDraft() {
-    try {
-      const draft = $state.snapshot(this.serverLayout) as ServerLayout, original = JSON.stringify(draft);
-      const state = await serverApi.state();
-      const sections = sectionsOf(draft, state.servers);
-      const layout = { groups: sections.filter(s => !s.loose).map(s => ({ id: s.id, name: s.name, serverIds: s.servers.map(x => x.id) })),
-        loose: sections.find(s => s.loose)?.servers.map(x => x.id) ?? [] };
-      const describe = (l: ServerLayout) => sectionsOf(l, state.servers).map(g => ({ k: g.name,
-        v: g.servers.length ? g.servers.map(s => `${s.name} (${s.addr})`).join('、') : '空类别' }));
-      if (!await this.confirm('重新提交分类草稿', '核对已保存分类和本机草稿；确认后按草稿重新归类，备注和收藏保留。已移除的服务器会从草稿引用中清理。', '保存本机草稿', {
-        lists: [{ title: '已保存的类别', rows: describe(state.serverLayout) }, { title: '本机草稿中的类别', rows: describe(layout) }],
-      })) return;
-      await this.layoutWrites;
-      if (JSON.stringify($state.snapshot(this.serverLayout)) !== original) return this.toast('草稿刚有新修改，请重新预览。');
-      this.servers = state.servers; this.layoutBase = structuredClone(state.serverLayout); this.serverLayout = layout;
-      this.serverLayoutConflict = false; removeLocal('flare.serverLayout.conflict');
-      this.persistLayout(); await this.layoutWrites;
-    } catch (e) { this.toast(errorText(e)); }
-  }
-  async useSavedServerLayout() {
-    const original = JSON.stringify($state.snapshot(this.serverLayout));
-    if (!await this.confirm('采用已保存分类', '采用后端当前已保存的分类，并清除本机这份待保存草稿。服务器、备注和收藏保持原样。', '采用已保存分类')) return;
-    await this.layoutWrites;
-    if (JSON.stringify($state.snapshot(this.serverLayout)) !== original) return this.toast('草稿刚有新修改，请重新确认。');
-    try {
-      const state = await serverApi.state();
-      if (JSON.stringify($state.snapshot(this.serverLayout)) !== original) return this.toast('草稿刚有新修改，请重新确认。');
-      this.servers = state.servers; this.serverLayout = cleanLayout(state.serverLayout); this.layoutBase = structuredClone(state.serverLayout);
-      this.layoutDirty = false; this.serverLayoutConflict = false; removeLocal(LAYOUT_KEY); removeLocal('flare.serverLayout.conflict');
-    } catch (e) { this.toast(errorText(e)); }
-  }
-  /** 合集里最适合加入的服务器：在线、有空位、无密码；人多优先，其次延迟低 */
-  bestServer(list: Server[]): Server | undefined {
-    return list
-      .filter(s => s.status === 'online' && !s.password && s.players !== null && s.maxPlayers !== null && s.players < s.maxPlayers)
-      .sort((a, b) => b.players! - a.players! || (a.ping ?? 9999) - (b.ping ?? 9999))[0];
-  }
   async copyText(text: string, done: string) {
     try { await navigator.clipboard.writeText(text); this.toast(done); }
     catch { this.toast('无法写入剪贴板'); }
@@ -1516,10 +1045,11 @@ class AppState {
     if (this.launchState !== 'idle' || this.busy) return;
     const clean = this.launchConfig.mode === 'clean';
     if (!this.game.installed || (!clean && !this.runtime.installed && !this.nativeLibraries?.l4n.enabled)) { this.route = 'plugins'; return; }
-    try { if (!clean) await gameSettings.flush(); }
-    catch (e) { this.toast(errorText(e), undefined, 6000); return; }
     const profile = this.activeProfile;
     if (!profile) return;
+    if (!clean && this.missingMods(profile).length) return this.openModPanel('missing', profile.id);
+    try { if (!clean) await gameSettings.flush(); }
+    catch (e) { this.toast(errorText(e), undefined, 6000); return; }
     const config = $state.snapshot(this.launchConfig);
     config.launchOptions = gameSettings.effective?.[config.mode] ?? config.launchOptions;
     // 有受管外部平台（Skeeto）时，先看这台服务器会让哪些模块关闭
@@ -1549,10 +1079,8 @@ class AppState {
     this.cfgDirty = false;
     this.toast('已写入 cfg/autoexec.cfg');
   }
-  setLaunchOptions(value: string, profile = this.editingProfile) {
-    if (!profile) return;
-    profile.launchOptions = value;
-    this.touch(profile);
+  setLaunchOptions(value: string, profile?: Profile) {
+    return this.modProfiles.setLaunchOptions(value, profile);
   }
 
   // ---------- 启动 ----------
@@ -1575,16 +1103,18 @@ class AppState {
       return server ? this.connectServer(server.id) : this.toast('请先在服务器页添加这个地址。');
     }
     const clean = this.launchConfig.mode === 'clean';
+    const profile = this.activeProfile!;
+    if (!clean && this.missingMods(profile).length) return this.openModPanel('missing', profile.id);
     try { if (!clean) await gameSettings.flush(); }
     catch (e) { this.toast(errorText(e), undefined, 6000); return; }
-    const profile = this.activeProfile!;
     const config = $state.snapshot(this.launchConfig);
     config.launchOptions = gameSettings.effective?.[config.mode] ?? config.launchOptions;
     let plan: PlatformChangePlan | null = null;
     try { plan = await this.launchPreview(config.mode, profile.id); }
     catch (e) { this.toast(errorText(e), undefined, 6000); return; }
     const setup = clean ? '' : `先应用「${profile.name}」的 ${profile.modIds.length} 个 VPK 启用项。\n`;
-    if (!await this.confirm(`${modeLabel(config.mode)} · 启动 L4D2`, `${this.game.root}\n\n${setup}参数：${config.launchOptions.join(' ')}\n\n${this.launchNotice(config)}${!clean && this.activeConflicts(profile).length ? '\n\n方案包含资源路径重叠，可返回 Mod 页处理。' : ''}`, undefined, plan ? this.launchExtra(plan) : undefined)) return;
+    const overlap = clean ? '' : await conflictReviewNotice({ gameRoot: this.game.root, profileId: profile.id }, this.activeConflicts(profile).length > 0);
+    if (!await this.confirm(`${modeLabel(config.mode)} · 启动 L4D2`, `${this.game.root}\n\n${setup}参数：${config.launchOptions.join(' ')}\n\n${this.launchNotice(config)}${overlap}`, undefined, plan ? this.launchExtra(plan) : undefined)) return;
     await this.perform('提交启动请求', async () => {
       this.launchState = 'launching'; sfx.play('launch');
       try {
@@ -1593,8 +1123,20 @@ class AppState {
       } catch (e) { this.launchState = 'idle'; throw e; }
     });
   }
-  stopGame() {
-    void this.refresh();
+  async stopGame() {
+    const { root, pid, startedAt } = this.game;
+    if (this.stoppingGame || !this.game.running || !pid || !startedAt) return;
+    if (!await this.confirm('强制停止游戏？', '游戏会立即退出，未保存的进度可能丢失。', '强制停止', { layout: 'destructive' })) return;
+    this.stoppingGame = true;
+    try {
+      const { status } = await api.stopGame(root, pid, startedAt);
+      this.notify({ kind: 'ok', text: status === 'stopped' ? '已强制停止游戏' : '游戏已退出' });
+    } catch (e) { this.notify({ kind: 'error', text: errorText(e), ms: 6000 }); }
+    finally {
+      await this.pendingRefresh;
+      await this.refresh();
+      this.stoppingGame = false;
+    }
   }
 
   // ---------- 通用 ----------
@@ -1634,78 +1176,13 @@ class AppState {
     c.timer = setTimeout(() => this.dismissToast(id), c.left);
   }
   private toastClock = new Map<number, { left: number; since: number; timer: ReturnType<typeof setTimeout> | undefined }>();
-  private touch(p: Profile) {
-    p.updatedAt = today();
-    void api.saveProfile($state.snapshot(p) as Profile).catch(e => this.toast(errorText(e)));
-  }
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
 const platformReason = (reason: string) => ({ blocked: '关闭 · 禁止模块', 'local-only': '关闭 · 仅限本地', 'no-versus': '关闭 · 对抗类受限', 'flare-managed': '关闭 · 由 Matcha 管理更新' }[reason] ?? reason);
-export interface ToastAction { label: string; run: () => void }
 export type ToastKind = 'info' | 'ok' | 'error';
 export interface Toast { id: number; text: string; title?: string; kind: ToastKind; actions: ToastAction[]; modId?: string; ms: number }
 const ended = (t: ModTask) => t.state === 'done' || t.state === 'failed' || t.state === 'canceled';
-/** 文件大小；不到 1 MiB 的用 KiB，免得显示成 0.0 MiB */
-export const mib = (bytes: number) => (bytes < 1048576 ? `${bytes > 0 ? Math.max(1, Math.round(bytes / 1024)) : 0} KiB` :`${(bytes / 1048576).toFixed(bytes >= 104857600 ? 0 : 1)} MiB`);
-export const workshopLink = (id: string) => `https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`;
-
-// 后端接入 modMeta 之前的本机暂存；接入后 acceptMeta 会合并上去并清掉
-const META_KEY = 'flare.modMeta.pending';
-function readLocalMeta(): Record<string, ModMeta> {
-  try { return JSON.parse(localStorage.getItem(META_KEY) ?? '{}') ?? {}; } catch { return {}; }
-}
-function writeLocalMeta(meta: Record<string, ModMeta>) {
-  try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch { /* 无本机存储时只在本次会话有效 */ }
-}
-function clearLocalMeta() {
-  try { localStorage.removeItem(META_KEY); } catch { /* 同上 */ }
-}
-
-// 服务器合集：后端接入 serverLayout 之前的本机暂存；接入后 acceptLayout 会推上去并清掉
-const LAYOUT_KEY = 'flare.serverLayout.pending';
-function readLocal<T>(key: string, fallback: T): T {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
-}
-function writeLocal(key: string, value: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 无本机存储时只在本次会话有效 */ }
-}
-function removeLocal(key: string) {
-  try { localStorage.removeItem(key); } catch { /* 同上 */ }
-}
-function cleanLayout(raw: unknown): ServerLayout {
-  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<ServerLayout>;
-  const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  const used = new Set<string>();
-  const groups = (Array.isArray(r.groups) ? r.groups : []).flatMap((g): ServerGroup[] => {
-    if (!g || typeof g.id !== 'string' || typeof g.name !== 'string' || g.id === LOOSE || used.has(g.id)) return [];
-    used.add(g.id);
-    return [{ id: g.id, name: g.name.slice(0, 40), serverIds: ids(g.serverIds) }];
-  });
-  return { groups, loose: ids(r.loose) };
-}
-/** 查询中的条目沿用上次在线结果显示，避免每轮刷新时卡片清空闪烁 */
-const lastOnline = new Map<string, Server>();
-function stable(s: Server): Server {
-  if (s.status === 'online') lastOnline.set(s.id, s);
-  if (s.status !== 'querying') return s;
-  const prev = lastOnline.get(s.id);
-  return prev ? { ...prev, label: s.label, favorite: s.favorite, gamePort: s.gamePort,
-    name: s.name || prev.name, connectAddr: s.connectAddr ?? prev.connectAddr, status: 'querying' } : s;
-}
-function sectionsOf(layout: ServerLayout, servers: Server[]): ServerSection[] {
-  const byId = new Map(servers.map(s => [s.id, stable(s)]));
-  const seen = new Set<string>();
-  const take = (ids: string[]) => ids.flatMap(id => {
-    const s = byId.get(id);
-    if (!s || seen.has(id)) return [];
-    seen.add(id);
-    return [s];
-  });
-  const out: ServerSection[] = layout.groups.map(g => ({ id: g.id, name: g.name, servers: take(g.serverIds) }));
-  const loose = take(layout.loose);
-  out.push({ id: LOOSE, name: '未分组', loose: true, servers: [...loose, ...servers.filter(s => !seen.has(s.id)).map(s => byId.get(s.id)!)] });
-  return out;
-}
+export { mib };
+export { workshopLink } from '../mods/favorites.svelte';
 
 export const app = new AppState();

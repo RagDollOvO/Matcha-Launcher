@@ -9,7 +9,12 @@ import { localL4n } from './local-render.mjs';
 import { platformPath } from './platforms/files.mjs';
 import { isFolder } from './legacy-names.mjs';
 import { launchSpec } from './launch.mjs';
-import { verifyRelease } from './releases.mjs';
+import { PlatformError, errorRecord } from './errors.mjs';
+import { inspectPe, regularFile as regular } from './file-inspection.mjs';
+import { parseKeyValues } from './keyvalues.mjs';
+import { verifyRelease } from './release-verification.mjs';
+
+export { PlatformError, errorRecord, inspectPe, parseKeyValues };
 
 const execFile = promisify(execFileCallback);
 const STATE_FILE = 'platform-state.json';
@@ -25,9 +30,6 @@ const ID_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const reservedName = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
-export class PlatformError extends Error {
-  constructor(code, message, details) { super(message); this.name = 'PlatformError'; this.code = code; if (details !== undefined) this.details = details; }
-}
 const fail = (code, message, details) => { throw new PlatformError(code, message, details); };
 const object = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -42,11 +44,6 @@ function requireConfirmation(confirmation) {
   if (!object(confirmation) || confirmation.approved !== true || confirmation.source !== 'user') fail('confirmation_required', 'Explicit user confirmation is required');
 }
 async function exists(file) { try { await fs.lstat(file); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } }
-async function regular(file) {
-  const stat = await fs.lstat(file).catch((e) => { if (e.code === 'ENOENT') fail('file_missing', 'Required file is missing', { file }); throw e; });
-  if (!stat.isFile() || stat.isSymbolicLink()) fail('unsafe_path', 'Expected a regular file', { file });
-  return stat;
-}
 async function directory(dir) {
   const stat = await fs.lstat(dir).catch((e) => { if (e.code === 'ENOENT') fail('directory_missing', 'Required directory is missing', { dir }); throw e; });
   if (!stat.isDirectory() || stat.isSymbolicLink()) fail('unsafe_path', 'Expected a real directory', { dir });
@@ -99,52 +96,6 @@ async function removeOwnedTree(root, target) {
   if (await exists(t)) { await directory(t); await fs.rm(t, { recursive: true }); }
 }
 
-/** Read PE metadata only. This never maps or executes the DLL. */
-export async function inspectPe(file) {
-  await regular(file); const b = await fs.readFile(file);
-  const check = (offset, bytes) => { if (!Number.isSafeInteger(offset) || offset < 0 || bytes < 0 || offset + bytes > b.length) fail('invalid_pe', 'PE data is truncated or malformed', { file, offset }); };
-  const u16 = (o) => { check(o, 2); return b.readUInt16LE(o); };
-  const u32 = (o) => { check(o, 4); return b.readUInt32LE(o); };
-  check(0, 64); if (u16(0) !== 0x5a4d) fail('invalid_pe', 'Expected an MZ executable', { file });
-  const pe = u32(0x3c); check(pe, 24);
-  if (u32(pe) !== 0x4550) fail('invalid_pe', 'Expected a PE executable', { file });
-  const machine = u16(pe + 4), sections = u16(pe + 6), optSize = u16(pe + 20), opt = pe + 24;
-  check(opt, optSize); const magic = u16(opt);
-  if (![0x10b, 0x20b].includes(magic)) fail('invalid_pe', 'Unsupported PE optional header', { file });
-  const architecture = machine === 0x14c ? 'x86' : machine === 0x8664 ? 'x64' : `machine-${machine.toString(16)}`;
-  const countOffset = magic === 0x10b ? 92 : 108, dataOffset = magic === 0x10b ? 96 : 112;
-  if (optSize < dataOffset) fail('invalid_pe', 'PE optional header is incomplete', { file });
-  const sectionStart = opt + optSize; check(sectionStart, sections * 40);
-  const maps = [];
-  for (let i = 0; i < sections; i++) {
-    const s = sectionStart + i * 40;
-    maps.push({ va: u32(s + 12), size: Math.max(u32(s + 8), u32(s + 16)), raw: u32(s + 20), rawSize: u32(s + 16) });
-  }
-  const rvaOffset = (rva, length = 1) => {
-    const entry = maps.find((s) => rva >= s.va && rva - s.va + length <= s.rawSize);
-    if (entry) { const result = entry.raw + rva - entry.va; check(result, length); return result; }
-    const headerSize = u32(opt + 60);
-    if (rva < headerSize && rva + length <= headerSize) { check(rva, length); return rva; }
-    fail('invalid_pe', 'PE RVA is outside file-backed data', { file, rva });
-  };
-  const exports = [];
-  if (u32(opt + countOffset) > 0) {
-    if (optSize < dataOffset + 8) fail('invalid_pe', 'PE export directory is missing', { file });
-    const rva = u32(opt + dataOffset), size = u32(opt + dataOffset + 4);
-    if (rva && size) {
-      const exp = rvaOffset(rva, 40), count = u32(exp + 24);
-      if (count > 65536) fail('invalid_pe', 'PE export table is too large', { file });
-      const names = count ? rvaOffset(u32(exp + 32), count * 4) : 0;
-      for (let i = 0; i < count; i++) {
-        const name = rvaOffset(u32(names + i * 4));
-        const end = b.indexOf(0, name);
-        if (end < name || end - name > 1024) fail('invalid_pe', 'PE export name is invalid', { file });
-        exports.push(b.toString('ascii', name, end));
-      }
-    }
-  }
-  return { file: path.resolve(file), architecture, dll: !!(u16(pe + 22) & 0x2000), exports: exports.sort() };
-}
 async function requirePe(file, exports = [], dll = true) {
   const info = await inspectPe(file);
   if (info.architecture !== 'x86') fail('wrong_architecture', 'L4P v1 requires Windows x86 binaries', { file, actual: info.architecture });
@@ -310,47 +261,52 @@ async function requireReleaseRuntime(root, plugins) {
   if (!pe.exports.includes('L4P_RuntimeReleaseGateV1')) fail('runtime_upgrade_required', 'This runtime requires the Beacon release gate update before signed plugins can be used');
 }
 
-/** Small KeyValues parser: supports strings, bare tokens, nested objects and // comments. */
-export function parseKeyValues(source) {
-  const tokens = []; let i = 0;
-  while (i < source.length) {
-    const c = source[i];
-    if (/\s/.test(c) || c === '\uFEFF') { i++; continue; }
-    if (source.slice(i, i + 2) === '//') { while (i < source.length && source[i] !== '\n') i++; continue; }
-    if (c === '{' || c === '}') { tokens.push(c); i++; continue; }
-    if (c === '"') {
-      let s = ''; i++; let closed = false;
-      while (i < source.length) {
-        const ch = source[i++]; if (ch === '"') { closed = true; break; }
-        if (ch === '\\' && i < source.length && ['\\', '"'].includes(source[i])) s += source[i++]; else s += ch;
-      }
-      if (!closed) fail('invalid_vdf', 'Unterminated KeyValues string'); tokens.push(s); continue;
-    }
-    const start = i; while (i < source.length && !/[\s{}]/.test(source[i])) i++; tokens.push(source.slice(start, i));
-  }
-  let cursor = 0;
-  function block(nested) {
-    const out = Object.create(null);
-    while (cursor < tokens.length) {
-      const key = tokens[cursor++];
-      if (key === '}') { if (!nested) fail('invalid_vdf', 'Unexpected closing brace'); return out; }
-      if (key === '{' || cursor >= tokens.length) fail('invalid_vdf', 'Invalid KeyValues key/value pair');
-      const value = tokens[cursor++]; if (value === '}') fail('invalid_vdf', 'Missing KeyValues value');
-      out[key] = value === '{' ? block(true) : value;
-    }
-    if (nested) fail('invalid_vdf', 'Unclosed KeyValues block'); return out;
-  }
-  return block(false);
-}
-
 export async function windowsProcesses() {
   if (process.platform !== 'win32') fail('unsupported_os', 'Game operations require Windows');
-  const script = "@((Get-Process | Where-Object { $_.ProcessName -match '^(left4dead2|L4D2Bridge32|L4D2Bridge64)$' }) | Select-Object Id,ProcessName,Path) | ConvertTo-Json -Compress";
+  const script = `[Console]::OutputEncoding = [Text.UTF8Encoding]::new();
+    @(Get-Process -Name left4dead2,L4D2Bridge32,L4D2Bridge64 -ErrorAction SilentlyContinue |
+      Select-Object Id,ProcessName,Path,@{n='StartedAt';e={try { $_.StartTime.ToFileTimeUtc().ToString() } catch {}}}) | ConvertTo-Json -Compress`;
   try {
     const { stdout } = await execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 10000, maxBuffer: MAX_JSON });
     const value = JSON.parse(stdout.trim() || '[]'); const list = Array.isArray(value) ? value : [value];
-    return list.map((p) => ({ pid: p.Id, name: p.ProcessName, path: p.Path ?? null }));
+    return list.map((p) => ({ pid: p.Id, name: p.ProcessName, path: p.Path ?? null, ...(p.StartedAt && { startedAt: p.StartedAt }) }));
   } catch (e) { fail('process_probe_failed', 'Could not establish whether the game or Bridge is running', { reason: e.message }); }
+}
+
+async function forceStopProcess({ pid, path: executable, startedAt }) {
+  if (process.platform !== 'win32') fail('unsupported_os', '强制停止游戏需要 Windows。');
+  if (!Number.isInteger(pid) || pid < 1 || pid > 0x7fffffff || typeof startedAt !== 'string' || !/^\d{1,20}$/.test(startedAt) ||
+      typeof executable !== 'string' || !path.isAbsolute(executable) || path.basename(executable).toLowerCase() !== 'left4dead2.exe')
+    fail('game_process_changed', '游戏进程信息已变化，请刷新后再试。');
+  // Cache the OS process handle before checking identity; Kill and WaitForExit
+  // use that same handle so a recycled PID can never redirect the stop.
+  const script = `
+    $ErrorActionPreference = 'Stop'
+    try { $game = [Diagnostics.Process]::GetProcessById([int]$env:MATCHA_STOP_PID) }
+    catch [ArgumentException] { 'exited'; return }
+    try {
+      $null = $game.Handle
+      if ($game.HasExited) { 'exited'; return }
+      if ($game.StartTime.ToFileTimeUtc().ToString() -ne $env:MATCHA_STOP_STARTED -or
+          ![string]::Equals($game.MainModule.FileName, $env:MATCHA_STOP_EXE, [StringComparison]::OrdinalIgnoreCase)) {
+        'changed'; return
+      }
+      $game.Kill()
+      if ($game.WaitForExit(5000)) { 'stopped' } else { 'timeout' }
+    } catch {
+      if ($game.HasExited) { 'exited' } else { throw }
+    } finally { $game.Dispose() }`;
+  let status;
+  try {
+    const { stdout } = await execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
+      windowsHide: true, timeout: 10000, env: { ...process.env, MATCHA_STOP_PID: String(pid), MATCHA_STOP_STARTED: startedAt, MATCHA_STOP_EXE: executable },
+    });
+    status = stdout.trim();
+  } catch (e) { fail('game_stop_failed', '强制停止游戏失败，请用任务管理器检查游戏进程。', { reason: e.message }); }
+  if (status === 'changed') fail('game_process_changed', '游戏进程已变化，请刷新后再试。');
+  if (status === 'timeout') fail('game_stop_timeout', '游戏已收到停止请求，进程仍在退出。');
+  if (status !== 'stopped' && status !== 'exited') fail('game_stop_failed', '未收到游戏退出结果，请刷新后检查。');
+  return { status };
 }
 export async function windowsSteamRoots() {
   const result = [];
@@ -1028,9 +984,8 @@ export function createPlatform(options = {}) {
     const spawned = await launchGame(path.join(testDirectory, 'left4dead2.exe'), args, testDirectory);
     return { status:'requested',pid:spawned?.pid,launchOptions:args };
   }
-  return { inspectGame, discover, validatePlugin, listPlugins, planInstall, applyInstall, restore, resumeRuntime, recover, installPlugin, updatePlugin, previewPluginMaintenance, applyPluginMaintenance, configureReleaseTrust, setPluginEnabled, runtimeRequest, invokePlugin, launch, launchQuickTest };
+  return { inspectGame, discover, validatePlugin, listPlugins, planInstall, applyInstall, restore, resumeRuntime, recover, installPlugin, updatePlugin, previewPluginMaintenance, applyPluginMaintenance, configureReleaseTrust, setPluginEnabled, runtimeRequest, invokePlugin, launch, launchQuickTest, stopGameProcess: options.stopGameProcess ?? forceStopProcess };
 }
 
-export function errorRecord(error) { return { code: error.code ?? 'operation_failed', message: error.message ?? String(error), ...(error.details !== undefined ? { details: error.details } : {}) }; }
 const core = createPlatform();
-export const { inspectGame, discover, listPlugins, planInstall, applyInstall, restore, resumeRuntime, recover, installPlugin, updatePlugin, previewPluginMaintenance, applyPluginMaintenance, configureReleaseTrust, setPluginEnabled, runtimeRequest, invokePlugin, launch, launchQuickTest } = core;
+export const { inspectGame, discover, listPlugins, planInstall, applyInstall, restore, resumeRuntime, recover, installPlugin, updatePlugin, previewPluginMaintenance, applyPluginMaintenance, configureReleaseTrust, setPluginEnabled, runtimeRequest, invokePlugin, launch, launchQuickTest, stopGameProcess } = core;

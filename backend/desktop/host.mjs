@@ -1,5 +1,5 @@
 import { DesktopService, prepareDataDir } from './service.mjs';
-import { errorRecord } from '../core.mjs';
+import { errorRecord } from '../errors.mjs';
 import { MAX_BRIDGE_BYTES } from '../pi/limits.mjs';
 import { GameMapsBrowser } from './gamemaps-browser.mjs';
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 import { safeResourcePath } from '../mods/files.mjs';
 
 export const fail = (code, message) => { throw new PlatformError(code, message); };

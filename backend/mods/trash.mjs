@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 import { regular } from './vpk.mjs';
 import { directory } from './manager.mjs';
 import { displayNames, replaceDisplayNames } from './display-names.mjs';
@@ -108,12 +108,10 @@ export class ModTrash {
         files.push({ file, size: stat.size, stamp: stamp(stat) });
       }
       result.push({ version: 1, trashId: randomUUID(), modId: mod.id, title: mod.title, file: mod.file,
-        ...(this.store.settings.modMeta[id]?.favorite && {bookmark:{id,title:mod.title,file:mod.file,author:mod.author,dirs:mod.dirs,sizeMB:mod.sizeMB,updatedAt:mod.updatedAt,hasThumbnail:false,referenceKind:'vpk',absolutePath:absolute,library:{gameRoot:root,modId:id}}}),
         displayName: displayNames(this.store.settings, root)[id],
         sizeBytes: files.reduce((n, f) => n + f.size, 0), deletedAt: new Date().toISOString(),
         categoryId: this.store.settings.assignments[id] ?? 'cat-none',
         profileIds: profiles.filter(p => sameRoot(p.modsGameRoot, root) && p.modIds.includes(id)).map(p => p.id),
-        favoriteCollectionIds: (this.store.settings.favoriteCollections ?? []).filter(c => c.modIds.includes(id)).map(c => c.id),
         meta: this.store.settings.modMeta[id], workshopId: mod.workshopId, files, state: 'moving' });
     }
     return { records: result, profiles };
@@ -161,7 +159,6 @@ export class ModTrash {
         const names = { ...displayNames(s, c.root) };
         for (const id of removed) { delete assignments[id]; delete modMeta[id]; delete names[id]; }
         const favoriteRefs={...s.favoriteRefs};
-        for (const r of records) if(r.bookmark) favoriteRefs[r.modId]=r.bookmark;
         await this.store.save({ ...s, assignments, modMeta, favoriteRefs, modNames: replaceDisplayNames(s, c.root, names), profiles: profiles.map(p => sameRoot(p.modsGameRoot, c.root) ? {
           ...p, modsInitialized: true, modsGameRoot: c.root, modIds: p.modIds.filter(id => !removed.has(id)),
         } : p) });
@@ -223,15 +220,12 @@ export class ModTrash {
         const s = this.store.settings;
         const profiles = this.store.profileViews((await this.manager.scan(c.root)).mods);
         const favoriteRefs={...s.favoriteRefs}, meta={...r.meta,...s.modMeta[r.modId]};
-        if(r.bookmark){
-          if(favoriteRefs[r.modId]) {meta.favorite=true; delete favoriteRefs[r.modId];}
-          else delete meta.favorite;
-        }
+        if(favoriteRefs[r.modId]?.library?.modId===r.modId)meta.favorite=true;
+        else delete meta.favorite;
         await this.store.save({ ...s,
           ...(typeof r.displayName === 'string' ? { modNames: replaceDisplayNames(s, c.root, { [r.modId]: r.displayName, ...displayNames(s, c.root) }) } : {}),
           assignments: { ...s.assignments, [r.modId]: s.categories.some(x => x.id === r.categoryId) ? r.categoryId : 'cat-none' },
           favoriteRefs, modMeta: { ...s.modMeta, ...(Object.keys(meta).length ? { [r.modId]:meta } : {}) },
-          favoriteCollections: (s.favoriteCollections ?? []).map(c => !r.bookmark && r.meta?.favorite && r.favoriteCollectionIds?.includes(c.id) && !c.modIds.includes(r.modId) ? { ...c, modIds: [...c.modIds, r.modId] } : c),
           profiles: s.profiles.map((p, i) => r.profileIds.includes(p.id) && sameRoot(p.modsGameRoot, c.root) ? {
             ...p, modsInitialized: true, modsGameRoot: c.root, modIds: [...new Set([...profiles[i].modIds, r.modId])],
           } : p),

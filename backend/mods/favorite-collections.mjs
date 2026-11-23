@@ -6,12 +6,20 @@ export function withoutMembers(collections = [], ids) {
 }
 
 /** One transaction for the Mod page and 茶茶. Collections reference favorites; they never own VPKs. */
-export function planFavoriteCollection(settings, { action, collectionId, name, modIds = [], fromCollectionId }, mods) {
+export function planFavoriteCollection(settings, { action, collectionId, name, modIds = [], fromCollectionId, targetId, after }, mods) {
   const groups = settings.favoriteCollections ?? [];
   const creating = action === 'create', naming = creating || action === 'rename';
-  if (!['create', 'rename', 'add', 'remove', 'delete'].includes(action)) fail('invalid_argument', '请选择收藏合集操作。');
+  if (!['create', 'rename', 'add', 'remove', 'delete', 'move'].includes(action)) fail('invalid_argument', '请选择收藏合集操作。');
   const group = creating ? { id: 'fav-' + randomUUID(), name: '', modIds: [] } : groups.find(c => c.id === collectionId);
   if (!group) fail('collection_missing', '这个收藏合集已移除，请重新选择。');
+  if (action === 'move') {
+    // 拖动排序：只改合集在列表里的位置，成员不变
+    const target = groups.find(c => c.id === targetId);
+    if (!target || target.id === group.id || (modIds?.length ?? 0) || fromCollectionId) fail('invalid_argument', '请拖到另一个合集的前后。');
+    const rest = groups.filter(c => c.id !== group.id);
+    rest.splice(rest.indexOf(target) + (after === true ? 1 : 0), 0, group);
+    return { next: { ...settings, favoriteCollections: rest }, label: '调整收藏合集顺序', lines: ['「' + group.name + '」移到「' + target.name + '」' + (after === true ? '后面' : '前面')], collectionId: group.id };
+  }
   const title = naming && typeof name === 'string' ? name.trim() : group.name;
   if (naming && (typeof name !== 'string' || !title || title.length > 60 || /[\x00-\x1f\x7f]/u.test(title))) fail('invalid_argument', '合集名称需要 1–60 个单行字符。');
   if (naming && groups.some(c => c.id !== group.id && c.name.toLowerCase() === title.toLowerCase())) fail('collection_duplicate', '已有同名收藏合集，换个名字试试。');

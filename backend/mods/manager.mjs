@@ -14,6 +14,13 @@ export { directory } from './files.mjs';
 
 const fail = (code, message) => { throw new PlatformError(code, message); };
 const exists = p => fs.lstat(p).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; });
+// Linking or unlinking a staging copy changes ctime without changing the VPK contents.
+const packageVersion=v=>v.files.map(f=>f.identity.slice(0,f.identity.lastIndexOf(':'))).join('|');
+
+export function missingModIds(enabledIds, mods) {
+  const known = new Set(mods.map(mod => mod.id));
+  return [...new Set(enabledIds)].filter(id => !known.has(id));
+}
 
 export class ModManager {
   constructor(options = {}) {
@@ -33,7 +40,7 @@ export class ModManager {
       const valid = await Promise.all(prior.files.map(async f => identity(await regular(f.file).catch(() => ({}))) === f.identity));
       if (valid.every(Boolean)) return prior;
     }
-    const value = await readVpk(file); this.cache.set(file, value); return value;
+    const value = await readVpk(file, { includeResourceSignatures: true }); this.cache.set(file, value); return value;
   }
   async sidecar(file) {
     const wanted = path.basename(file).replace(/\.vpk$/i, '.jpg').toLowerCase();
@@ -119,10 +126,10 @@ export class ModManager {
             const vpk = await this.cached(absolutePath);
             const sidecar = await this.sidecar(absolutePath);
             items.push({ ...base, title: vpk.title, author: vpk.author, version: vpk.versionLabel, description: vpk.description,
-              sizeMB: vpk.sizeMB, fileCount: vpk.fileCount, dirs: vpk.dirs,
+              sizeMB: vpk.sizeMB, fileCount: vpk.fileCount, dirs: vpk.dirs, packageVersion:packageVersion(vpk),
               updatedAt: sidecar ? new Date(Math.max(Date.parse(vpk.updatedAt), sidecar.stat.mtimeMs, sidecar.stat.ctimeMs)).toISOString() : vpk.updatedAt,
               hasThumbnail: !!(vpk.thumbnail || sidecar), soundCount: vpk.soundCount, warning: vpk.warning,
-              resources: vpk.resources });
+              resourceSignatures: vpk.resourceSignatures });
           } catch (e) {
             const sidecar = await this.sidecar(absolutePath).catch(() => null);
             items.push({ ...base, title: name, author: '', version: '', description: '', sizeMB: 0, fileCount: 0, dirs: [],
@@ -142,16 +149,16 @@ export class ModManager {
         const v = await this.cached(m.absolutePath);
         const sidecar = await this.sidecar(m.absolutePath);
         items.push({ ...base, title: v.hasTitle ? v.title : m.title, author: v.author || m.author, version: v.versionLabel, description: v.description,
-          sizeMB: v.sizeMB, fileCount: v.fileCount, dirs: v.dirs,
+          sizeMB: v.sizeMB, fileCount: v.fileCount, dirs: v.dirs, packageVersion:packageVersion(v),
           updatedAt: sidecar ? new Date(Math.max(Date.parse(v.updatedAt), sidecar.stat.mtimeMs, sidecar.stat.ctimeMs)).toISOString() : v.updatedAt,
           hasThumbnail: !!(v.thumbnail || sidecar),
-          soundCount: v.soundCount, warning: v.warning, resources: v.resources });
+          soundCount: v.soundCount, warning: v.warning, resourceSignatures: v.resourceSignatures });
       } catch (e) { items.push({ ...base, version: '', description: '', sizeMB: 0, fileCount: 0, dirs: [], updatedAt: '', error: e.message }); }
     }
     const used = new Set(items.map(m => m.absolutePath));
     for (const p of this.cache.keys()) if (!used.has(p)) this.cache.delete(p);
     const names = this.displayNames(gameRoot);
-    return { mods: items.map(({ resources, ...m }) => m.kind === 'platform-package' ? m
+    return { mods: items.map(({ resourceSignatures, ...m }) => m.kind === 'platform-package' ? m
       : { ...m, sourceTitle: m.title, title: names[m.id] ?? m.title }), conflicts: conflicts ? compareResources(items, fileIndex) : [], issues,
       writable: !!document, addonListPath: path.join(content, 'addonlist.txt') };
   }
@@ -230,8 +237,13 @@ export class ModManager {
   async apply({ gameRoot, enabledIds, confirmation }) {
     return this.mutation(gameRoot, confirmation, async c => {
       if (!Array.isArray(enabledIds) || enabledIds.some(id => typeof id !== 'string')) fail('invalid_argument', '需要 Mod ID 列表。');
-      const inventory = await this.scan(c.root), enabled = new Set(enabledIds), known = new Set(inventory.mods.map(m => m.id));
-      if (enabledIds.some(id => !known.has(id))) fail('mod_missing', '方案内有已移除的 Mod，请刷新并更新方案。');
+      const inventory = await this.scan(c.root, { conflicts: false }), enabled = new Set(enabledIds);
+      const missing = missingModIds(enabledIds, inventory.mods);
+      if (missing.length) {
+        if (inventory.issues.length) fail('mod_scan_incomplete', 'Mod 清单未完整读取，请检查目录后重新扫描。');
+        const label = `「${missing[0]}」${missing.length > 1 ? `等 ${missing.length} 个 Mod` : ''}`;
+        throw new PlatformError('mod_missing', `方案找不到 ${label}，请到 Mod 页处理缺失项。`, { modIds: missing });
+      }
       if (inventory.mods.some(m => enabled.has(m.id) && m.error)) fail('invalid_vpk', '请先修复或在方案中停用解析失败的 VPK。');
       const applicable = inventory.mods.filter(m => m.kind !== 'platform-package');
       const result = await this.applySelection(c, applicable, enabled);
@@ -328,14 +340,14 @@ export class ModManager {
     return this.mutation(gameRoot, confirmation, async c =>
       this.publishImport(c, await directory(path.join(c.content, 'addons'), true), [file], replaceExisting));
   }
-  async import({ gameRoot, file, confirmation, ownedDownload = false, replaceExisting = false }) {
+  async import({ gameRoot, file, confirmation, ownedDownload = false, replaceExisting = false, favoritePrefix = '' }) {
     return this.mutation(gameRoot, confirmation, async c => {
       if (typeof file !== 'string' || !/\.vpk$/i.test(file)) fail('invalid_argument', '请选择 .vpk 文件。');
       const vpk = await readVpk(file), addons = await directory(path.join(c.content, 'addons'), true);
       const staging = await directory(path.join(addons, `.matcha-import-${randomUUID()}`), true);
       try {
         for (const item of vpk.files) {
-          const dest=path.join(staging,path.basename(item.file));
+          const dest=path.join(staging,favoritePrefix+path.basename(item.file));
           if(ownedDownload){
             const before=await regular(item.file);
             if(identity(before)!==item.identity)fail('file_changed','下载文件已变化。');
@@ -348,7 +360,7 @@ export class ModManager {
           await fs.copyFile(item.file,dest,fs.constants.COPYFILE_EXCL);
           if (identity(await regular(item.file)) !== item.identity) fail('file_changed', '复制期间来源 VPK 已变化，请重新导入。');
         }
-        return await this.publishImport(c, addons, vpk.files.map(item => path.join(staging, path.basename(item.file))), replaceExisting);
+        return await this.publishImport(c, addons, vpk.files.map(item => path.join(staging, favoritePrefix+path.basename(item.file))), replaceExisting);
       } finally {
         // Only files in this unique operation directory are owned here.
         for (const item of await fs.readdir(staging)) await fs.unlink(path.join(staging, item));

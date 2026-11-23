@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { DesktopService, prepareDataDir } from './service.mjs';
-import { errorRecord } from '../core.mjs';
+import { errorRecord } from '../errors.mjs';
 import { MAX_BRIDGE_BYTES } from '../pi/limits.mjs';
 
 // Development-only, same-origin adapter. Production uses Tauri's IPC and JSONL child.

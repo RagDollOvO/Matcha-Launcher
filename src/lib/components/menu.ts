@@ -11,6 +11,8 @@ export type MenuItem =
       icon?: Component<any>;
       /** 右侧的快捷键或补充说明 */
       hint?: string;
+      /** 菜单打开时也接受的按键；仅触发当前菜单的操作。 */
+      shortcut?: 'Delete';
       danger?: boolean;
       /** 字符串 = 不可用，并作为悬停提示说明原因 */
       disabled?: string | false;

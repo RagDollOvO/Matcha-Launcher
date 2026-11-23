@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import Plus from '@lucide/svelte/icons/plus';
   import Pencil from '@lucide/svelte/icons/pencil';
   import Trash from '@lucide/svelte/icons/trash';
@@ -31,10 +32,16 @@
   import Play from '@lucide/svelte/icons/play';
   import Square from '@lucide/svelte/icons/square';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Inbox from '@lucide/svelte/icons/inbox';
   import CheckCheck from '@lucide/svelte/icons/check-check';
   import Link from '@lucide/svelte/icons/link';
   import { SvelteSet } from 'svelte/reactivity';
+  import { flip } from 'svelte/animate';
+  import { cubicOut } from 'svelte/easing';
+  import { reduceMotion } from '../motion';
+  import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
+  import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
   import Toggle from '../components/Toggle.svelte';
   import ModThumb from '../components/ModThumb.svelte';
   import Menu from '../components/Menu.svelte';
@@ -44,16 +51,20 @@
   import FavoriteLibrary from '../components/FavoriteLibrary.svelte';
   import { favoriteMenu, setFavoriteMembers } from '../components/favorite-menus';
   import FavoriteCollectionDialog from '../components/FavoriteCollectionDialog.svelte';
+  import FileDropCue from '../components/FileDropCue.svelte';
   import QuickTest from '../components/QuickTest.svelte';
   import ConflictFiles from '../components/ConflictFiles.svelte';
+  import { defaultReviewView, type ReviewView } from '../mods/conflict-reviews';
   import type { MenuItem, MenuState } from '../components/menu';
   import { app, ROOT, FAV, INBOX, TRASH, workshopLink, mib } from '../stores/app.svelte';
   import { player, hasGunSounds } from '../stores/player.svelte';
+  import { welcome } from '../stores/welcome.svelte';
   import { looksLikeWorkshop } from '../workshop';
   import { browser } from '../browser/browser.svelte';
   import { CREATOR_LABEL } from '../browser/trail';
   import type { FavoriteCollection, Mod, Profile } from '../types';
-  import { desktop, pickVpk, pickDirectory, errorText, onFileDrop } from '../api/bridge';
+  import { desktop, pickVpk, pickDirectory, errorText, onFileDrop, dragFilesOut } from '../api/bridge';
+  import { api } from '../api';
 
   type Edit = { kind: 'profile' | 'new-profile' | 'category'; id?: string; where?: 'side' | 'main' } | null;
   let edit = $state<Edit>(null);
@@ -68,6 +79,38 @@
   let importPath = $state('');
   let quickTest = $state<{seed?: string[]} | null>(null);
   let conflictFilesOpen = $state(false);
+  let conflictModId = $state<string>();
+  let conflictView = $state<ReviewView>('pending');
+  let conflictEntry = $state<HTMLButtonElement>(), detailTitle = $state<HTMLHeadingElement>();
+  let missingPanel = $state<HTMLElement>();
+  let conflictReturn: HTMLButtonElement | undefined;
+  function openConflicts(modId?: string, trigger?: HTMLButtonElement, view?: ReviewView) {
+    player.stop();
+    const counts = modId ? overlap?.byMod[modId] : overlap?.counts;
+    conflictView = view ?? defaultReviewView(counts);
+    conflictReturn = trigger; conflictModId = modId; conflictFilesOpen = true;
+  }
+  async function closeConflicts() {
+    conflictFilesOpen = false;
+    await tick();
+    const target = conflictReturn?.isConnected ? conflictReturn : conflictEntry;
+    target?.focus({ preventScroll: true });
+  }
+  async function showConflictProvider(id: string) {
+    conflictFilesOpen = false; selected = []; detailId = id;
+    await tick();
+    detailTitle?.focus({ preventScroll: true });
+  }
+  $effect(() => {
+    const panel = app.modPanel;
+    if (!panel) return;
+    app.modPanel = null;
+    if (panel === 'conflicts') openConflicts(undefined, undefined, 'pending');
+    else {
+      conflictFilesOpen = false; selected = []; detailId = null;
+      void tick().then(() => missingPanel?.focus({ preventScroll: true }));
+    }
+  });
   function openTest(ids?: string[]) { player.stop(); quickTest = {seed:ids}; }
 
   // ---------- 本机记忆：视图、侧栏展开 ----------
@@ -93,6 +136,9 @@
   const lib = $derived(smart || inTrash);
   /** 方案相关的计算只在分类视图里用；库视图里没有“当前方案” */
   const scoped = $derived(lib ? undefined : prof);
+  const overlap = $derived(scoped ? app.conflictReviews[scoped.id] : undefined);
+  const reviewing = $derived(conflictFilesOpen && !!scoped);
+  const missingMods = $derived(scoped ? app.missingMods(scoped) : []);
   /** 库视图忽略按方案状态的筛选，回到分类后筛选还在 */
   const fstatus = $derived(lib ? 'all' : f.status);
   /** 离开库视图时回到的分类 */
@@ -113,14 +159,12 @@
   const trashSize = $derived(app.trash.reduce((n, t) => n + t.sizeBytes, 0));
   /** 某个 Mod 在哪些方案里；库视图用 */
   const profilesOf = (id: string) => app.profiles.filter((p) => p.modIds.includes(id));
-  const conflictIds = $derived(new Set(app.activeConflicts(scoped).flatMap((c) => [c.a, c.b])));
   const counts = $derived({
     all: scopeMods.length,
     on: scopeMods.filter((m) => prof.modIds.includes(m.id)).length,
     off: scopeMods.filter((m) => !prof.modIds.includes(m.id) && !isPkg(m)).length,
-    conflict: scopeMods.filter((m) => conflictIds.has(m.id)).length,
   });
-  const filters = [['all', '全部'], ['on', '启用'], ['off', '停用'], ['conflict', '重叠']] as const;
+  const filters = [['all', '全部'], ['on', '启用'], ['off', '停用']] as const;
 
   const folders = $derived(flat ? [] : app.childCategories(cur));
   const rows = $derived.by(() => {
@@ -131,7 +175,6 @@
       if (isPkg(m) && (fstatus === 'on' || fstatus === 'off')) return false;
       if (fstatus === 'on' && !on) return false;
       if (fstatus === 'off' && on) return false;
-      if (fstatus === 'conflict' && !conflictIds.has(m.id)) return false;
       return !q || m.title.toLowerCase().includes(q) || m.sourceTitle?.toLowerCase().includes(q) || m.file.toLowerCase().includes(q) || m.author.toLowerCase().includes(q);
     });
     const by: Record<typeof sort, (a: Mod, b: Mod) => number> = {
@@ -196,19 +239,20 @@
   );
   const busyReason = $derived(app.busy ? `正在${app.busy}` : '');
   const deleteBlock = $derived(app.game.running ? '游戏运行中，退出后再删除' : busyReason);
+  const emptyTrashBlock=$derived(app.trash.some(t=>!t.favorite)?deleteBlock:busyReason);
   const notices = $derived([
     ...app.issues.map((i) => ({ text: i.message, danger: true })),
-    ...(!lib && prof.modIds.some((id) => !app.mod(id)) ? [{ text: '方案包含已移除的 Mod。可右键左侧方案名，选择「从游戏同步」。', danger: true }] : []),
     ...(!lib && app.lastModBackup ? [{ text: `已备份原 addonlist：${app.lastModBackup}`, danger: false }] : []),
   ]);
   /** 库视图的标题副行 */
   const libSub = $derived(
     inInbox ? `${f.q.trim() ? `搜索结果 ${rows.length} 项 · ` : ''}${inboxCount} 个待整理${downloading ? ` · ${downloading} 个正在下载` : ''} · 归类或标记已整理后离开这里`
-    : `${app.trash.length} 项${app.trash.length ? ` · ${mib(trashSize)}` : ''} · 放在 left4dead2\\.matcha-trash，不参与扫描和方案应用`,
+    : `${app.trash.length} 项${app.trash.length ? ` · ${mib(trashSize)}` : ''}`,
   );
 
   // ---------- 导航 ----------
   function go(id: string) {
+    conflictFilesOpen = false;
     if (id !== f.category) { selected = []; anchor = null; importOpen = false; dropping = null; if (edit?.kind === 'category') edit = null; }
     f.category = id;
     if (id === FAV) { collectionId = ''; selected = []; anchor = null; detailId = null; }
@@ -218,25 +262,45 @@
   function openCollection(id: string) {
     go(FAV); collectionId = id; f.q = '';
   }
-  const collectionItems = (ids: string[]) => favoriteMenu(ids, seed => collectionDialog = { mode: 'create', seed });
+  const collectionItems = (ids: string[]) => favoriteMenu(ids, seed => collectionDialog = { mode: 'create', seed }, true);
   function up() { go(curPath.at(-2)?.id ?? ROOT); }
   /** 侧栏点方案：编辑这个方案；在库视图里时回到之前的分类 */
   function openProfile(id: string) {
+    if (reviewing && id !== prof.id) { conflictModId = undefined; conflictReturn = undefined; }
     app.editingProfileId = id;
     selected = [];
     if (lib) go(lastPlace);
   }
-  /** 任务托盘里「查看」下载好的 Mod：去新下载，打开详情 */
-  function show(modId: string) {
+  /** 定位后短暂高亮的卡片 */
+  let flashId = $state<string | null>(null);
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 任务托盘「查看」：去 Mod 所在位置，滚到卡片、高亮一下并打开详情；detail 为 false 时改为选中（替换提示「去查看」） */
+  async function show(modId: string, detail = true) {
     const mod = app.mod(modId);
     go(app.isInbox(modId) ? INBOX : mod ? app.folderOf(mod) : ROOT);
     f.q = ''; f.status = 'all';
-    if (app.mod(modId)) detailId = modId;
+    if (!app.mod(modId)) return;
+    if (detail) detailId = modId;
+    else { detailId = null; selected = [modId]; anchor = modId; }
+    clearTimeout(flashTimer);
+    flashId = null;
+    await tick();
+    const card = document.querySelector<HTMLElement>(`.mods .content [data-mod="${CSS.escape(modId)}"]`);
+    // 直接跳到位（平滑滚动在窗口不绘制时会停在原地），靠高亮把视线引过去
+    card?.scrollIntoView({ block: 'center' });
+    flashId = modId;
+    flashTimer = setTimeout(() => (flashId = null), 1900);
   }
+  $effect(() => () => clearTimeout(flashTimer));
   // 下载页点「查看」跳过来时定位到那个 Mod
   $effect(() => {
     const id = app.focusMod;
     if (id && app.mod(id)) { app.focusMod = null; show(id); }
+  });
+  // 替换同名 Mod 后点「去查看」：滚到卡片、选中并高亮
+  $effect(() => {
+    const id = app.locateMod;
+    if (id && app.mod(id)) { app.locateMod = null; show(id, false); }
   });
   function toggleExpand(id: string) { if (expanded.has(id)) expanded.delete(id); else expanded.add(id); }
 
@@ -256,14 +320,18 @@
   }
   function addItems(): MenuItem[] {
     return [
-      { label: '本地 VPK 文件…', icon: Upload, hint: '可直接拖入', disabled: importBlock || false, run: () => void chooseSource() },
+      { label: '本地 VPK 文件…', icon: Upload, hint: desktop ? '也可 Ctrl+V' : '可直接拖入', disabled: importBlock || false, run: () => void chooseSource() },
       { label: '打包素材文件夹…', icon: FolderInput, hint: '生成 VPK', disabled: importBlock || false, run: () => void chooseSource(true) },
       { label: '创意工坊链接…', icon: Link, hint: 'Ctrl+V', disabled: workshopBlock || false, run: () => openWorkshop() },
     ];
   }
+  function shortcutsBlocked(e: Event) {
+    return e.defaultPrevented || welcome.open || quickTest || conflictFilesOpen || menu || workshop || collectionDialog || app.confirmation || edit ||
+      (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable], dialog, [role="dialog"], .agent-slot'));
+  }
   /** 在 Mod 页按 Ctrl+V：剪贴板里是工坊链接就直接打开下载对话框 */
   function onPaste(e: ClipboardEvent) {
-    if (inFav || quickTest || conflictFilesOpen || workshop || collectionDialog || menu || app.confirmation || edit || (e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
+    if (inFav || shortcutsBlocked(e)) return;
     const text = e.clipboardData?.getData('text') ?? '';
     if (!looksLikeWorkshop(text)) return;
     e.preventDefault();
@@ -426,7 +494,7 @@
     });
     items.push(
       { label: '快速实测', icon: Play, disabled: app.game.installed ? false : '请先选择游戏目录', run: () => openTest(ids) },
-      { label: allFav ? '取消收藏' : '收藏', icon: Star, hint: 'F', run: () => app.setFavorite(ids, !allFav) },
+      { label: allFav ? '更新收藏…' : '收藏', icon: Star, hint: 'F', run: () => app.setFavorite(ids, true) },
       { label: '收藏合集', icon: Layers, items: collectionItems(ids) },
       { kind: 'sep' },
       { label: '加入方案', icon: ListChecks, disabled: mods.every(isPkg) ? '平台更新包不进方案' : false, items: mods.every(isPkg) ? undefined : profileItems(ids) },
@@ -447,6 +515,7 @@
       run: () => void app.extractMods(readable.map((m) => m.id)),
     });
     if (one?.absolutePath) { const path = one.absolutePath; items.push({ label: '在资源管理器中显示', icon: FolderSearch, run: () => app.reveal(path) }); }
+    if (desktop) items.push({ label: '复制 VPK 文件', icon: Copy, hint: 'Ctrl+C', run: () => app.copyModFiles(ids) });
     if (one) items.push({ label: '复制完整路径', icon: Copy, run: () => copyText(one.absolutePath || one.file, '已复制完整路径') });
     if (ws.length) items.push({
       label: ws.length > 1 ? `复制创意工坊链接（${ws.length}）` : '复制创意工坊链接', icon: ExternalLink,
@@ -470,7 +539,7 @@
     return [
       { label: '打开', icon: FolderOpen, hint: 'Enter', run: () => go(id) },
       { label: allOn ? `在「${prof.name}」中停用全部` : `在「${prof.name}」中启用全部`, icon: allOn ? ToggleLeft : ToggleRight, disabled: empty || busyReason || false, run: () => toggleFolder(st) },
-      { label: allFav ? '取消收藏全部' : '收藏全部', icon: Star, disabled: empty, run: () => app.setFavorite(ids, !allFav) },
+      { label: allFav ? '更新全部收藏…' : '收藏全部', icon: Star, disabled: empty, run: () => app.setFavorite(ids, true) },
       { kind: 'sep' },
       { label: '把里面的 Mod 加入方案', icon: ListChecks, disabled: empty, items: st.total ? profileItems(ids) : undefined },
       {
@@ -504,20 +573,24 @@
   const kCat = (id: string) => `c:${id}`;
   const kProf = (id: string) => `p:${id}`;
   const isSortDrop = (key: string) => key.startsWith('<:') || key.startsWith('>:');
+  /** 分类排完序，卡片滑到新位置 */
+  const reorder = { duration: reduceMotion() ? 0 : 240, easing: cubicOut };
+  /** 排序指示的方向：图标卡片左右插入，列表 / 侧栏上下插入 */
+  let sortAxis = $state<'x' | 'y'>('y');
   let drag = $state<{ ids: string[]; folder: string | null; x: number; y: number; over: string | null } | null>(null);
   let press: { id: string; folder: boolean; x: number; y: number } | null = null;
   let suppressClick = false;
 
   function canDrop(key: string): boolean {
     if (!drag || (inFav && !key.startsWith('g:'))) return false;
-    if (key === FAV) return !drag.folder && drag.ids.some((id) => !app.isFavorite(id));
+    if (key === FAV) return !drag.folder && !app.busy;
     const id = key.slice(2);
     if (isSortDrop(key)) {
       const source = app.categories.find(c => c.id === drag!.folder);
       const target = app.categories.find(c => c.id === id);
       return !app.busy && !!source && !!target && source !== target && !target.builtin && app.parentOf(source) === app.parentOf(target);
     }
-    if (key.startsWith('g:')) return !drag.folder && !app.busy && app.favoriteCollections.some(c => c.id === id && drag!.ids.some(m => !c.modIds.includes(m)));
+    if (key.startsWith('g:')) return !drag.folder && !app.busy && app.favoriteCollections.some(c => c.id === id && (!inFav || drag!.ids.some(m => !c.modIds.includes(m))));
     if (key.startsWith('p:')) {
       const p = app.profile(id);
       return !!p && drag.ids.some((m) => !p.modIds.includes(m) && !app.mod(m)?.error && !isPkg(app.mod(m)));
@@ -543,15 +616,20 @@
         ? { ids: folderStat(press.id).mods.map((m) => m.id), folder: press.id, x: 0, y: 0, over: null }
         : { ids: selected.includes(press.id) ? [...selected] : [press.id], folder: null, x: 0, y: 0, over: null };
       document.documentElement.classList.add('dragging-mods');
+      // 拖出窗口要在松手前拿到文件路径：起拖时就去问（只读，不复制任何东西）
+      if (desktop && !drag.folder) outPaths = api.copyModFiles(drag.ids, app.game.root, inFav)
+        .then((r) => r.paths, (err: unknown) => new Error(errorText(err)));
     }
     drag.x = e.clientX; drag.y = e.clientY;
+    if (outPaths && outside(e)) { void dragOut(); return; }
     const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-drop]');
     let key = el?.dataset.drop ?? null;
     if (el?.matches('.item,.tile,.row') && key?.startsWith('c:') && drag.folder) {
       const rect = el.getBoundingClientRect();
-      const fraction = el.classList.contains('tile') ? (e.clientX - rect.left) / rect.width : (e.clientY - rect.top) / rect.height;
+      const across = el.classList.contains('tile');
+      const fraction = across ? (e.clientX - rect.left) / rect.width : (e.clientY - rect.top) / rect.height;
       const edge = fraction < .28 ? '<:' : fraction > .72 ? '>:' : null;
-      if (edge && canDrop(edge + key.slice(2))) key = edge + key.slice(2);
+      if (edge && canDrop(edge + key.slice(2))) { key = edge + key.slice(2); sortAxis = across ? 'x' : 'y'; }
     }
     drag.over = key && canDrop(key) ? key : null;
   }
@@ -560,8 +638,8 @@
       suppressClick = true;
       setTimeout(() => (suppressClick = false));
       const key = drag.over && canDrop(drag.over) ? drag.over : null;
-      if (key === FAV) app.setFavorite(drag.ids.filter((id) => !app.isFavorite(id)), true);
-      else if (key?.startsWith('g:')) { const c = app.favoriteCollections.find(c => c.id === key.slice(2)); if (c) void setFavoriteMembers(c, drag.ids, true); }
+      if (key === FAV) app.setFavorite(drag.ids, true);
+      else if (key?.startsWith('g:')) { const c = app.favoriteCollections.find(c => c.id === key.slice(2)); if (c) { if(inFav)void setFavoriteMembers(c,drag.ids,true);else void app.collectMods(drag.ids,c.id); } }
       else if (key?.startsWith('p:')) setInProfile(drag.ids, key.slice(2), true);
       else if (key && drag.folder && isSortDrop(key)) void app.reorderCategory(drag.folder, key.slice(2), key.startsWith('>'));
       else if (key) {
@@ -576,7 +654,21 @@
     window.removeEventListener('pointerup', onRelease);
     window.removeEventListener('pointercancel', endDrag);
     document.documentElement.classList.remove('dragging-mods');
-    press = null; drag = null;
+    press = null; drag = null; outPaths = null;
+  }
+  // ---------- 拖出窗口：Mod 卡片拖到桌面 / 资源管理器，交给系统拖放复制 VPK（只在桌面版） ----------
+  let outPaths: Promise<string[] | Error> | null = null;
+  /** 窗口最大化时指针出不去，贴到边缘也算 */
+  const outside = (e: PointerEvent) => e.clientX <= 0 || e.clientY <= 0 || e.clientX >= innerWidth - 1 || e.clientY >= innerHeight - 1;
+  async function dragOut() {
+    const pending = outPaths!;
+    endDrag(); // 系统拖放接管鼠标，页面收不到 pointerup；先收起页面内的拖拽
+    suppressClick = true;
+    setTimeout(() => (suppressClick = false), 300);
+    const paths = await pending;
+    if (paths instanceof Error) return app.toast(paths.message);
+    try { await dragFilesOut(paths); }
+    catch (e) { app.toast(errorText(e)); }
   }
   $effect(() => endDrag);
   $effect(() => () => player.stop());
@@ -584,8 +676,9 @@
     if (!drag) return '';
     const what = drag.folder ? `「${catName(drag.folder)}」` : `${drag.ids.length} 个 Mod`;
     const k = drag.over;
-    if (!k && inFav) return what + ' · 拖到收藏合集上';
-    if (!k) return drag.folder ? `${what} · 同级边缘排序，中央移入` : `${what} · 拖到分类、方案或收藏上`;
+    const out = desktop ? '，拖出窗口可复制文件' : '';
+    if (!k && inFav) return what + ' · 拖到收藏合集上' + out;
+    if (!k) return drag.folder ? `${what} · 同级边缘排序，中央移入` : `${what} · 拖到分类、方案或收藏上${out}`;
     if (isSortDrop(k)) return `${what} 排在「${catName(k.slice(2))}」${k.startsWith('>') ? '后面' : '前面'}`;
     if (k === FAV) return `${what} 加入收藏`;
     if (k.startsWith('g:')) return what + ' 加入合集「' + app.favoriteCollections.find(c => c.id === k.slice(2))?.name + '」';
@@ -625,6 +718,7 @@
     let off: (() => void) | undefined, dead = false;
     void onFileDrop((e, hit) => {
       if (dead) return;
+      if (reviewing) { dropping = null; fileOver = null; return; }
       fileOver = e.type === 'leave' || e.type === 'drop' ? null : fileTarget(hit);
       if (e.type === 'enter') dropping = e.paths.length;
       else if (e.type === 'leave') dropping = null;
@@ -636,12 +730,13 @@
   // 浏览器预览：能看到拖入动作，但拿不到完整路径
   let depth = 0;
   const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
-  function onDragEnter(e: DragEvent) { if (desktop || !hasFiles(e)) return; e.preventDefault(); depth++; dropping = 0; }
-  function onDragOver(e: DragEvent) { if (desktop || !hasFiles(e)) return; e.preventDefault(); fileOver = fileTarget(e.target as Element); e.dataTransfer!.dropEffect = 'copy'; }
+  function onDragEnter(e: DragEvent) { if (desktop || !hasFiles(e)) return; e.preventDefault(); if (reviewing) return; depth++; dropping = 0; }
+  function onDragOver(e: DragEvent) { if (desktop || !hasFiles(e)) return; e.preventDefault(); if (reviewing) return; fileOver = fileTarget(e.target as Element); e.dataTransfer!.dropEffect = 'copy'; }
   function onDragLeave(e: DragEvent) { if (desktop || !hasFiles(e)) return; if (--depth <= 0) { depth = 0; dropping = null; fileOver = null; } }
   function onDropFiles(e: DragEvent) {
     if (desktop || !hasFiles(e)) return;
     e.preventDefault(); depth = 0; dropping = null; fileOver = null;
+    if (reviewing) return;
     const target = bookmarkTarget(e.target as Element);
     if (target !== null) {
       openCollection(target);
@@ -653,7 +748,23 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (inFav || quickTest || conflictFilesOpen || menu || workshop || collectionDialog || app.confirmation || edit || (e.target as Element).closest?.('input, select, textarea')) return;
+    if (inFav || shortcutsBlocked(e)) return;
+    if (desktop && !inTrash && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !e.repeat) {
+      if (e.key.toLowerCase() === 'c' && window.getSelection()?.isCollapsed !== false) {
+        const ids = selected.length ? [...selected] : detail ? [detail.id] : [];
+        if (ids.length) { e.preventDefault(); void app.copyModFiles(ids); return; }
+      }
+      if (e.key.toLowerCase() === 'v') {
+        const category = cur, root = app.game.root;
+        void app.pasteModFiles(paths => {
+          if (app.route !== 'mods' || inFav || inTrash || app.confirmation || root !== app.game.root) return;
+          if (importBlock) return app.toast(importBlock);
+          return app.importMods(paths, category);
+        });
+        // The browser paste event still handles ordinary text and Workshop links.
+        return;
+      }
+    }
     if (e.key === 'Escape') {
       if (drag) endDrag();
       else if (player.key) player.stop();
@@ -674,7 +785,7 @@
     }
     if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const ids = selected.length ? selected : detailId ? [detailId] : [];
-      if (ids.length) { e.preventDefault(); app.setFavorite(ids, !ids.every((id) => app.isFavorite(id))); }
+      if (ids.length) { e.preventDefault(); app.setFavorite(ids, true); }
     }
   }
 </script>
@@ -688,7 +799,7 @@
     {#if editing(c.id, 'side')}
       <input class="inline" style:margin-left="{level * 12}px" style:width="calc(100% - {level * 12}px)" bind:value={editValue} onkeydown={onEditKey} onblur={commit} use:focus />
     {:else}
-      <div class="item" class:on={!lib && cur === c.id} class:target={!!drag && canDrop(kCat(c.id))} class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id}
+      <div class="item" class:on={!reviewing && !lib && cur === c.id} class:target={!!drag && canDrop(kCat(c.id))} class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id}
            data-drop={kCat(c.id)} style:padding-left="{2 + (level - 1) * 12}px" role="button" tabindex="0"
            onpointerdown={(e) => { if (!inFav) onPress(e, c.id, true); }} onclick={() => openFolder(c.id)} onkeydown={(e) => onFolderKey(e, c.id)}
            oncontextmenu={(e) => inFav ? e.preventDefault() : menuAt(e, folderItems(c.id, 'side'))}>
@@ -731,12 +842,12 @@
 {#snippet star(m: Mod, cls: string)}
   {@const fav = app.isFavorite(m.id)}
   <button class={cls} class:on={fav} type="button" tabindex="-1" aria-pressed={fav}
-          title={fav ? '取消收藏（F）' : '收藏（F）'} aria-label={fav ? `取消收藏 ${m.title}` : `收藏 ${m.title}`}
-          onclick={(e) => { e.stopPropagation(); app.setFavorite([m.id], !fav); }}><Star size={13} fill={fav ? 'currentColor' : 'none'} /></button>
+          title={fav ? '更新收藏副本（F）' : '收藏（F）'} aria-label={fav ? `更新收藏 ${m.title}` : `收藏 ${m.title}`}
+          onclick={(e) => { e.stopPropagation(); app.setFavorite([m.id], true); }}><Star size={13} fill={fav ? 'currentColor' : 'none'} /></button>
 {/snippet}
 
 <section class="mods" aria-label="Mod 管理" ondragenter={onDragEnter} ondragover={onDragOver} ondragleave={onDragLeave} ondrop={onDropFiles}>
-  <aside class="side">
+  <aside class="side" hidden={reviewing}>
     <div class="group">
       <div class="gh"><span class="section-label">Mod 方案</span>
         {#if !inFav}<button class="icon-btn" title="复制当前方案为新方案" onclick={() => startEdit({ kind: 'new-profile' }, `${prof.name} 副本`)}><Plus size={14} /></button>{/if}
@@ -785,7 +896,7 @@
       <div class="gh"><span class="section-label">分类</span>
         {#if !inFav}<button class="icon-btn" title="在最外层新建分类" onclick={() => newFolder(ROOT, 'side')}><FolderPlus size={14} /></button>{/if}
       </div>
-      <div class="item" class:on={!lib && cur === ROOT} class:target={!!drag && canDrop(kCat(ROOT))} class:drop={drag?.over === kCat(ROOT)} data-drop={kCat(ROOT)} role="button" tabindex="0"
+      <div class="item" class:on={!reviewing && !lib && cur === ROOT} class:target={!!drag && canDrop(kCat(ROOT))} class:drop={drag?.over === kCat(ROOT)} data-drop={kCat(ROOT)} role="button" tabindex="0"
            onclick={() => go(ROOT)} onkeydown={(e) => e.key === 'Enter' && go(ROOT)}>
         <span class="nm">全部 Mod</span><span class="mono n">{app.mods.length}</span>
       </div>
@@ -795,16 +906,16 @@
 
   {#if inFav}
     <FavoriteLibrary bind:folderId={collectionId} bind:view bind:selected bind:pathOpen={importOpen}
-      {dropping} over={fileOver ?? drag?.over} press={onPress} clickable={() => !suppressClick} locate={show} {openTest} />
+      {dropping} over={fileOver ?? drag?.over} dragging={!!drag && !drag.folder} press={onPress} clickable={() => !suppressClick} locate={show} {openTest} />
   {:else}
-  <div class="main" class:at-root={!lib && cur === ROOT}>
-    <header class="head">
+  <div class="main" class:at-root={!lib && cur === ROOT} hidden={reviewing}>
+    <header class="head" class:trash-head={inTrash}>
       {#if lib}
       <div class="ttl">
         <div class="name">
           <span class="hic">{#if inInbox}<Inbox size={16} />{:else}<Trash size={16} />{/if}</span>
           <h2>{inInbox ? '新下载' : '回收站'}</h2>
-          <span class="tag">独立于方案</span>
+          {#if inInbox}<span class="tag">独立于方案</span>{/if}
         </div>
         <p class="sub" role="status">{libSub}</p>
       </div>
@@ -814,18 +925,19 @@
           <button class="btn ghost" disabled={!inboxCount} onclick={() => app.markSorted(app.inboxIds())}><CheckCheck size={14} />全部标记已整理</button>
           <button class="btn" disabled={!!workshopBlock} title={workshopBlock || '粘贴创意工坊链接下载（Ctrl+V）'} onclick={() => openWorkshop()}><Link size={14} />工坊链接</button>
         {:else}
-          <button class="btn ghost danger-text" disabled={!app.trash.length || !!deleteBlock} title={deleteBlock || '永久删除回收站里的全部文件'} onclick={() => app.purgeTrash('all')}><Trash size={14} />清空回收站</button>
+          <button class="btn ghost danger-text" disabled={!app.trash.length || !!emptyTrashBlock} title={emptyTrashBlock || '永久删除当前回收站里的全部条目'} onclick={() => app.purgeTrash('all')}><Trash size={14} />清空回收站</button>
         {/if}
       </div>
       {:else}
       <div class="ttl">
         <h2>{prof.name}</h2>
-        <p class="sub" role="status">共 {app.mods.length} 个 VPK，启用 {prof.modIds.filter((id) => app.mod(id)).length} 个</p>
+        <div class="profile-sub">
+          <button class="check-overlaps" bind:this={conflictEntry} title="查看当前方案的冲突、重叠与共存记录" disabled={!app.game.installed}
+            onclick={(e) => openConflicts(undefined, e.currentTarget)}><Files size={14} />检查资源 <ChevronRight size={13} /></button>
+          <p class="sub" role="status">共 {app.mods.length} 个 VPK，启用 {prof.modIds.filter((id) => app.mod(id)).length} 个</p>
+        </div>
       </div>
       <div class="acts">
-        {#if fstatus === 'conflict'}
-          <button class="btn" title="查看整个方案的重叠文件" onclick={() => (conflictFilesOpen = true)}><Files size={14} />按文件查看</button>
-        {/if}
         <button class="icon-btn" title="重新扫描 Mod" aria-label="重新扫描 Mod" disabled={!!app.busy || app.refreshing} onclick={() => app.refresh()}><RefreshCw size={15} class={app.refreshing ? 'spin' : ''} /></button>
         {#if prof.id === app.activeProfileId}
           <span class="startup-state">当前启动方案</span>
@@ -835,6 +947,20 @@
       </div>
       {/if}
     </header>
+
+    {#if missingMods.length}
+      <section class="missing" bind:this={missingPanel} tabindex="-1" aria-labelledby="missing-title">
+        <TriangleAlert size={17} />
+        <div class="missing-text">
+          <h3 id="missing-title">缺失 Mod <span class="mono">{missingMods.length}</span></h3>
+          <p>方案仍勾选这些条目。找回文件后可重新扫描，也可只移出缺失项。</p>
+          <ul aria-label="未找到的 VPK">
+            {#each missingMods as id (id)}<li class="mono">{id}</li>{/each}
+          </ul>
+        </div>
+        <button class="btn" disabled={!!app.busy || app.refreshing} onclick={() => app.removeMissingMods(prof)}>移出缺失项…</button>
+      </section>
+    {/if}
 
     {#if inTrash}
       <TrashView />
@@ -847,7 +973,7 @@
           <button class="btn" disabled={!!app.busy} onclick={() => setInProfile(selected, prof.id, false)}>停用</button>
         {/if}
         {#if inInbox}<button class="btn" onclick={() => app.markSorted(selected)}><CheckCheck size={14} />标记已整理</button>{/if}
-        <button class="btn" onclick={() => app.setFavorite(selected, !selAllFav)}><Star size={14} fill={selAllFav ? 'currentColor' : 'none'} />{selAllFav ? '取消收藏' : '收藏'}</button>
+        <button class="btn" onclick={() => app.setFavorite(selected, true)}><Star size={14} fill={selAllFav ? 'currentColor' : 'none'} />{selAllFav ? '更新收藏…' : '收藏'}</button>
         <button class="btn" onclick={(e) => menuBelow(e.currentTarget, profileItems(selected))}><ListChecks size={14} />加入方案<ChevronDown size={13} /></button>
         <button class="btn" onclick={(e) => menuBelow(e.currentTarget, categoryItems(selected))}><FolderInput size={14} />移到分类<ChevronDown size={13} /></button>        <button class="icon-btn del" title={deleteBlock || '删除（移到回收站）'} aria-label="删除" disabled={!!deleteBlock} onclick={() => void removeMods([...selected])}><Trash size={15} /></button>
         <span class="grow"></span>
@@ -859,7 +985,7 @@
         {#if !lib}
           <div class="seg" role="radiogroup" aria-label="按方案状态筛选">
             {#each filters as [k, label] (k)}
-              <button role="radio" aria-checked={f.status === k} class:on={f.status === k} class:danger={k === 'conflict' && counts.conflict > 0}
+              <button role="radio" aria-checked={f.status === k} class:on={f.status === k}
                       onclick={() => (f.status = k)}>{label}<span class="mono n">{counts[k]}</span></button>
             {/each}
           </div>
@@ -940,7 +1066,7 @@
         <div class="tiles">
           {#each folders as c (c.id)}
             {@const st = stats.get(c.id)!}
-            <div class="tile folder" class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id} data-drop={kCat(c.id)}
+            <div class="tile folder" animate:flip={reorder} class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id} data-drop={kCat(c.id)}
                  role="button" tabindex="0" aria-label={`打开分类 ${c.name}`}
                  onpointerdown={(e) => onPress(e, c.id, true)} onclick={() => openFolder(c.id)} onkeydown={(e) => onFolderKey(e, c.id)}
                  oncontextmenu={(e) => menuAt(e, folderItems(c.id, 'main'))}>
@@ -974,10 +1100,10 @@
           {/each}
           {#each rows as m (m.id)}
             {@const on = prof.modIds.includes(m.id)}
-            {@const cs = app.conflictsOf(m.id, scoped)}
+            {@const review = overlap?.byMod[m.id]}
             {@const picked = selected.includes(m.id)}
             <div class="tile" class:off={!on && !lib && !isPkg(m)} class:open={detailId === m.id} class:picked class:moving={!drag?.folder && drag?.ids.includes(m.id)}
-                 role="button" tabindex="0" aria-label={m.title}
+                 class:flash={flashId === m.id} data-mod={m.id} role="button" tabindex="0" aria-label={m.title}
                  onpointerdown={(e) => onPress(e, m.id)} onclick={(e) => activate(e, m.id)} onkeydown={(e) => onItemKey(e, m.id)}
                  oncontextmenu={(e) => menuAt(e, modItems(targets(m.id)))}>
               <div class="cover">
@@ -989,7 +1115,11 @@
                 {#if flat && app.folderOf(m) !== ROOT}<span class="where" title={app.categoryLabel(m.categoryId)}><Folder size={11} />{catName(m.categoryId)}</span>{/if}
                 {#if m.error}<span class="badge" title={m.error}>解析失败</span>
                 {:else if isPkg(m)}<span class="badge new" title={m.warning || `${platformName(m)} 的创意工坊更新包`}>平台更新包</span>
-                {:else if cs.length}<span class="badge">重叠 ×{cs.length}</span>
+                {:else if review && (review.pending || review.overlap)}
+                  <div class="resource-badges">
+                    {#if review.pending}<span class="badge" title="这些路径有不同内容">冲突 ×{review.pending}</span>{/if}
+                    {#if review.overlap}<span class="badge duplicate" title="这些路径的内容相同">重叠 ×{review.overlap}</span>{/if}
+                  </div>
                 {:else if !inInbox && app.isInbox(m.id)}<span class="badge new" title="新下载，还没整理">新</span>{/if}
               </div>
               <span class="t" title={m.title}>{m.title}</span>
@@ -1018,7 +1148,7 @@
           </div>
           {#each folders as c (c.id)}
             {@const st = stats.get(c.id)!}
-            <div class="row folder" class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id} data-drop={kCat(c.id)}
+            <div class="row folder" animate:flip={reorder} class:drop={drag?.over === kCat(c.id)} class:moving={drag?.folder === c.id} class:sort-before={drag?.over === "<:" + c.id} class:sort-after={drag?.over === ">:" + c.id} data-drop={kCat(c.id)}
                  role="button" tabindex="0" aria-label={`打开分类 ${c.name}`}
                  onpointerdown={(e) => onPress(e, c.id, true)} onclick={() => openFolder(c.id)} onkeydown={(e) => onFolderKey(e, c.id)}
                  oncontextmenu={(e) => menuAt(e, folderItems(c.id, 'main'))}>
@@ -1046,9 +1176,9 @@
           {/each}
           {#each rows as m (m.id)}
             {@const on = prof.modIds.includes(m.id)}
-            {@const cs = app.conflictsOf(m.id, scoped)}
+            {@const review = overlap?.byMod[m.id]}
             <div class="row" class:off={!on && !lib && !isPkg(m)} class:open={detailId === m.id} class:picked={selected.includes(m.id)} class:moving={!drag?.folder && drag?.ids.includes(m.id)}
-                 role="button" tabindex="0"
+                 class:flash={flashId === m.id} data-mod={m.id} role="button" tabindex="0"
                  onpointerdown={(e) => onPress(e, m.id)} onclick={(e) => activate(e, m.id)} onkeydown={(e) => onItemKey(e, m.id)}
                  oncontextmenu={(e) => menuAt(e, modItems(targets(m.id)))}>
               <input type="checkbox" checked={selected.includes(m.id)} tabindex="-1" onclick={stop} onchange={() => toggleSel(m.id)} aria-label={`选择 ${m.title}`} />
@@ -1068,7 +1198,8 @@
                 {:else}
                   {#if !m.error}<span class="g">{gameState(m)}</span>{/if}
                   {#if pending(m, on) && !m.error}<span class="pend">待应用</span>{/if}
-                  {#if cs.length}<span class="tag danger">重叠 ×{cs.length}</span>{/if}
+                  {#if review?.pending}<span class="tag danger" title="这些路径有不同内容">冲突 ×{review.pending}</span>{/if}
+                  {#if review?.overlap}<span class="tag duplicate" title="这些路径的内容相同">重叠 ×{review.overlap}</span>{/if}
                 {/if}
                 {#if !inInbox && app.isInbox(m.id)}<span class="tag">新下载</span>{/if}
               </span>
@@ -1083,31 +1214,29 @@
     {/if}
 
     {#if dropping !== null}
-      <div class="dropzone" class:bad={fileOver !== FAV && !!importBlock}>
-        {#if fileOver === FAV}<Star size={30}/><strong>松开以收藏</strong><span>只记录原位置</span>
-        {:else}<Upload size={30} />
-          <strong>{importBlock || (desktop ? `松开导入${dropping > 1 ? ' ' + dropping + ' 项' : ''}${cur !== ROOT ? '到「' + catName(cur) + '」' : '到 Mod 库'}` : '松开后粘贴本机路径')}</strong>
-          <span>文件夹打成 VPK · 现成的 VPK 直接导入</span>{/if}
-      </div>
+      {#if fileOver === FAV}<FileDropCue favorite title={desktop ? '松开以收藏' : '松开后粘贴本机路径'} detail="保存独立副本"/>
+      {:else}<FileDropCue blocked={!!importBlock}
+        title={importBlock || (desktop ? `松开导入${dropping > 1 ? ' ' + dropping + ' 项' : ''}${cur !== ROOT ? '到「' + catName(cur) + '」' : '到 Mod 库'}` : '松开后粘贴本机路径')}
+        detail={importBlock ? undefined : 'VPK 直接导入，素材文件夹自动打包'}/>{/if}
     {/if}
   </div>
 
   {/if}
 
   {#if !inFav && detail}
-    {@const cs = app.conflictsOf(detail.id, scoped)}
+    {@const review = overlap?.byMod[detail.id]}
     {@const fav = app.isFavorite(detail.id)}
     {@const inProfiles = app.profiles.filter((p) => p.modIds.includes(detail.id))}
-    <aside class="detail fade-in">
+    <aside class="detail fade-in" hidden={reviewing}>
       <div class="dh">
         <span class="section-label">{detail.source === 'workshop' ? '创意工坊' : '本地'}</span>
         <span class="grow"></span>
-        <button class="icon-btn" class:faved={fav} title={fav ? '取消收藏（F）' : '收藏（F）'} aria-pressed={fav} aria-label="收藏" onclick={() => app.setFavorite([detail.id], !fav)}><Star size={14} fill={fav ? 'currentColor' : 'none'} /></button>
+        <button class="icon-btn" class:faved={fav} title={fav ? '更新收藏副本（F）' : '收藏（F）'} aria-pressed={fav} aria-label="收藏" onclick={() => app.setFavorite([detail.id], true)}><Star size={14} fill={fav ? 'currentColor' : 'none'} /></button>
         <button class="icon-btn" title="更多操作" aria-label="更多操作" onclick={(e) => menuBelow(e.currentTarget, modItems([detail.id]))}><Ellipsis size={14} /></button>
         <button class="icon-btn" aria-label="关闭" onclick={() => (detailId = null)}><X size={14} /></button>
       </div>
       <div class="hero"><ModThumb mod={detail} fit="contain" /></div>
-      <h3>{detail.title}</h3>
+      <h3 bind:this={detailTitle} tabindex="-1">{detail.title}</h3>
       {#if detail.sourceTitle && detail.sourceTitle !== detail.title}<p class="meta">原名：{detail.sourceTitle}</p>{/if}
       <p class="meta">{detail.author || '作者未填写'}{detail.version ? ` · v${detail.version}` : ''}{detail.updatedAt ? ` · ${detail.updatedAt.slice(0, 10)}` : ''}</p>
       {#if detail.error}<p class="warn">{detail.error}</p>{/if}
@@ -1149,55 +1278,80 @@
           {#each app.categoryTree() as { c, depth: d } (c.id)}<option value={c.id}>{'　'.repeat(d + 1)}{c.name}</option>{/each}
         </select>
         <span class="muted">文件</span>
-        <span class="mono small path">{detail.absolutePath || detail.file}</span>
+        <span class="mono small path clamp" title={detail.absolutePath || detail.file}>{detail.absolutePath || detail.file}</span>
         <span class="muted">大小</span>
         <span class="mono small">{detail.sizeMB.toFixed(1)} MiB · {detail.fileCount} 个文件</span>
       </div>
 
-      <div class="block">
-        <span class="section-label">覆盖目录</span>
-        {#each detail.dirs as d (d)}<div class="mono small path">{d}/</div>{/each}
-      </div>
-
-      {#if detail.soundCount}
-        <div class="block">
-          <div class="bh">
-            <span class="section-label">声音 · {detail.soundCount}</span>
-            {#if player.modId === detail.id}<button class="btn sm ghost" onclick={() => player.stop()}><Square size={10} fill="currentColor" />停止</button>{/if}
-          </div>
-          <SoundList mod={detail} />
-        </div>
+      {#if detail.dirs.length}
+        <section class="blk">
+          <div class="bt"><h4>覆盖目录</h4><span class="n mono">{detail.dirs.length}</span></div>
+          <div class="dirs">{#each detail.dirs as d (d)}<span class="dir mono" title={d + '/'}>{d}/</span>{/each}</div>
+        </section>
       {/if}
 
-      {#if cs.length}
-        <div class="block">
-          <span class="section-label danger">资源路径重叠</span>
-          <p class="muted">以下资源路径同时存在于两个 VPK 中。可在方案中停用其中一个，然后用该方案启动游戏。</p>
-          {#each cs as c (c.id)}
-            {@const other = app.mod(c.a === detail.id ? c.b : c.a)!}
-            <div class="conflict">
-              <div class="ch">
-                <span>与「{other.title}」</span>
-                <span class="mono muted">{c.pathCount ?? c.paths.length} 个文件</span>
-              </div>
-              {#each c.paths as path (path)}
-                {#if /^sound\/.+\.(wav|mp3)$/i.test(path)}
-                  <div class="cpath">
-                    <span class="mono small path">{path}</span>
-                    <button class="cmp" class:on={player.isOn(detail.id, path)} title="试听本项的这个声音" onclick={() => player.play(detail!.id, path)}>本项</button>
-                    <button class="cmp" class:on={player.isOn(other.id, path)} title="试听对方的这个声音" onclick={() => player.play(other.id, path)}>对方</button>
-                  </div>
-                {:else}
-                  <div class="mono small path">{path}</div>
-                {/if}
-              {/each}
-              {#if (c.pathCount ?? 0) > c.paths.length}<p class="muted">展示前 {c.paths.length} 个路径</p>{/if}
-              <div class="cw">
-                <button class="btn sm ghost" disabled={!!app.busy} onclick={() => app.setModsEnabled([other.id], false)}>方案停用对方</button>
-                <button class="btn sm ghost" disabled={!!app.busy} onclick={() => app.setModsEnabled([detail!.id], false)}>方案停用本项</button>
-              </div>
+      {#if detail.soundCount}
+        <section class="blk">
+          <div class="bt">
+            <h4>声音</h4><span class="n mono">{detail.soundCount}</span>
+            {#if player.modId === detail.id}<button class="btn sm ghost bt-act" onclick={() => player.stop()}><Square size={10} fill="currentColor" />停止</button>{/if}
+          </div>
+          <SoundList mod={detail} />
+        </section>
+      {/if}
+
+      {#if review?.pending}
+        <!-- 每组只预览这两个包内容不同的资源；完整清单按文件打开。 -->
+        <section class="overlap" aria-labelledby="ov-title">
+          <div class="ov-head">
+            <span class="ov-ic"><Layers size={16} /></span>
+            <div class="ov-tt">
+              <h4 id="ov-title">{review.pending} 个文件冲突</h4>
+              <p>同一路径有不同内容，游戏会加载其中一份。</p>
             </div>
-          {/each}
+          </div>
+          <ul class="ov-list">
+            {#each overlap!.pendingPairs.filter(c => c.a === detail!.id || c.b === detail!.id) as c (c.id)}
+              {@const other = app.mod(c.a === detail.id ? c.b : c.a)!}
+              {@const n = c.pathCount ?? c.paths.length}
+              {@const shown = c.paths.slice(0, 3)}
+              <li class="ov-row">
+                <div class="ov-mod">
+                  <button class="ov-who" title={'查看「' + other.title + '」'} onclick={() => (detailId = other.id)}>
+                    <span class="ov-th"><ModThumb mod={other} /></span>
+                    <span class="ov-tx"><b>{other.title}</b><small>{n} 个冲突文件</small></span>
+                  </button>
+                  <button class="ov-off" disabled={!!app.busy} title={'在当前方案停用「' + other.title + '」'} onclick={() => app.setModsEnabled([other.id], false)}>停用对方</button>
+                </div>
+                <div class="ov-paths">
+                  {#each shown as path (path)}
+                    {@const at = path.lastIndexOf('/') + 1}
+                    <div class="ov-p" title={path}>
+                      <span class="pt mono"><span class="pd">{path.slice(0, at)}</span><span class="pf">{path.slice(at)}</span></span>
+                      {#if /^sound\/.+\.(wav|mp3)$/i.test(path)}
+                        <span class="ab" role="group" aria-label="对比试听">
+                          <button class:on={player.isOn(detail.id, path)} title="试听本项的这个声音" onclick={() => player.play(detail!.id, path)}><Play size={9} fill="currentColor" />本项</button>
+                          <button class:on={player.isOn(other.id, path)} title="试听对方的这个声音" onclick={() => player.play(other.id, path)}><Play size={9} fill="currentColor" />对方</button>
+                        </span>
+                      {/if}
+                    </div>
+                  {/each}
+                  {#if n > shown.length}<span class="ov-more">还有 {n - shown.length} 个</span>{/if}
+                </div>
+              </li>
+            {/each}
+          </ul>
+          <button class="ov-go" onclick={(e) => openConflicts(detail!.id, e.currentTarget, 'pending')}><Files size={14} />查看冲突文件<ChevronRight size={14} /></button>
+        </section>
+      {/if}
+      {#if review && (review.overlap || review.reviewed)}
+        <div class="overlap-done">
+          {#if review.overlap}
+            <button class="btn sm ghost" onclick={(e) => openConflicts(detail!.id, e.currentTarget, 'overlap')}><Layers size={14} />{review.overlap} 个文件重叠<ChevronRight size={13} /></button>
+          {/if}
+          {#if review.reviewed}
+            <button class="btn sm ghost" onclick={(e) => openConflicts(detail!.id, e.currentTarget, 'reviewed')}><CheckCheck size={14} />{review.reviewed} 个已确认共存<ChevronRight size={13} /></button>
+          {/if}
         </div>
       {/if}
 
@@ -1219,21 +1373,27 @@
       </div>
     </aside>
   {/if}
+  {#if reviewing && scoped}
+    {#key JSON.stringify([app.game.root, scoped.id, conflictModId, conflictView])}
+      <ConflictFiles profile={scoped} initialModId={conflictModId} initialView={conflictView} onclose={closeConflicts} onmod={showConflictProvider} />
+    {/key}
+  {/if}
 </section>
 
 {#if drag}
-  <div class="drag-chip" style:left="{drag.x + 14}px" style:top="{drag.y + 14}px">{dragLabel}</div>
+  {@const k = drag.over}
+  {@const Icon = !k ? (drag.folder ? Folder : drag.ids.length > 1 ? Layers : Files) : isSortDrop(k) ? (sortAxis === 'x' ? ArrowLeftRight : ArrowUpDown)
+    : k === FAV || k.startsWith('g:') ? Star : k.startsWith('p:') ? ListChecks : FolderInput}
+  <div class="drag-chip" class:hot={!!k} style:left="{drag.x + 14}px" style:top="{drag.y + 14}px">
+    <span class="ic"><Icon size={13} /></span>{dragLabel}
+  </div>
 {/if}
 {#key menu}
   {#if menu}<Menu items={menu.items} x={menu.x} y={menu.y} onclose={closeMenu} />{/if}
 {/key}
 {#if workshop}<WorkshopDialog initial={workshop.text} onclose={() => (workshop = null)} />{/if}
-{#if collectionDialog}<FavoriteCollectionDialog {...collectionDialog} onclose={() => collectionDialog = null} onsaved={id => { collectionDialog = null; openCollection(id); }} />{/if}
+{#if collectionDialog}<FavoriteCollectionDialog fromLibrary {...collectionDialog} onclose={() => collectionDialog = null} onsaved={id => { collectionDialog = null; openCollection(id); }} />{/if}
 {#if quickTest}<QuickTest seed={quickTest.seed} onclose={()=>quickTest=null}/>{/if}
-{#if conflictFilesOpen && scoped}
-  <ConflictFiles profile={scoped} onclose={() => (conflictFilesOpen = false)}
-    onmod={(id) => { conflictFilesOpen = false; selected = []; detailId = id; }} />
-{/if}
 
 <style>
   .mods { position: absolute; inset: 0; display: flex; }
@@ -1251,10 +1411,28 @@
   .item.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .item.on .n { color: inherit; opacity: .7; }
   .item.target { outline-color: var(--line-strong); }
-  .item.sort-before, .row.sort-before { box-shadow: inset 0 3px var(--md-primary); }
-  .item.sort-after, .row.sort-after { box-shadow: inset 0 -3px var(--md-primary); }
-  .tile.sort-before { box-shadow: inset 3px 0 var(--md-primary); }
-  .tile.sort-after { box-shadow: inset -3px 0 var(--md-primary); }
+  /* 排序插入标记：落在两项之间的缝里——一根主色细条，起点带个小圆环 */
+  .item.sort-before, .item.sort-after, .row.sort-before, .row.sort-after, .tile.sort-before, .tile.sort-after { position: relative; overflow: visible; }
+  :is(.item, .row, .tile):is(.sort-before, .sort-after)::after, :is(.item, .row, .tile):is(.sort-before, .sort-after)::before {
+    content: ''; position: absolute; z-index: 3; pointer-events: none; background: var(--md-primary);
+  }
+  :is(.item, .row, .tile):is(.sort-before, .sort-after)::after { border-radius: 999px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 20%, transparent); }
+  :is(.item, .row, .tile):is(.sort-before, .sort-after)::before { width: 9px; height: 9px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 2px var(--md-primary); }
+  .item.sort-before::after, .row.sort-before::after { left: 8px; right: 4px; top: -2px; height: 3px; }
+  .item.sort-after::after, .row.sort-after::after { left: 8px; right: 4px; bottom: -2px; height: 3px; }
+  .item.sort-before::before, .row.sort-before::before { left: 2px; top: -5px; }
+  .item.sort-after::before, .row.sort-after::before { left: 2px; bottom: -5px; }
+  .tile.sort-before::after { left: -8px; top: 18px; bottom: 10px; width: 4px; }
+  .tile.sort-after::after { right: -8px; top: 18px; bottom: 10px; width: 4px; }
+  .tile.sort-before::before { left: -10.5px; top: 9px; }
+  .tile.sort-after::before { right: -10.5px; top: 9px; }
+  /* 目标微微让开，像在给它腾位置 */
+  .tile.sort-before, .tile.sort-before:hover { transform: translateX(5px); }
+  .tile.sort-after, .tile.sort-after:hover { transform: translateX(-5px); }
+  @media (prefers-reduced-motion: no-preference) {
+    :is(.item, .row, .tile):is(.sort-before, .sort-after)::after { animation: sort-mark 180ms var(--ease-out) both; }
+  }
+  @keyframes sort-mark { from { opacity: 0; scale: .4; } }
   .item.drop { outline: 1px solid var(--md-primary); background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .item.moving { opacity: .45; }
   .item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1275,6 +1453,7 @@
 
   /* ---------- 主区：标题 + 工具条 ---------- */
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; container: modmain / inline-size; }
+  .side[hidden], .main[hidden], .detail[hidden] { display: none; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; }
   .ttl { min-width: 0; }
   .name { display: flex; align-items: center; gap: 10px; }
@@ -1283,6 +1462,11 @@
   .acts .btn, .startup-state { height: 32px; padding: 0 14px; border-radius: 12px; }
   .startup-state { display: inline-flex; align-items: center; border: 1px solid transparent; white-space: nowrap; background: var(--md-primary-container); color: var(--md-on-primary-container); }
   .sub { margin: 4px 0 0; font-size: 12px; color: var(--fg-3); }
+  .profile-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 10px; margin-top: 5px; }
+  .profile-sub .sub { margin: 0; }
+  .check-overlaps { min-height: 28px; display: inline-flex; align-items: center; flex: none; gap: 6px; padding: 0 8px; border-radius: 6px; color: var(--md-on-secondary-container); background: var(--md-secondary-container); font-weight: 550; }
+  .check-overlaps:hover:not(:disabled) { background: color-mix(in oklab, var(--md-on-secondary-container) 12%, var(--md-secondary-container)); }
+  .check-overlaps:disabled { opacity: .45; cursor: default; }
   .acts { display: flex; align-items: center; gap: 6px; flex: none; }
   /* 库视图（收藏 / 新下载 / 回收站）：标题换成库名，不显示方案 */
   .hic { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 10px; color: var(--md-on-secondary-container); background: var(--md-secondary-container); }
@@ -1330,6 +1514,16 @@
   .import-row input { flex: 1; min-width: 0; }
   .notice { margin: 0 20px 10px; font-size: 12px; line-height: 1.6; color: var(--fg-3); overflow-wrap: anywhere; }
   .notice.danger { padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--md-error) 35%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--md-error-container) 60%, transparent); color: var(--md-on-error-container); }
+  .missing { display: flex; align-items: flex-start; gap: 10px; margin: 0 20px 12px; padding: 12px 0; border-block: 1px solid var(--line-soft); color: var(--md-tertiary); }
+  .missing > :global(svg) { flex: none; margin-top: 2px; }
+  .missing:focus { outline: 1px solid var(--md-tertiary); outline-offset: 4px; }
+  .missing-text { flex: 1; min-width: 0; }
+  .missing h3 { margin: 0; font-size: 14px; }
+  .missing h3 span { margin-inline-start: 5px; }
+  .missing p, .missing ul { margin: 5px 0 0; font-size: 12px; line-height: 1.5; }
+  .missing p { color: var(--fg-2); }
+  .missing ul { max-height: 100px; overflow: auto; padding-inline-start: 18px; color: var(--fg); overflow-wrap: anywhere; }
+  .missing button { flex: none; }
 
   /* ---------- 路径栏 ---------- */
   /* 路径栏和下面的卡片算一块：只在它上面留一条线 */
@@ -1362,6 +1556,14 @@
   .tile.open { background: color-mix(in srgb, var(--md-surface-bright) 90%, transparent); border-color: color-mix(in srgb, var(--md-primary) 55%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--md-primary) 55%, transparent); }
   .tile:focus-visible { box-shadow: 0 0 0 2px var(--md-primary); }
   .tile.moving { opacity: .45; }
+  /* 「去查看」定位到的卡片：主色光圈呼吸两下，收成 .open 的细描边 */
+  .tile.flash { animation: tile-flash 1.8s var(--ease-out) both; }
+  @keyframes tile-flash {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-primary) 0%, transparent); }
+    22%, 62% { box-shadow: 0 0 0 2px var(--md-primary), 0 0 0 9px color-mix(in srgb, var(--md-primary) 24%, transparent); }
+    42% { box-shadow: 0 0 0 2px var(--md-primary), 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }
+    100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--md-primary) 55%, transparent); }
+  }
   .cover { position: relative; aspect-ratio: 1; border: 1px solid var(--line-soft); border-radius: 11px; overflow: hidden; transition: border-color var(--dur), box-shadow var(--dur); }
   .tile:hover .cover { border-color: var(--line); }
   .cover :global(img) { transition: transform 360ms var(--ease-out); }
@@ -1385,6 +1587,9 @@
   /* 封面角标：实色小胶囊，错误用 error-container，「新 / 平台更新包」用主色容器 */
   .badge { position: absolute; left: 6px; bottom: 6px; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 7px; background: var(--md-error-container); color: var(--md-on-error-container); font-size: 12px; box-shadow: 0 2px 6px -2px rgb(0 0 0 / .3); }
   .badge.new { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+  .resource-badges { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); display: flex; flex-wrap: wrap; gap: 4px; }
+  .resource-badges .badge { position: static; }
+  .badge.duplicate, .tag.duplicate { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .where { position: absolute; right: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px; max-width: 60%; height: 20px; padding: 0 7px; border-radius: 7px; background: color-mix(in srgb, var(--md-surface) 88%, transparent); color: var(--fg-2); font-size: 12px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 6px -2px rgb(0 0 0 / .3); }
   .tile .t { font-size: 13px; line-height: 18px; height: 36px; padding: 0 2px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .tile.off .t { color: var(--fg-3); }
@@ -1420,6 +1625,15 @@
   .row.open, .row.picked { background: color-mix(in srgb, var(--md-secondary-container) 65%, transparent); }
   .row:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--md-primary) 70%, transparent); }
   .row.moving { opacity: .45; }
+  .row.flash { animation: row-flash 1.8s var(--ease-out) both; }
+  @keyframes row-flash {
+    22%, 62% { box-shadow: inset 0 0 0 2px var(--md-primary); background: color-mix(in srgb, var(--md-primary) 16%, transparent); }
+    42% { box-shadow: inset 0 0 0 1px var(--md-primary); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tile.flash, .row.flash { animation: none; box-shadow: 0 0 0 2px var(--md-primary); }
+    .row.flash { box-shadow: inset 0 0 0 2px var(--md-primary); }
+  }
   .row.head { min-height: 0; padding-top: 8px; padding-bottom: 8px; font-size: 12px; color: var(--fg-3); position: sticky; top: 0; background: var(--bg); z-index: 1; }
   .row.folder.drop { background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--fg-2); }
   .mini { position: relative; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
@@ -1445,14 +1659,15 @@
   .sz { font-size: 12px; color: var(--fg-3); }
 
   /* ---------- 拖入覆盖层：实色，不用半透明 ---------- */
-  .dropzone { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--bg); color: var(--fg-2); pointer-events: none; }
-  .dropzone::before { content: ''; position: absolute; inset: 14px; border: 1.5px dashed color-mix(in srgb, var(--md-primary) 60%, transparent); border-radius: 16px; }
-  .dropzone strong { font-size: 18px; font-weight: 500; color: var(--fg); }
-  .dropzone span { font-size: 13px; color: var(--fg-3); }
-  .dropzone.bad::before { border-color: var(--md-error); }
-  .dropzone.bad strong { color: var(--danger); }
+  .trash-head h2 { font-size: 26px; }
+  .trash-head .hic { color: var(--md-primary); }
 
-  .drag-chip { position: fixed; z-index: 50; pointer-events: none; padding: 5px 10px; border-radius: var(--r); background: var(--bg-2); border: 1px solid var(--line-strong); color: var(--fg); font-size: 12px; white-space: nowrap; }
+  .drag-chip { position: fixed; z-index: 50; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; background: var(--md-surface-container-high); border: 1px solid var(--line-strong); color: var(--fg); font-size: 12px; white-space: nowrap; box-shadow: 0 12px 28px -14px rgb(0 0 0 / .55); }
+  .drag-chip .ic { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%; background: var(--md-secondary-container); color: var(--md-on-secondary-container); transition: background var(--dur), color var(--dur); }
+  .drag-chip.hot { border-color: color-mix(in srgb, var(--md-primary) 55%, transparent); }
+  .drag-chip.hot .ic { background: var(--md-primary); color: var(--md-on-primary); }
+  @media (prefers-reduced-motion: no-preference) { .drag-chip { animation: chip-in 160ms var(--ease-out) both; } }
+  @keyframes chip-in { from { opacity: 0; scale: .9; } }
   :global(html.dragging-mods), :global(html.dragging-mods *) { cursor: grabbing !important; }
 
   /* ---------- 详情 ---------- */
@@ -1461,6 +1676,7 @@
   .dh .faved { color: var(--fg); }
   .hero { position: relative; aspect-ratio: 16 / 10; margin-top: 10px; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
   h3 { margin: 14px 0 2px; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+  h3:focus { outline: none; }
   .detail .meta { display: block; padding: 0; margin: 0 0 12px; white-space: normal; }
   .warn { margin: 8px 0; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
   .desc { color: var(--fg-2); margin: 0 0 16px; overflow-wrap: anywhere; }
@@ -1473,19 +1689,65 @@
   .pick-btn:hover { border-color: var(--fg-4); }
   .pick-btn span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .small { font-size: 12px; }
-  .block { padding: 14px 0 0; display: flex; flex-direction: column; gap: 6px; }
   .path { color: var(--fg-2); word-break: break-all; }
-  .conflict { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 10px; display: flex; flex-direction: column; gap: 4px; }
-  .ch { display: flex; justify-content: space-between; margin-bottom: 2px; }
-  .ch .mono { font-size: 12px; }
-  .cw { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
-  .actions { display: flex; gap: 4px; margin-top: 18px; flex-wrap: wrap; }
-  .del:hover { color: var(--danger); }
-  .bh { display: flex; align-items: center; justify-content: space-between; min-height: 24px; }
-  .cpath { display: flex; align-items: center; gap: 4px; }
-  .cpath .path { flex: 1; min-width: 0; }
-  .cmp { flex: none; height: 22px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); font-size: 11px; color: var(--fg-2); }
-  .cmp:hover, .cmp.on { color: var(--fg); border-color: var(--fg-3); }
+  .path.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+
+  /* 详情里的分块：小标题 + 计数，统一一种写法 */
+  .blk { padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .bt { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+  .bt h4 { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg); }
+  .bt .n { font-size: 11px; color: var(--fg-3); padding: 0 6px; border-radius: 9px; background: var(--hover); line-height: 17px; }
+  .bt-act { margin-left: auto; }
+  .dirs { display: flex; flex-wrap: wrap; gap: 4px; }
+  .dir { max-width: 100%; height: 22px; line-height: 22px; padding: 0 8px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--md-surface-container-highest) 70%, transparent); color: var(--fg-2); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .overlap {
+    margin-top: 18px; padding: 12px; border-radius: 14px; display: flex; flex-direction: column; gap: 10px;
+    background: color-mix(in srgb, var(--md-tertiary-container) 40%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--md-tertiary) 26%, transparent);
+  }
+  .ov-head { display: flex; align-items: center; gap: 10px; }
+  .ov-ic { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+  .ov-tt { min-width: 0; }
+  .ov-tt h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--fg); }
+  .ov-tt p { margin: 1px 0 0; font-size: 12px; line-height: 1.4; color: var(--fg-2); }
+  .ov-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .ov-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 6px 8px; border-radius: 10px; background: color-mix(in srgb, var(--md-surface) 52%, transparent); }
+  .ov-mod { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .ov-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 2px 6px 2px 2px; border-radius: 8px; text-align: left; transition: background var(--dur); }
+  .ov-who:hover { background: var(--hover); }
+  .ov-th { position: relative; flex: none; width: 28px; height: 28px; border-radius: 7px; overflow: hidden; background: var(--bg-2); }
+  .ov-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+  .ov-tx > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-tx b { font-size: 13px; font-weight: 600; color: var(--fg); }
+  .ov-tx small { font-size: 11px; color: var(--fg-3); }
+  .ov-off { flex: none; height: 26px; padding: 0 9px; border-radius: 13px; border: 1px solid var(--line-strong); font-size: 12px; color: var(--fg-2); transition: background var(--dur), color var(--dur), border-color var(--dur); }
+  .ov-off:hover:not(:disabled) { background: var(--md-error-container); border-color: transparent; color: var(--md-on-error-container); }
+  .ov-off:disabled { opacity: .45; cursor: default; }
+  /* 路径挂在对方名下：左边一道细线表示从属；目录先缩、文件名后缩 */
+  .ov-paths { display: flex; flex-direction: column; margin-left: 15px; padding-left: 10px; border-left: 1px solid var(--line); }
+  .ov-p { display: flex; align-items: center; min-width: 0; height: 22px; font-size: 11.5px; }
+  .ov-p .pt { flex: 1 1 auto; min-width: 0; display: flex; }
+  .ov-p .pd, .ov-p .pf { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-p .pd { flex: 0 100 auto; color: var(--fg-3); }
+  .ov-p .pf { flex: 0 1 auto; color: var(--fg); }
+  .ab { flex: none; display: inline-flex; margin-left: auto; padding-left: 6px; gap: 2px; }
+  .ab button { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 11px; color: var(--fg-2); background: var(--hover); }
+  .ab button:hover { color: var(--fg); }
+  .ab button.on { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+  .ov-more { font-size: 11px; color: var(--fg-3); line-height: 20px; }
+  .ov-go { display: flex; align-items: center; justify-content: center; gap: 6px; height: 34px; border-radius: 10px; background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); font-size: 13px; font-weight: 600; transition: filter var(--dur); }
+  .ov-go:hover { filter: brightness(1.1); }
+  .ov-go :global(svg:last-child) { margin-left: -2px; opacity: .7; }
+  .overlap-done { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 14px; }
+
+  /* 底部操作：两列安静按钮，删除靠右 */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .actions .grow { display: none; }
+  .actions .btn { height: 30px; min-width: 0; justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; }
+  .actions .btn :global(svg) { flex: none; }
+  .actions .del { grid-column: -2; justify-content: flex-end; }
+  .del:hover:not(:disabled) { color: var(--danger); }
 
   @media (max-width: 1500px) {
     .detail { position: absolute; right: 0; top: 0; bottom: 0; z-index: 5; width: 320px; }

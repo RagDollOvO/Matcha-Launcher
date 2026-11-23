@@ -103,9 +103,7 @@
   async function favorite(r: FriendServer) {
     saving = r.id;
     try {
-      const saved = app.servers.find(s => s.addr === r.addr);
-      if (saved?.favorite) await app.setServersFavorite([saved.id], false);
-      else app.servers = await serverApi.favoriteFriend(r.id);
+      await app.toggleFriendFavorite(r);
     } catch (e) { app.toast(errorText(e)); }
     finally { saving = ''; }
   }

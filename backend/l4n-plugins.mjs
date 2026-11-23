@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { inspectPe, errorRecord } from './core.mjs';
+import { inspectPe } from './file-inspection.mjs';
+import { errorRecord } from './errors.mjs';
 import { regular, identity } from './mods/vpk.mjs';
 import { directory } from './mods/files.mjs';
 import { PlatformTransactions, approved, gameFile, sameRoot } from './platforms/transactions.mjs';

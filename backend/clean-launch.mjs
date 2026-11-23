@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { PlatformError } from './core.mjs';
+import { PlatformError } from './errors.mjs';
 import { addonKey, readAddonList } from './mods/addonlist.mjs';
 
 const proxies = ['d3d9.dll', 'dxgi.dll', 'wininet.dll', 'winmm.dll', 'version.dll',

@@ -206,7 +206,14 @@
         archive = { id: d.id, listing, selected: listing.items.map((i) => i.name) };
       } else {
         const info = await api.previewMod(d.path);
-        if (!await app.confirm('导入下载的 VPK', `${info.title}\n${info.sizeMB.toFixed(1)} MiB · ${info.fileCount} 个资源\n来源：${sourceText(d)}\n\n导入后默认启用，下次启动生效。${info.warning ? '\n' + info.warning : ''}`, '导入')) return;
+        const source = sourceText(d);
+        if (!await app.confirm('导入下载的 VPK', '导入后归入「新下载」并默认启用，下次启动生效。', '导入', {
+          layout: 'import', facts: [
+            { label: 'Mod', value: info.title },
+            { label: '内容', value: `${info.sizeMB.toFixed(1)} MiB · ${info.fileCount} 个资源` },
+            ...(source ? [{ label: '来源', value: source }] : []),
+          ], warn: info.warning ? { title: '导入提示', text: info.warning } : undefined,
+        })) return;
         await api.browserImport(d.id, undefined, toModCreators(trail.creatorsOf(d)));
         await app.refresh(); app.notify({ kind: 'ok', text: '已导入「新下载」并启用' });
       }
@@ -217,7 +224,11 @@
     if (!archive) return;
     const a = archive; working = d.id;
     try {
-      if (!await app.confirm('导入压缩包中的 Mod', `已选 ${a.selected.length} 个 VPK。\n来源：${sourceText(d)}\n\n分卷数据会一起解压，导入后默认启用，下次启动生效。`, '导入所选')) return;
+      const source = sourceText(d);
+      if (!await app.confirm('导入压缩包中的 Mod', '分卷数据会一起解压。导入后默认启用，下次启动生效。', '导入所选', {
+        layout: 'import', facts: [{ label: '压缩包', value: d.name }, ...(source ? [{ label: '来源', value: source }] : [])],
+        lists: [{ title: '所选 VPK', rows: a.listing.items.filter(i => a.selected.includes(i.name)).map(i => ({ k: i.name, v: mib(i.size) })) }],
+      })) return;
       const result = await api.browserImport(d.id, a.selected, toModCreators(trail.creatorsOf(d)));
       await app.refresh(); archive = null;
       app.notify({ kind: result.errors.length ? 'error' : 'ok', text: `已导入 ${result.imported.length} 个 Mod${result.errors.length ? `；${result.errors.join('；')}` : '，已启用'}`, ms: 8000 });
@@ -360,12 +371,15 @@
   {#if archive?.id === d.id}
     {@const a = archive}
     <div class="archive" in:fly={{ ...enter, y: still ? 0 : -4 }}>
-      <div class="arc-head"><span>{a.listing.items.length} 个 VPK · 已选 {a.selected.length}</span>
-        <button class="btn sm ghost" onclick={() => (a.selected = a.selected.length === a.listing.items.length ? [] : a.listing.items.map((i) => i.name))}>{a.selected.length === a.listing.items.length ? '全不选' : '全选'}</button></div>
-      {#each a.listing.items as item (item.name)}
-        <label class="entry"><input type="checkbox" checked={a.selected.includes(item.name)} onchange={() => toggleEntry(item.name)} /><span>{item.name}</span><small class="mono">{mib(item.size)}</small></label>
-      {:else}<p class="hint">这个 ZIP 里没有可导入的 VPK。</p>{/each}
+      <div class="arc-head"><PackageOpen size={17}/><strong>选择要导入的 VPK</strong>
+        {#if a.listing.items.length}<button class="btn sm ghost" onclick={() => (a.selected = a.selected.length === a.listing.items.length ? [] : a.listing.items.map((i) => i.name))}>{a.selected.length === a.listing.items.length ? '取消全选' : '全选'}</button>{/if}</div>
+      <div class="arc-entries">
+        {#each a.listing.items as item (item.name)}
+          <label class="entry" class:chosen={a.selected.includes(item.name)}><input type="checkbox" checked={a.selected.includes(item.name)} onchange={() => toggleEntry(item.name)} /><span>{item.name}</span><small class="mono">{mib(item.size)}</small></label>
+        {:else}<p class="hint">这个 ZIP 里没有可导入的 VPK。</p>{/each}
+      </div>
       <div class="arc-foot">
+        {#if a.listing.items.length}<span aria-live="polite">已选 {a.selected.length} / {a.listing.items.length} 个</span>{/if}
         <button class="btn sm ghost" onclick={() => (archive = null)}>取消</button>
         <button class="btn sm solid" disabled={!a.selected.length || !!working || app.game.running} onclick={() => importArchive(d)}>{working === d.id ? '正在导入…' : `导入所选 ${a.selected.length} 个`}</button>
       </div>
@@ -635,14 +649,20 @@
   .empty.small { padding: 64px 20px; }
   .btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
 
-  .archive { padding: 4px 12px 12px 68px; border-top: 1px dashed var(--line-soft); background: color-mix(in srgb, var(--md-surface-container) 55%, transparent); }
-  .arc-head { display: flex; align-items: center; justify-content: space-between; height: 34px; font-size: 12px; color: var(--fg-3); }
-  .entry { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px; border-radius: 8px; font-size: 12px; cursor: pointer; }
-  .entry:hover { background: var(--hover); }
+  .archive { margin: 0 12px 12px clamp(12px, 5vw, 68px); padding: 9px 13px 12px; border-radius: 12px; background: var(--md-surface-container); }
+  .arc-head { display: flex; align-items: center; gap: 8px; min-height: 34px; color: var(--md-primary); }
+  .arc-head strong { flex: 1; color: var(--fg); font-size: 14px; }
+  .arc-entries { display: grid; gap: 3px; max-height: 230px; padding: 4px; overflow: auto; border-radius: 8px; background: var(--md-surface-container-low); }
+  .arc-entries .hint { margin: 6px 8px; }
+  .entry { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 4px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  .entry:hover, .entry:focus-within { background: var(--hover); }
+  .entry.chosen { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .entry input { width: 14px; height: 14px; margin: 0; padding: 0; accent-color: var(--md-primary); }
   .entry span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .entry small { color: var(--fg-3); }
-  .arc-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+  .entry.chosen small { color: inherit; }
+  .arc-foot { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .arc-foot span { margin-right: auto; color: var(--fg-2); }
   .hint { margin: 0 0 8px; font-size: 12px; color: var(--fg-3); }
   .hint.warn { color: var(--danger); }
 

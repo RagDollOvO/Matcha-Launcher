@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { errorRecord } from '../core.mjs';
+import { errorRecord } from '../errors.mjs';
 import { writeJson, fail } from './files.mjs';
 import { downloadDefaults, downloadSettings, DownloadBandwidth } from './download-bandwidth.mjs';
 

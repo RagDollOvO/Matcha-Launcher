@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 import { DOWNLOAD_BLOCK } from '../mods/download-bandwidth.mjs';
 
 // Private child-process protocol. Remote webviews never receive Matcha IPC privileges.

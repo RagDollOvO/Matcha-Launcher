@@ -18,6 +18,7 @@ export interface GameInfo {
   build: string; // 游戏版本号
   running: boolean;
   pid?: number;
+  startedAt?: string; // Windows process creation time, paired with PID for force stop
 }
 
 export type ModSource = 'workshop' | 'local';
@@ -25,6 +26,7 @@ export type ModSource = 'workshop' | 'local';
 export interface ModCreator { source: 'steam' | 'bilibili' | 'gamemaps' | 'afdian'; url: string; title: string; author?: string }
 
 export interface Mod {
+  packageVersion?:string;
   id: string;
   file: string; // VPK 文件名
   title: string; // Matcha 显示名，默认使用来源标题
@@ -149,14 +151,18 @@ export interface FavoriteCollection { id: string; name: string; modIds: string[]
 export interface FavoriteReference extends Pick<Mod,'id'|'title'|'file'|'author'|'dirs'|'sizeMB'|'updatedAt'|'hasThumbnail'|'soundCount'> {
   absolutePath: string;
   referenceKind: 'vpk' | 'folder';
-  library?: {gameRoot:string;modId:string};
+  ownedPath?:string;
+  missingSource?:boolean;
+  library?: {gameRoot:string;modId:string;version?:string;alternatives?:string[]};
 }
 export type FavoriteEntry = Mod | FavoriteReference;
 export type FavoriteEdit =
-  | { action: 'create'; name: string; modIds?: string[]; fromCollectionId?:string }
+  | { action: 'create'; name: string; modIds?: string[]; fromLibraryIds?:string[]; fromCollectionId?:string }
   | { action: 'rename'; collectionId: string; name: string }
   | { action: 'add' | 'remove'; collectionId: string; modIds: string[]; fromCollectionId?:string }
-  | { action: 'delete'; collectionId: string };
+  | { action: 'delete'; collectionId: string }
+  /** 拖动排序：移到 targetId 的前面（after 为 true 时后面） */
+  | { action: 'move'; collectionId: string; targetId: string; after: boolean };
 
 export interface ModTask {
   output?: string;
@@ -198,6 +204,8 @@ export interface ModTask {
 export interface ModSound { path: string; bytes: number; durationMs?: number }
 /** Matcha 回收站里的一项。moving / restoring = 中断后待还原；purging = 待完成永久删除 */
 export interface TrashEntry {
+  /** 收藏回收条目还原到收藏夹；旧收藏可能只保存了记录。 */
+  favorite?: { collections:string[]; dirs:string[]; hasThumbnail:boolean; recordOnly:boolean };
   trashId: string;
   modId: string;
   title: string;
@@ -278,6 +286,14 @@ export interface Conflict {
   paths: string[]; // 两个 VPK 都包含的文件
   pathCount?: number;
   winner?: string; // 演示数据兼容；实际扫描仅报告同路径资源
+}
+
+/** pending / reviewed count different-content files; overlap counts matches. */
+export type ConflictReviewCounts = { pending: number; overlap: number; reviewed: number };
+export interface ConflictReviewSummary {
+  counts: ConflictReviewCounts;
+  byMod: Record<string, ConflictReviewCounts>;
+  pendingPairs: Conflict[];
 }
 
 export interface L4NRuntime {

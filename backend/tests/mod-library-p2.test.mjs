@@ -410,7 +410,7 @@ test('P2 download failure paths: cancel removes owned staging, retry succeeds, c
   } finally { await f.service.close(); }
 });
 
-test('favorite file tools export and preview original files independently of profiles', async () => {
+test('favorite file tools play and export independent VPK and folder copies after originals move', async () => {
   const f=await setup(), call=(cmd,p)=>f.service.dispatch(cmd,p,approval);
   try {
     const folder=path.join(f.base,'source'), file=path.join(f.base,'外部声音.vpk'), sample=Buffer.from('ID3test');
@@ -419,9 +419,13 @@ test('favorite file tools export and preview original files independently of pro
     await vpkFixture(file,{'sound/test.mp3':sample});
     await call('bookmark-files',{paths:[file,folder]});
     const refs=Object.values(f.service.settings.favoriteRefs), [vpk,material]=refs;
+    await fs.rename(folder,folder+'-moved');await fs.rename(file,file+'.moved');
     const original=structuredClone(f.service.settings.profiles);
+    await assert.rejects(call('preview-recycle-favorites',{ids:[material.id]}),
+      {code:'path_missing',message:'原位置找不到这个文件或文件夹：'+folder});
     assert.deepEqual((await call('mod-sounds',{id:vpk.id})).map(r=>r.path),['sound/test.mp3']);
     assert.equal((await call('mod-sound',{id:vpk.id,path:'sound/test.mp3'})).base64,sample.toString('base64'));
+    assert.equal((await call('mod-sound',{id:'fav-asset:'+material.id,path:'sound/test.mp3'})).base64,sample.toString('base64'));
     let task=await finished(f.service,(await call('extract-mod',{id:vpk.id})).taskId);
     assert.deepEqual(await fs.readFile(path.join(task.dir,'sound/test.mp3')),sample);
     for(const name of ['source.vpk','source (2).vpk']){
@@ -432,6 +436,7 @@ test('favorite file tools export and preview original files independently of pro
     const first=await call('edit-favorite-collection',{action:'create',name:'A',modIds:[vpk.id,material.id]});
     await call('edit-favorite-collection',{action:'create',name:'B',modIds:[vpk.id],fromCollectionId:first.id});
     assert.deepEqual(f.service.settings.favoriteCollections.map(c=>c.modIds),[[material.id],[vpk.id]]);
+    await fs.rename(file+'.moved',file);
     const plan=await call('preview-recycle-favorites',{ids:[vpk.id]});
     assert.equal(plan[0].file,file);
     await assert.rejects(f.service.dispatch('recycle-favorite-files',{ids:[vpk.id],plan}),{code:'confirmation_required'});
@@ -440,4 +445,117 @@ test('favorite file tools export and preview original files independently of pro
     assert.deepEqual(f.service.settings.profiles,original);
     await assert.rejects(fs.stat(path.join(f.addons,'source.vpk')),{code:'ENOENT'});
   } finally { await f.service.close(); }
+});
+
+test('favorite copy survives library purge; profile duplicate version is isolated and old bookmark can be repaired',async()=>{
+  const f=await setup(), svc=f.service, call=(cmd,p)=>svc.dispatch(cmd,p,approval);
+  try{
+    const first=Buffer.from('ID3-X'),second=Buffer.from('ID3-Y'),resource='sound/test.mp3';
+    const original=await vpkFixture(path.join(f.addons,'mac10.vpk'),{[resource]:first});
+    await call('bookmark-files',{paths:[original]});
+    const id='mac10.vpk',read=async id=>Buffer.from((await call('mod-sound',{id,path:resource})).base64,'base64');
+    const group=await call('edit-favorite-collection',{action:'create',name:'收藏音效',modIds:[id]});
+    const {trashed}=await call('delete-mods',{ids:[id]});await call('purge-trash',{trashIds:trashed.map(t=>t.trashId)});
+    assert.deepEqual(await read('fav-asset:'+id),first);
+    const imported=await call('import-favorite-copy',{id,gameRoot:f.gameRoot});assert.equal(imported.id,id);
+    for(const p of ['one','two'])await call('save-profile',{profile:{...svc.settings.profiles[0],id:p,name:p,modIds:[id,id],modsInitialized:true,modsGameRoot:f.gameRoot}});
+    const ext=await vpkFixture(path.join(f.base,'mac10.vpk'),{[resource]:second});
+    const preview=await call('preview-bookmark-files',{paths:[ext]});
+    await call('bookmark-files',{paths:[ext],expected:preview.expected});
+    assert.deepEqual(await read(id),first);assert.deepEqual(await read('fav-asset:'+id),second);
+    const alternate=await call('import-favorite-copy',{id,gameRoot:f.gameRoot});assert.notEqual(alternate.id,id);
+    const args={favoriteIds:[id,id],profileIds:['one'],gameRoot:f.gameRoot};
+    assert.equal((await call('favorite-to-profiles',args)).added,1);
+    assert.deepEqual(svc.settings.profiles.find(p=>p.id==='one').modIds,[alternate.id]);
+    assert.deepEqual(svc.settings.profiles.find(p=>p.id==='two').modIds,[id]);
+    assert.equal((await call('favorite-to-profiles',args)).added,0);
+    const fromProfile={paths:[path.join(f.addons,alternate.id)]};
+    const repeated=await call('preview-bookmark-files',fromProfile);
+    assert.equal(repeated.duplicates.length,1);
+    await call('bookmark-files',{...fromProfile,expected:repeated.expected});
+    assert.deepEqual(Object.keys(svc.settings.favoriteRefs),[id]);
+    assert.equal(svc.settings.favoriteRefs[id].vaultName,'mac10.vpk');
+    const drafts=structuredClone(svc.settings.profiles);
+    await call('remove-favorites',{ids:[id]});
+    assert.deepEqual(svc.settings.profiles,drafts);assert.deepEqual(await read(alternate.id),second);assert.deepEqual(await read(id),first);
+    const legacy={id,title:'MAC10 套1',file:'mac10.vpk',absolutePath:path.join(f.base,'old','mac10.vpk'),referenceKind:'vpk',dirs:['sound'],sizeMB:.1,updatedAt:'',hasThumbnail:false,author:''};
+    const settings={...svc.settings,favoriteRefs:{[id]:legacy},favoriteCollections:[{id:group.id,name:'音效',modIds:[id]}]};
+    await fs.writeFile(svc.settingsFile,JSON.stringify(settings));
+    const again=new DesktopService({dataDir:svc.dataDir,core:svc.core});
+    try{
+      await again.ready;assert.equal(again.settings.favoriteRefs[id].missingSource,true);
+      await assert.rejects(again.dispatch('mod-sounds',{id:'fav-asset:'+id}),{code:'favorite_source_missing'});
+      await again.dispatch('bookmark-files',{repairId:id,paths:[ext]},approval);
+      assert.equal(again.settings.favoriteRefs[id].title,'MAC10 套1');
+      assert.deepEqual(again.settings.favoriteCollections[0].modIds,[id]);
+      assert.equal((await again.dispatch('mod-sound',{id:'fav-asset:'+id,path:resource})).base64,second.toString('base64'));
+    }finally{await again.close();}
+  }finally{await svc.close();}
+});
+
+test('removing missing favorites clears their cards and every collection while preserving the other favorites and profiles',async()=>{
+  const f=await setup(), s=f.service;
+  try{
+    const keep=[];
+    for(const name of ['sound2','sound3']){
+      const file=await vpkFixture(path.join(f.base,name+'.vpk'),{'addoninfo.txt':addonInfo(name)});
+      const {ids}=await s.dispatch('bookmark-files',{paths:[file]});keep.push(...ids);
+    }
+    const gone=['mac10-1.vpk','mac10-2.vpk','mac10-3.vpk','favorite-file:sound1'];
+    const refs={...s.settings.favoriteRefs}, survivors=structuredClone(refs);
+    for(const id of gone)refs[id]={id,title:id,file:id,absolutePath:path.join(f.base,'missing',id.split(':').pop()),referenceKind:id.startsWith('favorite-file:')?'folder':'vpk',missingSource:true};
+    const profiles=s.settings.profiles.map(p=>({...p,modIds:[gone[0],'other.vpk']}));
+    await s.save({...s.settings,gameRoot:'',profiles,favoriteRefs:refs,modMeta:{[gone[0]]:{favorite:true,inbox:true},[gone[1]]:{favorite:true}},
+      favoriteCollections:[{id:'sounds',name:'音效',modIds:[...gone,...keep]},{id:'old',name:'旧收藏',modIds:[gone[0],gone[3]]}]});
+    assert.deepEqual(await s.dispatch('remove-favorites',{ids:[...gone,gone[0]]}),{count:4});
+    assert.deepEqual(await s.dispatch('remove-favorites',{ids:gone}),{count:0});
+    const saved=JSON.parse(await fs.readFile(s.settingsFile,'utf8'));
+    assert.deepEqual(saved.favoriteRefs,survivors);
+    assert.deepEqual(saved.favoriteCollections.map(c=>c.modIds),[keep,[]]);
+    assert.deepEqual(saved.modMeta,{[gone[0]]:{inbox:true}});
+    assert.deepEqual(saved.profiles,profiles);
+    const bin=(await s.snapshot()).trash;
+    assert.deepEqual(bin.map(t=>t.modId).sort(),[...gone].sort());
+    assert(bin.every(t=>t.favorite?.recordOnly&&!t.files.length));
+    await s.dispatch('restore-mods',{trashIds:[bin.find(t=>t.modId===gone[0]).trashId]},approval);
+    assert.equal(s.settings.favoriteRefs[gone[0]].missingSource,true);
+    assert.deepEqual(s.settings.favoriteCollections.map(c=>c.modIds),[[gone[0],...keep],[gone[0]]]);
+  }finally{await s.close();}
+});
+
+test('Matcha shelf trash keeps audio across restart, restores to the collection, and purges only the confirmed version',async()=>{
+  const f=await setup(), s=f.service;
+  try{
+    const resource='weapons/test.mp3',audio=Buffer.from('ID3-original'),file=await vpkFixture(path.join(f.base,'source.vpk'),{[resource]:audio});
+    const {ids:[id]}=await s.dispatch('bookmark-files',{paths:[file]});
+    const group=await s.dispatch('edit-favorite-collection',{action:'create',name:'音效',modIds:[id]});
+    const profiles=structuredClone(s.settings.profiles),ref=s.settings.favoriteRefs[id],owned=path.join(s.dataDir,'favorite-files',ref.vaultKey,ref.vaultName);
+    assert.equal(ref.soundCount,1);
+    const bytes=await fs.readFile(owned);
+    // A shelf favorite remains recoverable even after the external original disappears.
+    await fs.rename(file,file+'.moved');
+    const move=await s.dispatch('trash-favorites',{ids:[id]});
+    assert.equal(move.trashed[0].favorite.recordOnly,false);assert.deepEqual(move.trashed[0].favorite.collections,['音效']);
+    assert.deepEqual(await fs.readFile(owned),bytes);
+    const again=new DesktopService({dataDir:s.dataDir,core:s.core});
+    try{
+      const bin=(await again.dispatch('snapshot')).trash;assert.deepEqual(bin,move.trashed);
+      const trashIds=[bin[0].trashId];
+      await assert.rejects(again.dispatch('purge-trash',{trashIds}),{code:'confirmation_required'});
+      await fs.rename(file+'.moved',file);
+      const newer=await again.dispatch('bookmark-files',{paths:[file]});
+      const clash=await again.dispatch('restore-mods',{trashIds},approval);
+      assert.equal(clash.conflicts.length,1);assert.equal(again.settings.favoriteTrash.length,1);
+      const movedNewer=await again.dispatch('trash-favorites',{ids:newer.ids});
+      await again.dispatch('restore-mods',{trashIds},approval);
+      assert.deepEqual(again.settings.favoriteCollections.find(c=>c.id===group.id).modIds,[id]);
+      assert.deepEqual((await again.dispatch('mod-sounds',{id:'fav-asset:'+id})).map(s=>s.path),[resource]);
+      assert.equal((await again.dispatch('mod-sound',{id:'fav-asset:'+id,path:resource})).base64,audio.toString('base64'));
+      const last=await again.dispatch('trash-favorites',{ids:[id]});
+      await again.dispatch('purge-trash',{trashIds:[last.trashed[0].trashId]},approval);
+      await assert.rejects(fs.stat(owned),{code:'ENOENT'});
+      assert.deepEqual((await again.dispatch('snapshot')).trash.map(t=>t.trashId),[movedNewer.trashed[0].trashId]);
+      assert.deepEqual(await fs.readFile(file),bytes);assert.deepEqual(again.settings.profiles,profiles);
+    }finally{await again.close();}
+  }finally{await s.close();}
 });

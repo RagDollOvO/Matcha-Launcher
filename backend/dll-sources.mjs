@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import { PlatformError } from './core.mjs';
+import { PlatformError } from './errors.mjs';
 import { directory, safeResourcePath, writeJson } from './mods/files.mjs';
 import { steamAssetUrl } from './mods/workshop.mjs';
 import { descriptionText } from './mods/workshop-browse.mjs';

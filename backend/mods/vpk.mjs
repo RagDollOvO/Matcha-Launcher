@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
-import { PlatformError, parseKeyValues } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
+import { parseKeyValues } from '../keyvalues.mjs';
 
 const fail = (message) => { throw new PlatformError('invalid_vpk', message); };
 export async function regular(file) {
@@ -40,7 +41,7 @@ export function textContent(b) {
 }
 
 /** Read only the directory tree and addoninfo. Never extract or execute content. */
-export async function readVpk(file, { includeEntries = false } = {}) {
+export async function readVpk(file, { includeEntries = false, includeResourceSignatures = false } = {}) {
   file = path.resolve(file);
   const first = await regular(file), header = await readAt(file, 0, 12);
   if (header.readUInt32LE(0) !== 0x55aa1234) fail('文件缺少 VPK 标识。');
@@ -108,7 +109,13 @@ export async function readVpk(file, { includeEntries = false } = {}) {
   const image = entries.get('addonimage.jpg');
   const thumbnail = image ? { ...image, preload: Buffer.from(image.preload) } : null;
   const resources = [...entries.keys()].filter(p => !/^addoninfo\.txt$|^addonimage\.(jpg|jpeg|png|vtf|vmt)$/i.test(p));
+  // The VPK directory records the full resource size (including preload) and CRC32.
+  const resourceSignatures = includeResourceSignatures ? new Map(resources.map(p => {
+    const { size, crc } = entries.get(p);
+    return [p, size + ':' + crc];
+  })) : undefined;
   return { file, version, files, resources, thumbnail, ...(includeEntries ? { entries } : {}),
+    ...(resourceSignatures && { resourceSignatures }),
     soundCount: resources.filter(p => /^sound\/.+\.(wav|mp3)$/.test(p)).length,
     fileCount: entries.size, sizeMB: files.reduce((n, f) => n + f.size, 0) / 1048576,
     dirs: [...new Set(resources.map(p => p.includes('/') ? p.split('/').slice(0, -1).slice(0, 2).join('/') : '(根目录)'))].sort(),

@@ -169,26 +169,66 @@ test('address validation, persisted favorites, deduplicated query, stale removal
 
 test('server bridge queries do not hold the core queue; unavailable servers stop before Mod writes or launch', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'flare-server-bridge-'));
-  let finish;
-  const service = new DesktopService({ dataDir, core: { discover: async () => ({ games: [], warnings: [] }) },
-    queryServer: async () => { await new Promise(r => finish = r); return { ...emptyObservation(), status: 'online', vac: true }; } });
+  const coreWrite = Promise.withResolvers(), probe = Promise.withResolvers();
+  const peer = { name: '好友', ip: '93.184.216.34', port: 27016, query: 27015, lobby: '0' };
+  const observed = { ...emptyObservation(), status: 'online', vac: true, connectAddr: 'localhost:27015' };
+  const launchSteps = [], events = [];
+  let querying = false, pending;
+  const service = new DesktopService({ dataDir,
+    core: { discover: async () => ({ games: [], warnings: [] }),
+      launch: async request => { launchSteps.push(request); return { status: 'requested', pid: 42 }; } },
+    readFriends: async () => [peer],
+    queryServer: async () => { querying = true; await probe.promise; return observed; } });
+  service.on('event', ({ type }) => { if (type === 'servers_changed') events.push(type); });
   try {
     const [server] = await service.dispatch('add-server', { address: 'localhost' });
-    const pending = service.dispatch('query-servers', { ids: [server.id] });
+    void service.serial(() => coreWrite.promise);
+    pending = service.dispatch('query-servers', { ids: [server.id] });
+    await new Promise(r => setImmediate(r));
+    assert.ok(querying, 'probe must start while a core write is pending');
+    coreWrite.resolve();
     const snapshot = await service.dispatch('snapshot');
     assert.equal(snapshot.capabilities.servers, true); assert.equal(snapshot.servers[0].status, 'querying');
-    finish(); await pending;
+    probe.resolve(); await pending;
+
+    const beforeFriend = events.length;
+    const [friend] = await service.dispatch('friend-servers');
+    assert.equal((await service.dispatch('friend-server-info', { id: friend.id })).connectAddr, peer.ip + ':27016');
+    assert.equal(events.length, beforeFriend);
+    const [, savedFriend] = await service.dispatch('favorite-friend-server', { id: friend.id });
+    assert.equal(savedFriend.favorite, true);
+    assert.equal(savedFriend.gamePort, 27016);
+    assert.equal(events.length, beforeFriend + 1);
+    assert.deepEqual((await service.dispatch('server-state')).servers, await service.dispatch('list-servers'));
+
     await assert.rejects(service.dispatch('connect-server', { id: server.id }), { code: 'confirmation_required' });
     service.settings.gameRoot = 'D:\\offline-only';
-    service.applyModProfile = async () => assert.fail('Unavailable server must stop before Mod writes');
+    service.applyGameSettings = async (...args) => { launchSteps.push(['settings', ...args]); };
+    service.applyModProfile = async (...args) => { launchSteps.push(['profile', ...args]); };
     service.serverManager.probe = async () => ({ ...emptyObservation(), status: 'offline' });
     await assert.rejects(service.dispatch('connect-server', { id: server.id, mode: 'modded' }, approval), { code: 'server_unavailable' });
-  } finally { await service.close(); }
+    assert.deepEqual(launchSteps, []);
+
+    const gameRoot = service.settings.gameRoot, connect = 'localhost:27015';
+    service.serverManager.probe = async () => observed;
+    assert.deepEqual(await service.dispatch('connect-server', { id: server.id, mode: 'clean' }, approval), { status: 'requested', pid: 42 });
+    assert.deepEqual(launchSteps.splice(0), [{ gameRoot, mode: 'clean', connect, confirmation: approval }]);
+    await service.dispatch('connect-server', { id: server.id, mode: 'modded' }, approval);
+    assert.deepEqual(launchSteps, [
+      ['settings', gameRoot, true],
+      ['profile', 'default', approval],
+      { gameRoot, mode: 'modded', connect, gameSettings: service.gameSettings(), confirmation: approval },
+    ]);
+  } finally {
+    coreWrite.resolve(); probe.resolve();
+    await pending?.catch(() => {});
+    await service.close();
+  }
 });
 
 test('Steam argument capture preserves default launch and safely appends connect, no game process starts', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flare-connect-launch-'));
-  const fixture = await createFixture(root), steam = path.join(root, 'Steam');
+  const fixture = await createFixture(root, { l4n: true }), steam = path.join(root, 'Steam');
   const gameRoot = path.join(steam, 'steamapps/common/Left 4 Dead 2');
   await fs.mkdir(path.dirname(gameRoot), { recursive: true }); await fs.rename(fixture.gameRoot, gameRoot);
   const steamExe = path.join(steam, 'steam.exe'); await fs.writeFile(steamExe, 'fixture only');

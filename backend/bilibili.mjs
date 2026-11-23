@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { decodeHTML } from 'entities';
-import { PlatformError } from './core.mjs';
+import { PlatformError } from './errors.mjs';
 import { createWorkshopNetwork as createNetwork } from './mods/workshop-network.mjs';
 
 const API = 'https://api.bilibili.com';

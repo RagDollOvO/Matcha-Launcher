@@ -12,6 +12,7 @@
   import Layers from '@lucide/svelte/icons/layers';
   import Inbox from '@lucide/svelte/icons/inbox';
   import FolderInput from '@lucide/svelte/icons/folder-input';
+  import Folder from '@lucide/svelte/icons/folder';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronUp from '@lucide/svelte/icons/chevron-up';
   import Check from '@lucide/svelte/icons/check';
@@ -28,6 +29,7 @@
   import { app, LOOSE, type ServerSection } from '../stores/app.svelte';
   import type { Server, ServerMode } from '../types';
   import { campaignOf } from '../maps';
+  import { coverArt } from '../servers/map-cover';
   import { askAgent } from '../plugins/intake';
 
   const ALL = 'all', FAV = 'fav';
@@ -121,6 +123,12 @@
   const meta = (s: Server) => hasData(s)
     ? [s.mode !== '未知' ? s.mode : '', s.vac === true ? 'VAC' : s.vac === false ? '非 VAC' : '', s.bots ? `${s.bots} Bot` : ''].filter(Boolean).join(' · ') || s.addr
     : s.addr;
+  /** 卡片横幅：官方图按战役号画剪影封面，三方图按地图代码散列，没查到地图时按地址 */
+  const artOf = (s: Server) => { const m = /^(c\d{1,2})m\d_/i.exec(s.map ?? ''); return coverArt(m ? m[1].toLowerCase() : s.map || s.addr); };
+  /** 延迟信号格：≤60ms 三格，≤100ms 两格，更慢一格（同 .slow 的 100ms 线） */
+  const bars = (s: Server) => (!hasData(s) || s.ping === null ? 0 : s.ping <= 60 ? 3 : s.ping <= 100 ? 2 : 1);
+  /** 座位格：常见的 4 / 8 / 12 人服一格一个座位，超过 16 人改成连续的容量条 */
+  const SEATS = 16;
   const tip = (s: Server) => [s.name, s.addr + (s.connectAddr && s.connectAddr !== s.addr ? ` → ${s.connectAddr}` : ''), s.checkedAt ? `探测于 ${new Date(s.checkedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '', s.error].filter(Boolean).join('\n');
   const listText = (name: string, list: Server[]) => `${name}\n${list.map((s, i) => `${i + 1}. ${s.name}  connect ${s.connectAddr ?? s.addr}`).join('\n')}`;
   function quickJoin(list: Server[]) {
@@ -495,44 +503,47 @@
   {@const failed = !live && s.status !== 'querying' && s.status !== 'unqueried'}
   {@const roster = live ? s.playerList : null}
   {@const block = connectBlock(s)}
+  {@const sig = bars(s)}
   <div class="card" class:off={!live} class:full={live && isFull} class:warm={live && !isFull && cap > 0 && n / cap >= 0.75} class:picked class:moving={drag?.ids.includes(s.id)} class:ins-before={ins === 'before'} class:ins-after={ins === 'after'}
        data-card={s.id} data-group={gid} role="button" tabindex="0" aria-label={`${pad(place?.index)} ${s.name}`} aria-pressed={selecting ? picked : undefined}
        onpointerdown={(e) => onPress(e, s.id)} onclick={(e) => onCardClick(e, s.id)} ondblclick={(e) => { if (!fromCardControl(e)) connect(s); }}
        onkeydown={(e) => onCardKey(e, s)} oncontextmenu={(e) => menuAt(e, serverItems(targets(s.id)))}>
-    <div class="top">
+    <div class="banner">
+      <img src={artOf(s)} alt="" draggable="false" decoding="async" />
       <button class="idx mono" class:show={selecting} class:on={picked} type="button" title={picked ? '取消选择' : '选择（Ctrl / Shift + 点击卡片也可多选）'} aria-label={picked ? `取消选择 ${s.name}` : `选择 ${s.name}`}
               data-sfx="none" onclick={(e) => { e.stopPropagation(); pick(s.id, e.shiftKey); }}>
         <span class="num">{pad(place?.index)}</span><span class="box">{#if picked}<Check size={11} strokeWidth={3} />{/if}</span>
       </button>
-      <div class="title">
-        {#if edit?.kind === 'server' && edit.id === s.id}
-          <input class="rename" bind:value={editValue} maxlength={80} placeholder="留空恢复服务器名称" onkeydown={onEditKey} onblur={commit} use:focus />
-        {:else}
-          <div class="name" title={tip(s)}>{s.name}</div>
-        {/if}
-        {#if live || s.lastSeen}
-          <span class="map" title={s.map}>
-            {#if camp}<span class="camp">{camp.name}</span>
-              <span class="chs" title={`第 ${camp.chapter} / ${camp.chapters} 章`} role="img" aria-label={`第 ${camp.chapter} 章，共 ${camp.chapters} 章`}>{#each Array(camp.chapters) as _, i (i)}<i class:on={i < camp.chapter} class:cur={i === camp.chapter - 1}></i>{/each}</span>
-            {:else if live}<span class="code mono">{s.map || '—'}</span>
-            {:else if s.lastSeen}<span class="seen">上次在线 {ago(s.lastSeen)}</span>{/if}
-          </span>
-        {/if}
-        <div class="meta">{#if s.password}<Lock size={11} /><span class="sr">需要密码 · </span>{/if}{meta(s)}</div>
-      </div>
       <button class="star" class:on={s.favorite} type="button" title={s.favorite ? '取消收藏（F）' : '收藏（F）'} aria-label={s.favorite ? `取消收藏 ${s.name}` : `收藏 ${s.name}`} aria-pressed={s.favorite}
               onclick={(e) => { e.stopPropagation(); void app.toggleFavorite(s.id); }}><Star size={13} fill={s.favorite ? 'currentColor' : 'none'} /></button>
+      <div class="map" title={s.map || undefined}>
+        {#if camp}
+          <span class="camp">{camp.name}</span>
+          <span class="chs" title={`第 ${camp.chapter} / ${camp.chapters} 章`} role="img" aria-label={`第 ${camp.chapter} 章，共 ${camp.chapters} 章`}>{#each Array(camp.chapters) as _, i (i)}<i class:on={i < camp.chapter} class:cur={i === camp.chapter - 1}></i>{/each}</span>        {:else if live}<span class="code mono">{s.map || '未知地图'}</span>
+        {:else if s.lastSeen}<span class="seen">上次在线 {ago(s.lastSeen)}</span>{/if}
+      </div>
     </div>
-    <div class="stat" title="玩家 / 上限">
-      {#if live}
-        <span class="n" class:zero={!n}>{n}</span><span class="cap">/{cap || '—'}</span>
-        <span class="state">{isFull ? '已满' : !n ? '空闲' : cap ? `余 ${cap - n} 位` : '在线'}</span>
+    <div class="body">
+      {#if edit?.kind === 'server' && edit.id === s.id}
+        <input class="rename" bind:value={editValue} maxlength={80} placeholder="留空恢复服务器名称" onkeydown={onEditKey} onblur={commit} use:focus />
       {:else}
-        <span class="n zero">—</span>
-        <span class="state" class:err={failed}>{#if s.status === 'querying'}<i class="pulse"></i>探测中…{:else}{statuses[s.status]}{/if}</span>
+        <div class="name" title={tip(s)}>{s.name}</div>
       {/if}
-    </div>
-    <div class="meter" aria-hidden="true"><i style:width={live && cap ? `${Math.min(100, (n / cap) * 100)}%` : '0%'}></i></div>
+      <div class="meta">{#if s.password}<Lock size={11} /><span class="sr">需要密码 · </span>{/if}{meta(s)}</div>
+      <div class="stat" title="玩家 / 上限">
+        {#if live}
+          <span class="n" class:zero={!n}>{n}</span><span class="cap">/{cap || '—'}</span>
+          <span class="state">{isFull ? '已满' : !n ? '空闲' : cap ? `余 ${cap - n} 位` : '在线'}</span>
+        {:else}
+          <span class="n zero">—</span>
+          <span class="state" class:err={failed}>{#if s.status === 'querying'}<i class="pulse"></i>探测中…{:else}{statuses[s.status]}{/if}</span>
+        {/if}
+      </div>
+      {#if live && cap > 0 && cap <= SEATS}
+        <div class="seats" aria-hidden="true">{#each Array(cap) as _, i (i)}<i class:on={i < n}></i>{/each}</div>
+      {:else}
+        <div class="meter" aria-hidden="true"><i style:width={live && cap ? `${Math.min(100, (n / cap) * 100)}%` : '0%'}></i></div>
+      {/if}
     {#if roster?.length}
       <details class="roster">
         <summary title="查看在线名单">
@@ -549,17 +560,18 @@
       <p class="why" title={s.error}>{s.error}</p>
     {/if}
     <div class="foot">
-      <span class="ping mono" class:slow={live && s.ping !== null && s.ping > 100} title={live && s.ping !== null ? '查询延迟' : '暂无延迟'}>
-        <i class:online={s.status === 'online'} class:busy={s.status === 'querying'}></i>{live && s.ping !== null ? `${s.ping} ms` : '—'}
+      <span class="ping mono" class:slow={sig === 1} class:busy={s.status === 'querying'} title={live && s.ping !== null ? '查询延迟' : '暂无延迟'}>
+        <span class="sig" aria-hidden="true">{#each [1, 2, 3] as b (b)}<i class:on={b <= sig}></i>{/each}</span>{live && s.ping !== null ? `${s.ping} ms` : '—'}
       </span>
       <span class="go">
         {#if copyOnly(s)}
-          <button class="btn sm tonal" type="button" title="复制到游戏控制台" onclick={(e) => { e.stopPropagation(); void app.copyServer(s); }}>复制命令</button>
+          <button class="btn sm tonal" type="button" title="复制到游戏控制台" onclick={(e) => { e.stopPropagation(); void app.copyServer(s); }}><Copy size={12} />复制命令</button>
         {:else}
-          <button class="btn sm connect" type="button" disabled={!!block} title={block || (isFull ? '已满 · 仍然连接' : '启动并连接（双击卡片）')} onclick={(e) => { e.stopPropagation(); connect(s); }}>连接</button>
+          <button class="btn sm connect" type="button" disabled={!!block} title={block || (isFull ? '已满 · 仍然连接' : '启动并连接（双击卡片）')} onclick={(e) => { e.stopPropagation(); connect(s); }}><Play size={11} fill="currentColor" />连接</button>
         {/if}
         <button class="icon-btn" type="button" title="更多" aria-label={`${s.name} 的更多操作`} onclick={(e) => { e.stopPropagation(); menuBelow(e.currentTarget, serverItems(targets(s.id))); }}><Ellipsis size={14} /></button>
       </span>
+    </div>
     </div>
   </div>
 {/snippet}
@@ -590,12 +602,11 @@
             <div class="item" class:on={view === sec.id} class:target={!!drag && canDropGroup(sec.id)} class:drop={drag?.over?.kind === 'group' && drag.over.gid === sec.id}
                  data-drop={'g:' + sec.id} role="button" tabindex="0" title={`${st.online} 在线 / ${st.total} 台 · ${st.players} 名玩家`}
                  onclick={() => go(sec.id)} onkeydown={(e) => e.key === 'Enter' && go(sec.id)} oncontextmenu={(e) => menuAt(e, groupItems(sec.id, 'side'))}>
+              <span class="lic group-icon"><Folder size={14} /></span>
               <span class="nm">{sec.name}</span>
-              <span class="ops">
-                <button class="icon-btn" title="重命名" aria-label={`重命名 ${sec.name}`} onclick={(e) => { e.stopPropagation(); startEdit({ kind: 'group', id: sec.id }, sec.name); }}><Pencil size={12} /></button>
-                <button class="icon-btn" title="删除合集（服务器移到未分组）" aria-label={`删除合集 ${sec.name}`} onclick={(e) => { e.stopPropagation(); app.deleteServerGroup(sec.id); }}><Trash2 size={12} /></button>
-              </span>
               <span class="mono n">{#if st.online}<i class="live"></i>{/if}{sec.servers.length}</span>
+              <button class="icon-btn group-menu" type="button" title="合集操作" aria-label={`${sec.name} 的合集操作`}
+                      onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }} onclick={(e) => { e.stopPropagation(); menuBelow(e.currentTarget, groupItems(sec.id, 'side')); }}><Ellipsis size={15} /></button>
             </div>
           {/if}
         {/if}
@@ -624,7 +635,7 @@
             <button class="icon-btn" title="合集操作" aria-label="合集操作" onclick={(e) => menuBelow(e.currentTarget, groupItems(group.id, 'main'))}><Ellipsis size={15} /></button>
           {/if}
         </div>
-        <div class="sub mono">{totals.total} 台 · {totals.online} 在线 · {totals.players} 名玩家</div>
+        <div class="sub"><span>{totals.total} 台</span><span><i class="live" class:offline={!totals.online}></i>{totals.online} 在线</span><span>{totals.players} 名玩家</span></div>
       </div>
       <div class="tools">
         {#if app.serverLayoutConflict}
@@ -709,7 +720,7 @@
                 <button class="fold" type="button" aria-expanded={!folded} aria-label={folded ? `展开 ${sec.name}` : `折叠 ${sec.name}`}
                         onclick={() => (folded ? collapsed.delete(sec.id) : collapsed.add(sec.id))}><span class:closed={folded}><ChevronDown size={14} /></span></button>
                 <button class="sec-name" type="button" title="只看这个合集" onclick={() => go(sec.id)}>{sec.name}</button>
-                <span class="sec-stat mono">{st.online}/{st.total} 在线 · {st.players} 人{#if filtering && sec.shown.length !== sec.servers.length} · 显示 {sec.shown.length}{/if}</span>
+                <span class="sec-stat"><i class="live" class:offline={!st.online}></i>{st.online}/{st.total} 在线 · {st.players} 人{#if filtering && sec.shown.length !== sec.servers.length} · 显示 {sec.shown.length}{/if}</span>
                 <span class="grow"></span>
                 <span class="sec-ops">
                   <button class="icon-btn" title="快速加入" aria-label={`快速加入 ${sec.name}`} disabled={!app.bestServer(sec.servers)} onclick={() => quickJoin(sec.servers)}><Zap size={13} /></button>
@@ -788,11 +799,10 @@
   .item .lic { display: grid; place-items: center; width: 16px; flex: none; color: var(--fg-3); }
   .item.on .lic { color: inherit; }
   .item.loose { color: var(--fg-3); }
-  .item .ops { display: none; flex: none; }
-  .item .ops .icon-btn { width: 22px; height: 22px; }
-  .item:hover .ops { display: flex; }
-  .item:has(.ops):hover .n { display: none; }
-  .live { width: 5px; height: 5px; border-radius: 50%; background: var(--md-primary); }
+  .item .group-icon { color: var(--md-primary); }
+  .group-menu { flex: none; width: 23px; height: 24px; margin-right: -4px; }
+  .live { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--md-primary); }
+  .live.offline { background: var(--fg-4); }
   .inline { height: 32px; margin: 0; padding: 0 8px; font-size: 13px; }
 
   /* ---------- 主区 ---------- */
@@ -800,14 +810,16 @@
   header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding: 22px 24px 16px; }
   .ttl { min-width: 0; }
   .name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  h2 { margin: 0; font-size: 20px; font-weight: 700; line-height: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  h2 { margin: 0; font-size: 26px; font-weight: 650; line-height: 32px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .title-edit { font-size: 18px; height: 34px; width: min(320px, 100%); }
-  .sub { margin-top: 4px; font-size: 12px; color: var(--fg-3); }
+  .sub { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; font-size: 13px; color: var(--fg-2); }
+  .sub span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .sub span + span { border-left: 1px solid var(--line-strong); padding-left: 10px; }
   .tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   /* 顶部按钮：填充胶囊；「快速加入」是主操作，用主色 */
   .tools > .btn { height: 32px; padding: 0 14px; border-radius: 12px; border-color: transparent; background: color-mix(in srgb, var(--md-surface-container-high) 80%, transparent); }
   .tools > .btn:hover:not(:disabled) { border-color: transparent; background: var(--md-surface-container-highest); }
-  .tools > .btn.primary { background: var(--md-primary); color: var(--md-on-primary); box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--md-primary) 90%, transparent); }
+  .tools > .btn.primary { background: var(--md-primary); color: var(--md-on-primary); }
   .tools > .btn.primary:hover:not(:disabled) { background: var(--md-primary); filter: brightness(1.07); }
   .tools > .add-toggle { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
   .tools > .add-toggle:hover:not(:disabled), .tools > .add-toggle.on { background: color-mix(in srgb, var(--md-secondary-container) 88%, var(--md-on-secondary-container)); }
@@ -855,83 +867,111 @@
   .auto { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; color: var(--fg-2); white-space: nowrap; }
 
   .list { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--line-soft); padding-bottom: 24px; }
-  /* 合集标题：吸顶时是一枚浮在卡片上的胶囊，不再是一整条实色带 */
   .sec-head {
-    position: sticky; top: 8px; z-index: 2; display: flex; align-items: center; gap: 6px; height: 38px; margin: 10px 16px 0; padding: 0 10px 0 8px;
-    border: 1px solid var(--island-line); border-radius: 12px; background: color-mix(in srgb, var(--md-surface-container) 90%, transparent);
-    box-shadow: 0 8px 18px -14px rgb(0 0 0 / .45); transition: background var(--dur), box-shadow var(--dur);
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 7px; min-height: 39px; margin: 9px 24px 0; padding: 0 8px;
+    border-bottom: 1px solid var(--line); background: var(--md-surface-container); border-radius: 8px 8px 0 0;
   }
-  .sec-head.drop { background: var(--md-secondary-container); box-shadow: 0 0 0 1px var(--md-primary); }
+  .sec-head.drop { background: var(--md-secondary-container); outline: 1px solid var(--md-primary); }
   .sec-ops .icon-btn:hover { background: var(--hover); }
   .fold { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: var(--fg-3); }
   .fold:hover { color: var(--fg); background: var(--hover); }
   .fold span { display: grid; transition: transform var(--dur); }
   .fold span.closed { transform: rotate(-90deg); }
-  .sec-name { font-size: 13px; font-weight: 500; color: var(--fg); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sec-name { font-size: 14px; font-weight: 650; color: var(--fg); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sec-name:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--fg-4); }
-  .sec-stat { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
-  .sec-ops { display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur); }
-  .sec-head:hover .sec-ops, .sec-ops:focus-within { opacity: 1; }
+  .sec-stat { display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-left: 5px; font-size: 12px; color: var(--fg-2); white-space: nowrap; }
+  .sec-ops { display: flex; gap: 2px; }
   .sec-ops .icon-btn { width: 24px; height: 24px; }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; padding: 14px 24px 20px; border-radius: 16px; transition: background var(--dur); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(244px, 1fr)); gap: 14px; padding: 14px 24px 20px; border-radius: 16px; transition: background var(--dur); }
   .grid.zone-drop { background: color-mix(in srgb, var(--md-secondary-container) 40%, transparent); box-shadow: inset 0 0 0 1px var(--md-primary); }
   .zone-empty { grid-column: 1 / -1; padding: 22px 16px; border: 1.5px dashed var(--line-strong); border-radius: 14px; color: var(--fg-3); font-size: 12px; text-align: center; }
   .zone-empty.pad { margin: 24px; }
 
   /* ---------- 卡片 ---------- */
-  /* 卡片：内容岛上的小浮岛（同 Mod / 发现页），悬停微微抬起；原来悬停写死成近黑 #121212，浅色主题下整张卡会变黑 */
+  /* 上面一条地图封面横幅（战役剪影），下面是名字、人数和操作。
+     卡片本身不裁切：横幅自己圆角裁切，拖放插入线画在卡片外侧。选中、聚焦用外圈描边，不占布局。 */
   .card {
-    position: relative; display: flex; flex-direction: column; min-width: 0; padding: 12px; outline: none; cursor: default;
-    background: color-mix(in srgb, var(--md-surface-bright) 62%, transparent); border: 1px solid var(--island-line); border-radius: 16px;
-    transition: border-color var(--dur), background var(--dur), opacity var(--dur), transform 240ms var(--ease-out), box-shadow 240ms var(--ease-out);
+    position: relative; display: flex; flex-direction: column; min-width: 0; outline: none; cursor: default;
+    background: var(--md-surface-container-high); border-radius: 14px;
+    transition: background var(--dur), opacity var(--dur), box-shadow var(--dur);
   }
   @media (hover: hover) and (pointer: fine) {
-    .card:hover { background: color-mix(in srgb, var(--md-surface-bright) 88%, transparent); transform: translateY(-2px); box-shadow: 0 14px 28px -18px rgb(0 0 0 / .45); }
+    .card:not(.picked):hover { background: var(--md-surface-container-highest); }
+    .card:hover .banner img { transform: scale(1.06); }
   }
-  @media (prefers-reduced-motion: reduce) { .card:hover { transform: none; } }
-  .card.off { background: color-mix(in srgb, var(--md-surface-bright) 40%, transparent); }
+  .card.off { background: var(--md-surface-container); }
   .card:focus-visible { box-shadow: 0 0 0 2px var(--md-primary); }
-  .card.picked { border-color: var(--md-primary); box-shadow: 0 0 0 1px var(--md-primary); background: color-mix(in srgb, var(--md-secondary-container) 40%, transparent); }
+  .card.picked { background: var(--md-secondary-container); box-shadow: 0 0 0 2px var(--md-primary); }
   .card.moving { opacity: .35; }
   .card.ins-before::before, .card.ins-after::after { content: ''; position: absolute; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--md-primary); }
-  .card.ins-before::before { left: -7px; }
-  .card.ins-after::after { right: -7px; }
+  .card.ins-before::before { left: -9px; }
+  .card.ins-after::after { right: -9px; }
 
-  .top { display: flex; align-items: flex-start; gap: 8px; }
-  .idx { position: relative; flex: none; display: flex; align-items: center; width: 24px; height: 24px; font-family: var(--font-display); font-weight: 500; font-size: 18px; line-height: 1; letter-spacing: .02em; color: var(--fg-3); font-variant-numeric: tabular-nums; }
-  .card:hover .idx { color: var(--fg-2); }
-  .card.off .idx { color: var(--fg-4); }
-  .idx .box { display: none; place-items: center; width: 16px; height: 16px; margin-left: 2px; border: 1.5px solid var(--fg-3); border-radius: 5px; color: var(--md-on-primary); }
+  /* 横幅：图偏下取景（剪影在下半）。只在底部压一层暗角给地图名；
+     编号、收藏平时只是带阴影的白字和图标，悬停才出底板，尽量不挡图 */
+  .banner { position: relative; flex: none; height: 96px; border-radius: 14px 14px 0 0; overflow: hidden; background: #0b0d12; isolation: isolate; }
+  .banner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 70%; transition: transform 600ms var(--ease-out), filter var(--dur); }
+  .banner::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent 50%, rgb(0 0 0 / .62) 100%); }
+  .card.off .banner img { filter: grayscale(1) brightness(.7); }
+  .idx, .star, .map { z-index: 1; }
+
+  .idx {
+    position: absolute; top: 7px; left: 7px; display: flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding: 0 6px;
+    border-radius: 8px; color: rgb(255 255 255 / .9); font-size: 11.5px; letter-spacing: .04em; font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 3px rgb(0 0 0 / .8); transition: background var(--dur);
+  }
+  .idx:hover, .idx.show { background: rgb(0 0 0 / .45); }
+  .idx .box { display: none; place-items: center; width: 14px; height: 14px; border: 1.5px solid rgb(255 255 255 / .85); border-radius: 4px; }
   .idx:hover .num, .idx.show .num { display: none; }
   .idx:hover .box, .idx.show .box { display: grid; }
-  .idx.on .box { background: var(--md-primary); border-color: var(--md-primary); }
-  .title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 2px; }
-  .name { font-size: 15px; font-weight: 600; line-height: 20px; color: var(--fg); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
-  .card.off .name { color: var(--fg-2); }
-  .rename { width: 100%; height: 28px; padding: 0 6px; font-size: 14px; }
-  .star { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; color: var(--fg-3); opacity: 0; transition: opacity var(--dur), color var(--dur), background var(--dur); }
+  .idx.on { background: var(--md-primary); color: var(--md-on-primary); }
+  .idx.on .box { border-color: transparent; }
+  .star {
+    position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px;
+    color: rgb(255 255 255 / .92); filter: drop-shadow(0 1px 2px rgb(0 0 0 / .75)); opacity: 0; transition: opacity var(--dur), color var(--dur), background var(--dur);
+  }
   .card:hover .star, .star:focus-visible, .star.on { opacity: 1; }
-  .star:hover { color: var(--fg); background: var(--hover); }
-  .star.on { color: var(--md-primary); }
-  .meta { font-size: 12px; line-height: 16px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .star:hover { background: rgb(0 0 0 / .45); }
+  /* 暗角上的收藏星：主色往白里调，深浅主题下都够亮 */
+  .star.on { color: color-mix(in oklab, var(--md-primary) 55%, white); }
+
+  .map { position: absolute; left: 10px; right: 10px; bottom: 7px; display: flex; align-items: center; gap: 8px; min-width: 0; height: 18px; color: #fff; font-size: 12.5px; white-space: nowrap; text-shadow: 0 1px 3px rgb(0 0 0 / .6); }
+  .camp { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* 章节进度：每章一小段，已过的半亮，当前章全亮 */
+  .chs { display: inline-flex; align-items: center; gap: 3px; flex: none; margin-left: auto; }
+  .chs i { width: 10px; height: 3px; border-radius: 2px; background: rgb(255 255 255 / .28); }
+  .chs i.on { background: rgb(255 255 255 / .6); }
+  .chs i.cur { background: #fff; box-shadow: 0 0 6px rgb(255 255 255 / .55); }
+  .code { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: rgb(255 255 255 / .92); }
+  .seen { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: rgb(255 255 255 / .72); }
+
+  .body { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 10px 12px 10px; }
+  /* 名字固定占两行，同一排卡片的人数、座位格能对齐 */
+  .name { min-height: 40px; font-size: 14.5px; font-weight: 600; line-height: 20px; color: var(--fg); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .card.off .name { color: var(--fg-2); }
+  .rename { width: 100%; height: 28px; padding: 0 6px; font-size: 14px; margin-bottom: 12px; }
+  .meta { margin-top: 3px; font-size: 12px; line-height: 16px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .meta :global(svg) { display: inline-block; vertical-align: -1px; margin-right: 5px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  /* 人数、容量条和名单预览是一组；只有收到名单时才显示展开入口。 */
-  .stat { display: flex; align-items: baseline; gap: 3px; margin-top: 10px; }
-  .stat .n { font-family: var(--font-display); font-weight: 500; font-size: 28px; line-height: 24px; color: var(--fg); font-variant-numeric: tabular-nums; }
+  /* 人数、座位格和名单预览是一组；只有收到名单时才显示展开入口。 */
+  .stat { display: flex; align-items: baseline; gap: 2px; margin-top: 12px; }
+  .stat .n { font-family: var(--font-display); font-weight: 500; font-size: 22px; line-height: 22px; color: var(--fg); font-variant-numeric: tabular-nums; }
   .stat .n.zero { color: var(--fg-4); }
-  .stat .cap { font-family: var(--font-display); font-weight: 500; font-size: 15px; line-height: 1; color: var(--fg-3); }
+  .stat .cap { font-family: var(--font-display); font-weight: 500; font-size: 13px; line-height: 1; color: var(--fg-3); }
   .stat .state { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-3); white-space: nowrap; }
   .stat .state.err { color: var(--danger); }
-  .card.full .stat .state { color: var(--danger); }
-  /* 容量条：平时主色，快满（≥ 75%）第三色，满了错误色 */
-  .meter { height: 4px; margin-top: 6px; border-radius: 2px; background: color-mix(in srgb, var(--md-on-surface) 10%, transparent); overflow: hidden; }
-  .meter i { display: block; height: 100%; border-radius: 2px; background: var(--md-primary); transition: width .4s ease, background var(--dur); }
-  .card.warm .meter i { background: var(--md-tertiary); }
+  /* 座位格 / 容量条：平时主色，快满（≥ 75%）第三色，满了错误色 */
+  .seats { display: flex; gap: 3px; height: 5px; margin-top: 7px; }
+  .seats i { flex: 1; border-radius: 3px; background: color-mix(in srgb, var(--md-on-surface) 11%, transparent); transition: background var(--dur); }
+  .seats i.on { background: var(--md-primary); }
+  .meter { height: 5px; margin-top: 7px; border-radius: 3px; background: color-mix(in srgb, var(--md-on-surface) 11%, transparent); overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px; background: var(--md-primary); transition: width .4s ease, background var(--dur); }
+  .card.warm .meter i, .card.warm .seats i.on { background: var(--md-tertiary); }
   .card.warm .stat .state { color: var(--md-tertiary); }
-  .card.full .meter i { background: var(--danger); }
+  .card.full .meter i, .card.full .seats i.on { background: var(--danger); }
+  .card.full .stat .state { color: var(--danger); }
   .roster { margin-top: 6px; min-width: 0; }
   .roster summary { display: flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 3px; border-radius: var(--r-sm); list-style: none; color: var(--fg-2); font-size: 12px; cursor: pointer; }
   .roster summary::-webkit-details-marker { display: none; }
@@ -949,25 +989,24 @@
   .pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-2); }
   .pt { flex: none; font-size: 11px; color: var(--fg-4); }
 
-  .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px; margin-top: auto; padding-top: 8px; box-sizing: content-box; }
-  .map { min-width: 0; display: flex; align-items: center; gap: 7px; min-height: 16px; white-space: nowrap; overflow: hidden; }
-  .camp { font-size: 12px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; }
-  .chs { display: inline-flex; align-items: center; gap: 3px; flex: none; }
-  .chs i { width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--md-on-surface) 16%, transparent); }
-  .chs i.on { background: color-mix(in srgb, var(--md-primary) 50%, transparent); }
-  .chs i.cur { background: var(--md-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary) 22%, transparent); }
-  .code { font-size: 12px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; }
-  .seen { font-size: 12px; color: var(--fg-4); overflow: hidden; text-overflow: ellipsis; }
-  .ping { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-3); }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px; margin-top: auto; padding-top: 10px; box-sizing: content-box; }
+  /* 延迟：三格信号，慢了变错误色 */
+  .ping { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-3); }
+  .sig { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; }
+  .sig i { width: 3px; border-radius: 1px; background: color-mix(in srgb, var(--md-on-surface) 18%, transparent); }
+  .sig i:nth-child(1) { height: 4px; }
+  .sig i:nth-child(2) { height: 7px; }
+  .sig i:nth-child(3) { height: 10px; }
+  .sig i.on { background: var(--md-primary); }
   .ping.slow { color: var(--danger); }
-  .ping i { width: 5px; height: 5px; border-radius: 50%; background: var(--fg-4); }
-  .ping i.online { background: var(--md-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary) 22%, transparent); }
-  .ping i.busy { animation: pulse 1s ease-in-out infinite alternate; }
+  .ping.slow .sig i.on { background: var(--danger); }
+  .ping.busy .sig { animation: pulse 1s ease-in-out infinite alternate; }
   .go { display: inline-flex; flex: none; align-items: center; gap: 2px; }
-  .go .icon-btn { width: 24px; height: 24px; }
-  .go .btn { border-radius: 10px; }
+  .go .icon-btn { width: 26px; height: 26px; }
+  .go .btn { gap: 5px; height: 26px; padding: 0 11px; border-radius: 10px; }
   .go .connect { background: var(--md-secondary-container); border-color: transparent; color: var(--md-on-secondary-container); }
   .go .connect:hover:not(:disabled), .go .connect:focus-visible { background: var(--md-primary); color: var(--md-on-primary); }
+  @media (prefers-reduced-motion: reduce) { .banner img { transition: none; } .card:hover .banner img { transform: none; } }
 
   /* ---------- 底栏 ---------- */
   footer { padding: 10px 24px; min-height: 42px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 18px; font-size: 12px; color: var(--fg-3); border-top: 1px solid var(--line-soft); }

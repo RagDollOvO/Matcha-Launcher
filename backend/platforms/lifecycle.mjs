@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { inspectPe } from '../core.mjs';
+import { inspectPe } from '../file-inspection.mjs';
 import { PlatformReleases, digest } from './releases.mjs';
 import { PlatformTransactions, approved, sameRoot, gameFile } from './transactions.mjs';
 import { fail, platformPath } from './files.mjs';

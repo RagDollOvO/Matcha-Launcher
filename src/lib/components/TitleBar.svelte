@@ -1,7 +1,8 @@
 <script lang="ts">
   // 顶栏 = 标题栏 + 主导航（参考 PCL：导航直接放在标题栏里）。
   // 左：标志 + 一组导航胶囊；中间空白可拖动窗口；右：助手、设置、音效、窗口按钮。
-  import { desktop, windowAction } from '../api/bridge';
+  import { onMount } from 'svelte';
+  import { desktop, errorText, onFileDrop, windowAction } from '../api/bridge';
   import Minus from '@lucide/svelte/icons/minus';
   import Square from '@lucide/svelte/icons/square';
   import X from '@lucide/svelte/icons/x';
@@ -24,6 +25,18 @@
   import { reduceMotion } from '../motion';
   import { sfx } from '../sound/sfx.svelte';
   import type { Route } from '../types';
+
+  let logo: HTMLButtonElement;
+  let vpkOver = $state(false);
+  onMount(() => {
+    if (!desktop) return;
+    const listener = onFileDrop(event => {
+      vpkOver = event.type === 'enter' || event.type === 'over';
+      if (event.type === 'drop') void app.vpkDrop(event.paths);
+    }, () => logo);
+    void listener.catch(e => app.toast(errorText(e)));
+    return () => { void listener.then(unlisten => unlisten(), () => {}); };
+  });
 
   let soundOpen = $state(false);
   const s = sfx.settings;
@@ -67,7 +80,7 @@
 <!-- Tauri 无边框窗口：data-tauri-drag-region 让空白处可以拖动窗口 -->
 <header class:photo={app.route === 'home' && !!theme.wallpaper} data-tauri-drag-region>
   <div class="side left" data-tauri-drag-region>
-  <button class="logo" title="Matcha · 主页" aria-label="Matcha 主页" data-sfx="tab" onclick={() => (app.route = 'home')}>
+  <button bind:this={logo} class="logo" class:vpk-over={vpkOver} title={desktop ? 'Matcha · 主页\n拖入 VPK 解包，拖入素材文件夹打包' : 'Matcha · 主页'} aria-label="Matcha 主页" data-sfx="tab" onclick={() => (app.route = 'home')}>
     <img src="/matcha.png" alt="" width="32" height="32" draggable="false" />
   </button>
   <span class="word" data-tauri-drag-region>Matcha</span>
@@ -152,9 +165,10 @@
   .side.right { justify-content: flex-end; gap: 6px; }
   .word { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; color: var(--bar-ink); white-space: nowrap; text-shadow: 0 1px 3px var(--bar-halo); }
 
-  .logo { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 11px; transition: transform 240ms var(--ease-out); }
+  .logo { position: relative; width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 11px; transition: transform 240ms var(--ease-out); }
   .logo img { width: 30px; height: 30px; filter: drop-shadow(0 4px 10px rgb(0 0 0 / .22)); }
   .logo:hover { transform: rotate(-6deg) scale(1.05); }
+  .logo.vpk-over::after { content: ''; position: absolute; inset: auto 1px -2px; height: 3px; border-radius: 45% 70% 40% 60%; background: var(--md-primary); transform: rotate(-4deg); }
 
   /* 导航：一条浮起来的胶囊，选中项是 M3 的色块 */
   .tabs {
@@ -206,6 +220,14 @@
   .tb:hover :global(svg), .tb.on :global(svg), .win button:hover :global(svg) { filter: none; }
   /* 关闭沿用 Windows 的红色，用户一眼就认得 */
   .win .close:hover { background: #c42b1c; color: #fff; }
+
+  /* 窗口窄（最小 1080）时正中放不下导航：左右两栏按内容取宽，导航在剩下的空间里居中，不压到右侧工具；
+     游戏运行中的胶囊出现时，再把 Matcha 字样让出来 */
+  @media (max-width: 1240px) {
+    header { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .tabs { justify-self: center; }
+    header:has(.run) .word { display: none; }
+  }
 
   @media (prefers-reduced-motion: reduce) { .ring .fill.indet, .live { animation: none; } }
 </style>

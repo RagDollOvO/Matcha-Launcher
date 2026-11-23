@@ -10,7 +10,7 @@ DXVK 只读检测两个游戏实际使用的文件：根目录 `d3d9.dll`（默�
 
 需要安装 L4N 时，先确认来源和下载大小，再确认对游戏目录的文件变更。已有独立安装的 L4N 沿用原入口。
 
-- **本地 DLL 接入**：标准 Matcha SDK ZIP 可直接校验导入。普通 DLL、非标准包或文件缺失时，由 Agent 在暂存区核对、整理，并给玩家确认最终清单；原始文件保留。导入后先保持停用，由玩家选择启用。普通 DLL 整体加载；SDK 模组可注册自己的游戏内控件与动作。后端与 Agent 工具已就绪，前端对接见 [来源接入交接](../dll-source-handoff.md)。
+- **本地 DLL 接入**：标准 Matcha SDK ZIP 可直接校验导入。普通 DLL、非标准包或文件缺失时，由 Agent 在暂存区核对、整理，并给玩家确认最终清单；原始文件保留。导入后先保持停用，由玩家选择启用。普通 DLL 整体加载；SDK 模组可注册自己的游戏内控件与动作。
 - **RagDoll 自制模组**：物资雷达继续使用 Matcha API。游戏里按 **Ctrl + F7 → 物资雷达** 调整，布局与 INI 数据沿用。
 - **L4N**：在「L4N · 特殊整包」启用。Matcha 备份并切换官方 `left4dead2.exe`、`bin/left4neko.dll` 及 Neko 着色器入口；停用时还原这些入口，保留个人设置和素材。进入地图后用 `l4n_menu` 打开 L4N 菜单。
 
@@ -25,7 +25,7 @@ Matcha 保留这条 L4N 整包加载链；自己的 DLL 由 L4N 子插件接到 
 ### 外来 DLL 按宿主接入
 
 - **Matcha SDK 模组**：由自有 Runtime 调用 `L4P_GetPluginApi`，按包声明管理依赖和游戏内设置。
-- **L4N SDK 模组**：由 L4N 调用 `GetL4NPluginInstance` 并提供游戏、渲染和菜单回调，启用时保留在 `bin/neko/plugins/`。迁入 Matcha SDK 需作者适配。Matcha 后端已提供子插件扫描、默认停用导入、独立 DLL 开关及中断恢复；停用文件保存在游戏根目录 `.matcha-l4n-plugins/disabled/`，个人配置保持原位。前端对接见 [子插件与状态接口](../dll-runtime-handoff.md)。
+- **L4N SDK 模组**：由 L4N 调用 `GetL4NPluginInstance` 并提供游戏、渲染和菜单回调，启用时保留在 `bin/neko/plugins/`。迁入 Matcha SDK 需作者适配。Matcha 后端已提供子插件扫描、默认停用导入、独立 DLL 开关及中断恢复；停用文件保存在游戏根目录 `.matcha-l4n-plugins/disabled/`，个人配置保持原位。
 - **普通独立 DLL**：按 `loadKind: "library"` 整体加载。需满足 x86 位数、依赖和作者要求的初始化方式；专用宿主或代理 DLL 按具体加载契约适配。
 
 闭源 DLL 在加载入口受管理时，同样可控制下次启动加载或跳过。内部功能拆分需要 DLL 提供接口。桌面开关在完整退出游戏后操作，下次启动生效；游戏会话内保留已加载模块。

@@ -5,7 +5,7 @@
 <p align="center"><strong>给战役和对抗各留一套 Mod。今晚玩哪种，就选哪套开局。</strong></p>
 <p align="center">
   <a href="https://github.com/RagDollOvO/Matcha-Launcher/releases/latest"><strong>↓ 下载 Windows x64 正式包</strong></a>
-  &nbsp; · &nbsp; <a href="https://github.com/RagDollOvO/Matcha-Launcher/releases/tag/v1.0.0">1.0.0 更新说明</a>
+  &nbsp; · &nbsp; <a href="https://github.com/RagDollOvO/Matcha-Launcher/releases/tag/v1.0.2">1.0.2 更新说明</a>
   &nbsp; · &nbsp; <a href="docs/platform/MATCHA_DESKTOP.md">使用手册</a>
 </p>
 
@@ -42,6 +42,6 @@ npm ci --prefix backend
 npm run dev
 ```
 
-以上命令启动浏览器开发界面。构建完整桌面包还需 Rust、原生组件和随包资源，路径见 [Tauri 资源清单](src-tauri/tauri.conf.json)与[打包脚本](scripts/package-desktop.mjs)。
+以上命令启动浏览器开发界面。准备桌面发布文件夹时，见[便携包预检与构建](docs/platform/PACKAGING.md)；要修改服务器、Mod 或启动流程，从[代码维护入口](docs/frontend-architecture.md#按功能找代码)开始。
 
 [反馈问题](https://github.com/RagDollOvO/Matcha-Launcher/issues) · [第三方许可](docs/licenses/) · [提示音来源](public/sfx/SOURCES.md) · [DSH Browser 来源](src/lib/browser/dsh/SOURCE.md)

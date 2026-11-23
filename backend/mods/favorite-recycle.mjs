@@ -14,7 +14,7 @@ export async function previewRecycleSources(service,ids,projectRoot){
     const ref=service.settings.favoriteRefs?.[id];
     if(!ref||!id.startsWith('favorite-file:'))fail('favorite_missing','此项由 Matcha 库或回收站管理。');
     const file=ref.absolutePath;
-    const absolute=await fs.realpath(file).catch(e=>{if(e.code==='ENOENT')fail('path_missing','原件已移动或已在回收站：'+file);throw e;});
+    const absolute=await fs.realpath(file).catch(e=>{if(e.code==='ENOENT')fail('path_missing','原位置找不到这个文件或文件夹：'+file);throw e;});
     if(path.relative(file,absolute)!=='' || !path.isAbsolute(file) || protectedTrees.some(p=>inside(file,p)||inside(p,file)) || [desktop,os.homedir()].some(p=>inside(p,file)) || !path.basename(file))fail('protected_path','请选择独立的外部原件，游戏、启动器和系统目录受保护。');
     const stat=await fs.lstat(file), folder=ref.referenceKind==='folder';
     if(stat.isSymbolicLink()||!(folder?stat.isDirectory():stat.isFile()))fail('file_changed','收藏来源类型已变化。');

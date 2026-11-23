@@ -62,7 +62,7 @@ test('favorite collections share desktop and assistant writes, retain stars and 
 test('bookmark drops and assistant collections leave installed files and both Mod switches alone', async t => {
   const f = await fixture(t);
   const folder = path.join(f.base, 'materials'), installed = path.join(f.addons, 'music.vpk');
-  await fs.mkdir(folder);
+  await fs.mkdir(folder);await fs.writeFile(path.join(folder,'a.txt'),'material');
   const external = await vpkFixture(path.join(f.base, 'music.vpk'), { 'addoninfo.txt': addonInfo('收藏的另一套音乐'), 'sound/test.wav': 'sample' });
   const addonlist = path.join(f.gameRoot, 'left4dead2/addonlist.txt');
   const files = await fs.readdir(f.addons), switches = await fs.readFile(addonlist), orig = await fs.readFile(installed);
@@ -70,15 +70,23 @@ test('bookmark drops and assistant collections leave installed files and both Mo
   f.setRunning([{ pid: 42 }]);
   const group = await f.service.dispatch('edit-favorite-collection', { action:'create', name:'备选音效' });
   const drop = paths => f.service.dispatch('bookmark-files', { paths, collectionId:group.id });
-  assert.equal((await drop([installed, external, external])).count, 2);
-  assert.deepEqual(f.service.settings.modMeta['music.vpk'], { inbox:true, favorite:true });
-  const refs = () => Object.values(f.service.settings.favoriteRefs ?? {});
-  const id = refs()[0].id;
-  assert.equal(refs()[0].absolutePath, external);
-  await drop([external]);
-  assert.deepEqual(refs().map(m => m.id), [id]);
-  const inGroup = () => f.run('mod_favorite_collections', { collectionId:group.id });
-  assert.deepEqual((await inGroup()).favorites.map(m => m.id), ['music.vpk', id]);
+  await drop([installed]);
+  assert.deepEqual(f.service.settings.modMeta['music.vpk'], {inbox:true,favorite:true});
+  const refs=()=>Object.values(f.service.settings.favoriteRefs??{}), id=refs()[0].id, first=refs()[0].vaultKey;
+  const p={paths:[external],collectionId:group.id};
+  const preview=await f.service.dispatch('preview-bookmark-files',p);
+  assert.equal(preview.duplicates[0].previous,installed);
+  await assert.rejects(drop([external]),{code:'confirmation_required'});
+  assert.equal(refs()[0].vaultKey,first);
+  await f.service.dispatch('bookmark-files',{...p,expected:preview.expected},{approved:true,source:'user'});
+  assert.deepEqual(refs().map(m=>m.id),[id]);assert.notEqual(refs()[0].vaultKey,first);
+  assert.equal(refs()[0].absolutePath,external);
+  const inGroup=()=>f.run('mod_favorite_collections',{collectionId:group.id});
+  assert.deepEqual((await inGroup()).favorites.map(m=>m.id),[id]);
+  const beforeUndo=refs()[0].vaultKey;
+  const updated=await f.run('mod_mark',{modIds:[id],favorite:true});
+  assert.notEqual(refs()[0].vaultKey,beforeUndo);
+  await f.run('mod_undo',{historyId:updated.historyId});assert.equal(refs()[0].vaultKey,beforeUndo);
   const args = { paths:[folder], collectionId:group.id };
   assert.equal((await f.run('mod_bookmark_files', args, async () => false)).applied, false);
   const saved = await f.run('mod_bookmark_files', args);
@@ -271,6 +279,7 @@ test('Mod P1 source links use existing Workshop/GameMaps downloads, then classif
 test('Mod P1 browser ZIP preview/import and extraction preserve sources and use the task queue', async t => {
   const f = await fixture(t), file = await vpkFixture(path.join(f.base, 'web_dir.vpk'), { 'addoninfo.txt': addonInfo('网页样本'), 'models/weapons/web.mdl': 'web source' }, { split: true });
   const payload = zipFixture({ 'folder/web_dir.vpk': await fs.readFile(file), 'folder/web_000.vpk': await fs.readFile(path.join(f.base, 'web_000.vpk')), 'unrelated.txt': 'keep' });
+  await f.service.dispatch('storage-set', { deleteArchivesAfterImport: false });
   const id = '1700000000000-1', folder = path.join(f.dataDir, 'browser/downloads', id), archive = path.join(folder, 'pack.zip');
   await fs.mkdir(folder, { recursive: true }); await fs.writeFile(archive, payload);
   await fs.writeFile(path.join(f.dataDir, 'browser/downloads.json'), JSON.stringify([{ id, name: 'pack.zip', path: archive, state: 'done', size: payload.length, pageUrl: 'https://www.gamemaps.com/details/99' }]));

@@ -1,5 +1,6 @@
 import { call } from './bridge';
 import type { FavoriteCollection, FavoriteEdit, FavoriteReference } from '../types';
+import type { ConflictReviewSummary } from '../types';
 import type { LaunchConfiguration, LaunchMode, ModCreator, ModTask, ModSound, TrashEntry, WorkshopItem, WorkshopQuery, WorkshopPage, NativeLibrariesState, NativeLibraryPlan, NativeLibraryDownloadPlan, DllScreening, L4nPluginsState, L4nPluginPlan, PluginOverlayFields, IntakeResult, IntakeDetails, IntakeImportPlan } from '../types';
 import type { Category, CfgEntry, Conflict, DxvkRuntime, ExternalPlatform, GameInfo, Mod, ModMeta, PlatformChangePlan, PlatformLaunchPreview, PlatformOperation, PlatformPlan, PlatformPlugin, PlatformRelease, PlatformRuntime, Profile, Server, ServerLayout, SteamProfile } from '../types';
 
@@ -25,7 +26,8 @@ export interface Snapshot {
   l4nPlugins?: L4nPluginsState;
   mods: Mod[]; categories: Category[]; profiles: Profile[]; activeProfileId: string;
   conflicts: Conflict[]; servers: Server[]; cfg: CfgEntry[];
-  modState: { writable: boolean; addonListPath: string };
+  conflictReviews?: Record<string, ConflictReviewSummary>;
+  modState: { writable: boolean; addonListPath: string; missingByProfile?: Record<string, string[]> };
   capabilities: { plugins: boolean; mods: boolean; servers: boolean; config: boolean; platforms?: boolean; platformManagement?: boolean; platformManagementVersion?: number };
   /** 外部平台包（Skeeto 等）；旧服务缺省 */
   platforms?: ExternalPlatform[];
@@ -71,8 +73,12 @@ export const api = {
   saveProfile: (profile: Profile) => call('save-profile', { profile }),
   selectProfile: (id: string) => call('select-profile', { id }),
   deleteProfile: (id: string) => call('delete-profile', { id }),
+  removeMissingProfileMods: (id: string, gameRoot: string, modIds: string[]) =>
+    call<{ removed: string[] }>('remove-missing-profile-mods', { id, gameRoot, modIds }, true),
   saveCategories: (categories: Category[], assignments: Record<string, string>) => call('save-categories', { categories, assignments }),
   previewMod: (file: string) => call<VpkPreview>('preview-mod', { file }),
+  copyModFiles: (ids: string[], gameRoot: string, favorites = false) => call<{ paths: string[] }>('copy-mod-files', { ids, gameRoot, favorites }),
+  queueVpkDrop: (paths: string[]) => call<{ queued: number; errors: string[] }>('vpk-drop', { paths }, true),
   previewModInput: (file: string) => call<LocalModInput | { kind: 'shard' } | { kind: 'unsupported' }>('preview-mod-input', { file, replaceExisting: true }),
   importMod: (input: Extract<LocalModInput, { kind: 'vpk' }>, gameRoot: string, favoriteId?:string) => call<{ id: string; enabled: boolean; replaced?: boolean }>('import-mod', { file: input.file, replaceExisting: input.targetExists, gameRoot, favoriteId }, true),
   packModFolder: (input: Extract<LocalModInput, { kind: 'folder' }>, gameRoot: string, categoryId: string, favoriteId?:string) =>
@@ -86,12 +92,17 @@ export const api = {
     call<ConflictFilePage>('mod-conflict-files', { gameRoot, modIds, query, page }),
   trashThumbnail: (trashId: string) => call<{ dataUrl: string | null; dirs?: string[] }>('trash-thumbnail', { trashId }),
   /** 按 id 替换记录；值为 null 表示删除该 id 的记录 */
-  saveModMeta: (patch: Record<string, ModMeta | null>) => call('save-mod-meta', { patch }),
-  editFavoriteCollection: (edit: FavoriteEdit) => call<{id: string; favoriteCollections: FavoriteCollection[]}>('edit-favorite-collection', edit),
+  saveModMeta: (patch: Record<string, ModMeta | null>,scope?:'inbox') => call('save-mod-meta', { patch,scope }),
+  previewFavoriteCollection:(edit:FavoriteEdit)=>call<{duplicates:{name:string;file:string;previous:string;incoming:string}[];expected:unknown}>('preview-favorite-collection',edit),
+  editFavoriteCollection: (edit: FavoriteEdit,expected?:unknown) => call<{id: string; favoriteCollections: FavoriteCollection[]}>('edit-favorite-collection', {...edit,expected},true),
   packFavoriteFolder:(id:string)=>call<{taskId:string}>('pack-favorite-folder',{id},true),
   previewRecycleFavorites:(ids:string[])=>call<{file:string;stamp:string;folder:boolean}[]>('preview-recycle-favorites',{ids}),
   recycleFavoriteFiles:(ids:string[],plan:{file:string;stamp:string;folder:boolean}[])=>call('recycle-favorite-files',{ids,plan},true),
-  bookmarkFiles: (paths: string[], collectionId?: string) => call<{count:number; skipped:string[]}>('bookmark-files', {paths, collectionId}),
+  previewBookmarks:(paths:string[],collectionId?:string,repairId?:string)=>call<{duplicates:{name:string;file:string;previous:string;incoming:string}[];expected:unknown}>('preview-bookmark-files',{paths,collectionId,repairId}),
+  bookmarkFiles:(paths:string[],collectionId?:string,expected?:unknown,repairId?:string)=>call<{ids:string[];count:number;skipped:string[]}>('bookmark-files',{paths,collectionId,expected,repairId},true),
+  removeFavorites:(ids:string[])=>call<{count:number}>('remove-favorites',{ids}),
+  trashFavorites:(ids:string[])=>call<{count:number;trashed:TrashEntry[]}>('trash-favorites',{ids}),
+  importFavorite:(id:string,gameRoot:string)=>call<{id:string}>('import-favorite-copy',{id,gameRoot},true),
   favoriteToProfiles: (favoriteIds:string[],profileIds:string[],gameRoot:string) => call<{added:number;lines:string[]}>('favorite-to-profiles',{favoriteIds,profileIds,gameRoot},true),
   /** 只读：删除确认框用。预览里的 trashId 不是最终值 */
   previewDeleteMods: (ids: string[]) => call<{ mods: TrashEntry[]; sizeBytes: number }>('preview-delete-mods', { ids }),
@@ -163,6 +174,7 @@ export const api = {
   /** 有受管外部平台时必须带 platformPlanId，返回 { taskId }；否则照旧返回 { status } */
   launch: (profileId: string, mode: LaunchMode, platformPlanId?: string) =>
     call<{ status: 'requested'; pid?: number } | { taskId: string }>('launch', { profileId, mode, platformPlanId }, true),
+  stopGame: (gameRoot: string, pid: number, startedAt: string) => call<{ status: 'stopped' | 'exited' }>('stop-game', { gameRoot, pid, startedAt }, true),
   setLaunchMode: (mode: LaunchMode) => call<LaunchConfiguration>('set-launch-mode', { mode }),
   queryServers: (ids: string[]) => call<Server[]>('query-servers', { ids }),
   writeCfg: (entries: CfgEntry[]) => call('write-cfg', { entries }),

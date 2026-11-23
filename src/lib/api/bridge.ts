@@ -71,12 +71,25 @@ export async function pickDllPackage(): Promise<string | null> {
   ] }) as string | null;
 }
 export type FileDrop = { type: 'enter' | 'drop'; paths: string[] } | { type: 'over' | 'leave' };
+/** 正在把文件拖出窗口：拖回自己身上时不当作导入 */
+let draggingOut = false;
+/**
+ * 桌面版：按住鼠标时把本机文件交给系统拖放（复制到桌面 / 资源管理器）。松手后返回目标是否接收了复制。
+ * 浏览器预览没有原生拖放，直接返回 false。
+ */
+export async function dragFilesOut(paths: string[]): Promise<boolean> {
+  if (!desktop || !paths.length) return false;
+  draggingOut = true;
+  try { return await invoke<boolean>('mod_drag_out', { paths }); }
+  finally { setTimeout(() => { draggingOut = false; }, 400); }
+}
 /** Dispatch only to the surface under the pointer, including in split view. */
 export async function onFileDrop(handler: (event: FileDrop, hit?: Element | null) => void, target?: () => Element | null | undefined): Promise<() => void> {
   if (!desktop) return () => {};
   const { getCurrentWebview } = await import('@tauri-apps/api/webview');
   return getCurrentWebview().onDragDropEvent(({ payload }) => {
     if (payload.type === 'leave') return handler({ type: 'leave' });
+    if (draggingOut) return;
     const hit = document.elementFromPoint(payload.position.x / window.devicePixelRatio, payload.position.y / window.devicePixelRatio);
     if (target && (!hit || !target()?.contains(hit))) return handler({ type: 'leave' });
     if (payload.type === 'over') handler({ type: 'over' }, hit);

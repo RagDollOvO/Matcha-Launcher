@@ -180,6 +180,92 @@ test('Mod conflict files: complete paths, all enabled providers, paging and snap
   assert.equal(await fs.readFile(f.list, 'utf8'), f.text);
 });
 
+test('Mod conflict reviews: reversible, per profile and limited to the same VPK providers and versions', async t => {
+  const f = await fixture(), dataDir = path.join(f.base, 'settings');
+  const create = () => new DesktopService({ dataDir, core: f.api });
+  let service = create();
+  t.after(() => service.close());
+  await service.ready; service.settings.gameRoot = f.gameRoot;
+  const [a, b, c] = ['local.vpk', 'workshop/123.vpk', 'third.vpk'];
+  await vpkFixture(path.join(f.addons, b), {
+    'addoninfo.txt': addonInfo('工坊武器'), 'models/weapon.mdl': 'OTHER model data', 'materials/only.vmt': 'material',
+  }, { version: 2, preload: 1 });
+  const profile = { id: 'default', name: '武器方案', modIds: [a, b], modsInitialized: true, modsGameRoot: f.gameRoot };
+  await service.dispatch('save-profile', { profile });
+  await service.dispatch('save-profile', { profile: { ...profile, id: 'other', name: '另一方案' } });
+  const initial = (await service.dispatch('snapshot')).conflictReviews.default;
+  assert.deepEqual(initial.byMod[a], { pending: 1, overlap: 1, reviewed: 0 });
+  assert.equal(initial.pendingPairs[0].pathCount, 1);
+  const query = (view, options = {}) => service.dispatch('mod-conflict-files', { gameRoot: f.gameRoot, profileId: 'default', view, ...options });
+  const mark = ({ path, revision }, reviewed) => service.dispatch('set-mod-conflict-reviewed', { gameRoot: f.gameRoot, profileId: 'default', path, revision, reviewed });
+  const disable = ({ path, revision }, modId) => service.dispatch('disable-mod-conflict-provider', { gameRoot: f.gameRoot, profileId: 'default', path, revision, modId });
+
+  const pending = await query('pending', { query: '工坊武器' });
+  assert.deepEqual(pending.counts, { pending: 1, overlap: 1, reviewed: 0 });
+  const [file] = pending.files;
+  assert.equal(file.path, 'models/weapon.mdl');
+  assert.equal(file.contentVersions, 2); // Different CRC, same length.
+  const [duplicate] = (await query('overlap')).files;
+  assert.equal(duplicate.path, 'materials/only.vmt');
+  assert.equal(duplicate.contentVersions, 1); // Same content, different VPK container/preload.
+  assert.equal((await query('pending', { modId: 'missing.vpk' })).total, 0);
+  const confirmed = await mark(file, true);
+  assert.equal(confirmed.reviewed, true);
+  assert.deepEqual(confirmed.summary.counts, { pending: 0, overlap: 1, reviewed: 1 });
+  assert.deepEqual(confirmed.summary.byMod[a], { pending: 0, overlap: 1, reviewed: 1 });
+  assert.deepEqual(confirmed.summary.pendingPairs, []);
+  assert.equal((await query('pending')).total, 0);
+  assert.equal((await query('pending', { profileId: 'other' })).total, 1);
+  const [focused] = (await query('reviewed', { modId: b })).files;
+  assert.equal(focused.path, file.path);
+  assert.deepEqual(focused.modIds, [b, a]);
+  const undone = await mark(file, false);
+  assert.equal(undone.reviewed, false);
+  assert.deepEqual(undone.summary.byMod[a], { pending: 1, overlap: 1, reviewed: 0 });
+  assert.equal((await query('pending')).total, 1);
+  await mark(file, true);
+
+  await service.close(); service = create();
+  const restarted = await service.dispatch('snapshot');
+  assert.equal((await query('reviewed')).total, 1);
+  assert.deepEqual(restarted.conflictReviews.default, confirmed.summary);
+  assert.deepEqual(restarted.conflictReviews.other.counts, { pending: 1, overlap: 1, reviewed: 0 });
+
+  await vpkFixture(path.join(f.addons, c), { 'models/weapon.mdl': 'FIRST model data' });
+  await service.dispatch('save-profile', { profile: { ...profile, modIds: [a, b, c] } });
+  const three = (await service.dispatch('snapshot')).conflictReviews.default;
+  const [threeProviders] = (await query('pending')).files;
+  assert.equal(threeProviders.modIds.length, 3);
+  assert.equal(threeProviders.contentVersions, 2);
+  assert.deepEqual(three.byMod[a], { pending: 1, overlap: 1, reviewed: 0 });
+  assert.equal(three.pendingPairs.length, 2);
+  await assert.rejects(mark(file, true), { code: 'conflict_changed' });
+  await assert.rejects(disable(file, a), { code: 'conflict_changed' });
+  await service.dispatch('save-profile', { profile });
+  assert.equal((await query('reviewed')).total, 1);
+
+  await vpkFixture(path.join(f.addons, b), {
+    'models/weapon.mdl': 'changed version, same resource path', 'materials/only.vmt': 'another shared resource',
+  });
+  await service.dispatch('snapshot');
+  assert.deepEqual((await query('pending')).counts, { pending: 2, overlap: 0, reviewed: 0 });
+  await assert.rejects(mark(file, false), { code: 'conflict_changed' });
+  const updatedFile = (await query('pending', { query: 'weapon.mdl' })).files[0];
+  const mixed = (await mark(updatedFile, true)).summary;
+  assert.deepEqual(mixed.byMod[a], { pending: 1, overlap: 0, reviewed: 1 });
+  assert.deepEqual(mixed.pendingPairs[0].paths, ['materials/only.vmt']);
+  await service.dispatch('save-profile', { profile: { ...profile, note: '打开清单之后编辑的草稿' } });
+  assert.deepEqual(await disable(updatedFile, b), { status: 'saved', applies: 'draft' });
+  const saved = (await service.dispatch('snapshot')).profiles;
+  assert.deepEqual(saved.find(p => p.id === 'default').modIds, [a]);
+  assert.equal(saved.find(p => p.id === 'default').note, '打开清单之后编辑的草稿');
+  assert.deepEqual(saved.find(p => p.id === 'other').modIds, [a,b]);
+  assert.equal((await query('pending')).total, 0);
+  await service.dispatch('delete-profile', { id: 'default' });
+  assert.deepEqual(service.settings.modConflictReviews, []);
+  assert.equal(await fs.readFile(f.list, 'utf8'), f.text);
+});
+
 test('Mods import: copy split package, default disabled, preserve source and refuse collisions', async () => {
   const f = await fixture();
   const file = await vpkFixture(path.join(f.base, 'source/demo_dir.vpk'), { 'addoninfo.txt': addonInfo('导入测试'), 'sound/example.wav': 'a'.repeat(90) }, { split: true });
@@ -220,6 +306,34 @@ test('desktop Mod contract: initial actual selection, persistent drafts, explici
     await service.dispatch('launch', { profileId: 'default' }, approval); assert.equal(launchCalled, true);
     const after = await service.dispatch('snapshot'); assert.equal(after.mods.find(m => m.id === 'workshop/123.vpk').enabled, true);
   } finally { await service.close(); }
+});
+
+test('missing profile Mods: identify exact files and remove only confirmed, still-missing entries', async t => {
+  const f = await fixture(), service = new DesktopService({ dataDir: path.join(f.base, 'settings'), core: f.api });
+  t.after(() => service.close());
+  await service.dispatch('select-game', { gameRoot: f.gameRoot });
+  const existing = 'local.vpk', gone = 'old-name.vpk', restored = 'restored.vpk', later = 'different-missing.vpk';
+  const profile = { id: 'default', name: '默认方案', modIds: [existing, gone, restored], modsInitialized: true, modsGameRoot: f.gameRoot };
+  const save = profile => service.dispatch('save-profile', { profile });
+  await save(profile);
+  await save({ ...profile, id: 'other' });
+  const snap = () => service.dispatch('snapshot');
+  assert.deepEqual((await snap()).modState.missingByProfile.default, [gone, restored]);
+  await assert.rejects(service.dispatch('apply-mod-profile', { id: profile.id }, approval), {
+    code: 'mod_missing', details: { profileId: profile.id, modIds: [gone, restored] },
+  });
+  const params = { id: profile.id, gameRoot: f.gameRoot, modIds: [existing, gone, restored] };
+  await assert.rejects(service.dispatch('remove-missing-profile-mods', params), { code: 'confirmation_required' });
+  await assert.rejects(service.dispatch('remove-missing-profile-mods', { ...params, gameRoot: f.base }, approval), { code: 'context_changed' });
+  await vpkFixture(path.join(f.addons, restored), { 'addoninfo.txt': addonInfo('恢复的包') });
+  await save({ ...profile, modIds: [...profile.modIds, later], note: '确认期间保留的新草稿' });
+  assert.deepEqual(await service.dispatch('remove-missing-profile-mods', params, approval), { removed: [gone] });
+  const after = await snap();
+  assert.deepEqual(after.profiles.find(p => p.id === 'default').modIds, [existing, restored, later]);
+  assert.equal(after.profiles.find(p => p.id === 'default').note, '确认期间保留的新草稿');
+  assert.deepEqual(after.profiles.find(p => p.id === 'other').modIds, profile.modIds);
+  assert.deepEqual(after.modState.missingByProfile.default, [later]);
+  assert.equal(await fs.readFile(f.list, 'utf8'), f.text);
 });
 
 test('desktop new Mods: imports join the launch profile, keep inbox, and later saves clear only newly added IDs', async () => {

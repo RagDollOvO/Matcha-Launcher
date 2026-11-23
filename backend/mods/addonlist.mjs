@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import iconv from 'iconv-lite';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 import { regular } from './vpk.mjs';
 
 export const addonKey = s => s.replaceAll('\\', '/').toLowerCase();

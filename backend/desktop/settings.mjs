@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { PlatformError } from '../core.mjs';
+import { PlatformError } from '../errors.mjs';
 import { directory, stamp, writeJson } from '../mods/files.mjs';
 
 const fail = (code, message) => { throw new PlatformError(code, message); };

@@ -21,7 +21,7 @@ export function extraModTools(request) {
       const input = { ...params, ...fixed }, plan = await request(preview, input, undefined, signal);
       if (plan.changeCount === 0) return result({ status: 'unchanged', changeCount: 0 });
       if (!ctx.hasUI) throw new Error('此操作需要 Matcha 确认界面。');
-      const approved = await confirmAction(ctx, plan.label ?? label, (plan.gameRoot ? `游戏：${plan.gameRoot}\n\n` : '') + format(plan), { signal, risk: 'routine' });
+      const approved = await confirmAction(ctx, plan.label ?? label, (plan.gameRoot ? `游戏：${plan.gameRoot}\n\n` : '') + format(plan), { signal, risk: plan.duplicates?.length ? 'ask' : 'routine' });
       signal?.throwIfAborted();
       if (approved !== true) return result({ applied: false, reason: '用户取消了操作' });
       return result(await request(operation, { ...input, ...(plan.historyId ? { historyId: plan.historyId } : {}), expected: plan.expected }, { approved: true, source: 'user' }, signal));
@@ -34,13 +34,13 @@ export function extraModTools(request) {
       expectedVersion: { ...object({ a: { type: 'array', items: { type: 'string' } }, b: { type: 'array', items: { type: 'string' } } }), required: ['a', 'b'], description: '翻页时传入第一页返回的 sourceVersion。' } }, ['a', 'b']);
   read('mod_favorite_collections', '查看收藏合集', '查看收藏页的合集、数量以及已收藏 Mod 的 ID、名称和所属合集。提供 collectionId 只列该合集成员。', 'favorite-collections',
     { collectionId: text('收藏合集 ID，可省略。') });
-  write('mod_bookmark_files', '收藏本地文件', '把指定的本机 VPK 或素材目录记到独立收藏夹，可指定合集。仅记录原位置，保留游戏文件和方案启停。用户要收藏本地文件时用此工具。',
+  write('mod_bookmark_files', '收藏本地文件', '把指定的本机 VPK 或素材目录记到独立收藏夹，可指定合集。保存独立副本；同名时先确认替换。用户要收藏本地文件时用此工具。',
     'metadata-preview', 'metadata', { paths: ids('用户指定的本机 VPK 或素材文件夹绝对路径。'), collectionId: text('可选的收藏合集 ID。') }, ['paths'], p => [...p.lines, ...p.skipped].join('\n'), { kind:'bookmark-files' });
   write('mod_favorite_collection', '整理收藏合集', '管理独立收藏夹：创建（可带成员）、重命名、加入、移出、删除合集。同一项可加入多个合集。移出或删除合集保留星标，方案和游戏启停保持原样。支持撤销。',
     'metadata-preview', 'metadata', { action: { type: 'string', enum: ['create', 'rename', 'add', 'remove', 'delete'] }, collectionId: text('已有合集 ID，创建时省略。'),
       name: text('创建或重命名时填写的合集名称。'), modIds: ids('加入或移出的 Mod ID；新建空合集时省略。') }, ['action'], p => p.lines.join('\n'), { kind: 'favorite-collection' });
   write('mod_favorites_to_profiles', '将收藏应用到方案', '把所选收藏一次性追加到一个或多个已有方案草稿，保留收藏、现有成员和当前启动方案。外部收藏须先导入 Mod 库。', 'metadata-preview','metadata',{favoriteIds:ids('收藏 ID'),profileIds:ids('目标方案 ID')},['favoriteIds','profileIds'],p=>p.lines.join('\n'),{kind:'favorite-to-profiles'});
-  write('mod_mark', '收藏与整理标记', '单独修改收藏或新下载标记。取消收藏也会移出该项所属的收藏合集。保存前显示清单，支持撤销。',
+  write('mod_mark', '收藏与整理标记', '单独修改收藏或新下载标记。取消收藏会把收藏副本移到 Matcha 回收站，保留原文件和方案。保存前显示清单，支持撤销。',
     'metadata-preview', 'metadata', { modIds: ids('Mod ID。'), favorite: { type: 'boolean' }, sorted: { type: 'boolean', description: 'true 标记已整理；false 放回新下载。' } }, ['modIds'], p => p.lines.join('\n\n'), { kind: 'mark' });
   write('mod_rename', '修改 Mod 显示名', '在 Matcha 内单个或批量改名，包括工坊及独立库 VPK。每项给 name（新名字，null 恢复当前原名）或 prefix（如 [近战]，加在原名前，可重复执行）。预览改前改后，一批可一起撤销；保留 VPK 与分类。',
     'metadata-preview', 'metadata', { items: { type: 'array', minItems: 1, maxItems: 256, items: { ...object({ modId: text('mod_inventory 中的 Mod ID。'),

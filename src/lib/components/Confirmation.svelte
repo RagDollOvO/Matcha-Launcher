@@ -1,6 +1,7 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x';
   import Copy from '@lucide/svelte/icons/copy';
+  import FolderInput from '@lucide/svelte/icons/folder-input';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import ModThumb from './ModThumb.svelte';
   import { trashThumb } from '../stores/thumbs.svelte';
@@ -18,8 +19,9 @@
 </script>
 
 {#if c}
-  <dialog bind:this={dialog} class:wide={!!x?.items} oncancel={(e) => { e.preventDefault(); app.answerConfirmation(false); }} aria-labelledby="confirm-title">
+  <dialog bind:this={dialog} class:wide={!!x?.items || x?.layout === 'import'} class:focused={!!x?.layout} class:destructive={x?.layout === 'destructive'} oncancel={(e) => { e.preventDefault(); app.answerConfirmation(false); }} aria-labelledby="confirm-title">
     <header>
+      {#if x?.layout}<span class="symbol" aria-hidden="true">{#if x.layout === 'import'}<FolderInput size={21}/>{:else}<TriangleAlert size={21}/>{/if}</span>{/if}
       <h2 id="confirm-title">{c.title}</h2>
       <button class="icon-btn" type="button" aria-label="取消" onclick={() => app.answerConfirmation(false)}><X size={16} /></button>
     </header>
@@ -93,7 +95,7 @@
     </div>
 
     <footer>
-      <button class="btn" type="button" onclick={() => app.answerConfirmation(false)}>取消</button>
+      <button class="btn" class:ghost={!!x?.layout} type="button" onclick={() => app.answerConfirmation(false)}>取消</button>
       <button class="btn primary" type="button" onclick={() => app.answerConfirmation(true)}>{c.ok ?? '确认执行'}</button>
     </footer>
   </dialog>
@@ -152,4 +154,18 @@
   .lv { color: var(--fg-3); text-align: right; }
   footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px; margin-top: 12px; border-top: 1px solid var(--line); }
   footer .btn { height: 32px; padding: 0 14px; }
+
+  .focused { border-radius: 20px; }
+  .focused::backdrop { background: color-mix(in srgb, var(--md-scrim) 50%, transparent); }
+  .focused header { padding: 18px 20px 16px; border-bottom: 1px solid var(--line); }
+  .focused h2 { white-space: normal; overflow-wrap: anywhere; font-size: 21px; font-weight: 650; line-height: 1.24; }
+  .symbol { width: 42px; height: 42px; display: grid; place-items: center; flex: none; border-radius: 13px; background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+  .destructive .symbol { background: var(--md-error-container); color: var(--md-on-error-container); }
+  .focused .body { padding: 16px 20px; }
+  .focused .facts { grid-template-columns: minmax(58px, max-content) minmax(0, 1fr); padding: 12px; border-radius: 10px; background: var(--md-surface-container-low); }
+  .focused .msg { font-size: 14px; }
+  .focused footer { padding-block: 12px; margin: 0; background: var(--md-surface-container-low); }
+  .focused footer .btn { height: 35px; }
+  .destructive footer .primary { color: var(--md-on-error); background: var(--md-error); border-color: var(--md-error); }
+  .destructive footer .primary:hover { filter: brightness(1.07); }
 </style>
