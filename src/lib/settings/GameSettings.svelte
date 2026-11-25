@@ -12,6 +12,7 @@
   import { LAUNCH_MODES, modeLabel, shownMode } from '../launch-modes';
 
   const v = $derived(g.value);
+  const insecure = $derived(/(?:^|\s)-insecure(?=\s|$)/i.test(v.extraArgs));
   const mode = $derived(app.launchConfig.mode);
   const shown = $derived(shownMode(mode));
   const args = $derived(g.args(mode).join(' '));
@@ -77,7 +78,7 @@
         </div>
         <div class="line divider"><div class="lt"><b>帧率上限</b><span class="sub">留空沿用游戏设置；0 不限帧</span></div>
           <div class="inputs">{@render numberBox('帧率上限', '默认', v.fpsMax, 0, 1000, n => v.fpsMax = n)}<span>FPS</span></div></div>
-        <label class="line custom"><span class="lt"><b>自定义启动项</b></span>
+        <label class="line custom"><span class="lt"><b>自定义启动项</b>{#if insecure}<span class="sub">带 -insecure：关闭 VAC，进不了带 VAC 的服务器</span>{/if}</span>
           <input class="mono" aria-label="自定义启动项" spellcheck="false" placeholder="例如 +mat_bumpmap 1 +mat_phong 1" value={v.extraArgs}
             oninput={(e) => { v.extraArgs = e.currentTarget.value; g.change(); }} /></label>
       {/if}

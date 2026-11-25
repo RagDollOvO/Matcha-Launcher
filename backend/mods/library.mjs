@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { regular } from './vpk.mjs';
 import { cacheModThumbnail } from './thumbnails.mjs';
-import { directory, exists, fail, stamp, writeJson } from './files.mjs';
+import { directory, addonsDirectory, exists, fail, stamp, writeJson } from './files.mjs';
 import { gameFolder } from '../legacy-names.mjs';
 
 // 新部署用 matcha_ws_；改名前部署的 flare_ws_ 保持原名，直到下次取消部署。
@@ -79,7 +79,7 @@ export class ModLibrary {
   }
   async deploy(c, id, enabled, idle) {
     const wid = libraryWorkshopId(id), r = await this.read(c.root, wid);
-    const addons = await directory(path.join(c.content, 'addons'), true), file = r.deployment?.file ?? deployName(wid), target = path.join(addons, file);
+    const addons = await addonsDirectory(path.join(c.content, 'addons'), true), file = r.deployment?.file ?? deployName(wid), target = path.join(addons, file);
     if (!enabled && !r.deployment) return file;
     const present = await exists(target);
     if (present && !owns(r.deployment,await regular(target))) fail('deployment_conflict', `请先处理同名文件，原文件已保留：${target}`);
@@ -123,7 +123,7 @@ export class ModLibrary {
     const rows=[];
     for(const row of await this.entries(root)){
       if(!row.deployed)continue;
-      const target=path.join(await directory(path.join(root,'left4dead2','addons')),row.deployment.file);
+      const target=path.join(await addonsDirectory(path.join(root,'left4dead2','addons')),row.deployment.file);
       const src=await regular(row.absolutePath),dst=await regular(target),linked=src.dev===dst.dev&&src.ino===dst.ino;
       rows.push({id:row.id,linked,bytes:linked?0:dst.size,reclaimable:!linked && dst.nlink===1 && src.size===dst.size &&
         (!verify || await equalFiles(row.absolutePath,target,src.size))});
@@ -131,7 +131,7 @@ export class ModLibrary {
   }
   async checkDeployment(c, id) {
     const wid = libraryWorkshopId(id), r = await this.read(c.root, wid);
-    const addons = await directory(path.join(c.content, 'addons'), true), target = path.join(addons, r.deployment?.file ?? deployName(wid));
+    const addons = await addonsDirectory(path.join(c.content, 'addons'), true), target = path.join(addons, r.deployment?.file ?? deployName(wid));
     if (await exists(target) && !owns(r.deployment,await regular(target))) fail('deployment_conflict', `请先处理同名文件，原文件已保留：${target}`);
   }
   async publish(root, stage, item) {

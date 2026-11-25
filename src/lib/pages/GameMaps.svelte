@@ -23,7 +23,7 @@
   import GameMapsPicture from '../components/GameMapsPicture.svelte';
   import '../styles/discover.css';
   import { errorText } from '../api/bridge';
-  import { gmApi, gmBlocked, gmMissing, gmUrl, GM_HOME, type GmDetail, type GmItem, type GmSection, type GmSort } from '../api/gamemaps';
+  import { gmApi, gmBlocked, gmMissing, gmUrl, GM_FLAG_LABEL, GM_HOME, type GmDetail, type GmItem, type GmSection, type GmSort } from '../api/gamemaps';
   import { app, mib } from '../stores/app.svelte';
   import { ratio } from '../stores/downloads.svelte';
   import { browser } from '../browser/browser.svelte';
@@ -69,7 +69,8 @@
     if (missing) { openPage(gmUrl(gid)); return; }
     detail = typeof target === 'string' ? null : { ...target, authors: target.author ? [{ name: target.author, role: 'Author' }] : [], description: target.summary ?? '', tags: [], screenshots: [], linked: [] };
     detailLoading = true; detailError = '';
-    try { const d = await gmApi.detail(gid); if (id === dseq) detail = d; }
+    // 详情页没有 New / Updated 标记，沿用列表卡片上的。
+    try { const d = await gmApi.detail(gid); if (id === dseq) detail = { ...d, flags: d.flags ?? (typeof target === 'string' ? undefined : target.flags) }; }
     catch (e) { if (id === dseq) detailError = errorText(e); }
     finally { if (id === dseq) detailLoading = false; }
   }
@@ -134,7 +135,7 @@
         <div class="detail-grid">
           <div class="detail-art"><GameMapsPicture image={d.image} eager /></div>
           <div class="detail-info">
-            <span class="kicker">GAMEMAPS · {d.typeLabel}</span>
+            <span class="kicker">{['GAMEMAPS', d.typeLabel, ...(d.flags ?? []).map((f) => GM_FLAG_LABEL[f])].filter(Boolean).join(' · ')}</span>
             <h2>{d.title}</h2>
             <p class="author">{d.authors.length ? d.authors.map((a) => (a.role && a.role !== 'Author' ? `${a.name}（${a.role}）` : a.name)).join('、') : d.author ?? ''}</p>
             <dl class="facts">
@@ -240,10 +241,16 @@
         {:else}
           <div class="grid" class:fresh>
             {#each result.items as item, i (item.id)}
+              {@const marks = item.flags?.filter((f) => f !== 'beta') ?? []}
+              {@const beta = item.flags?.includes('beta')}
               <article class="card" style:--i={Math.min(i, 11)}>
-                <button class="art" data-gm={item.id} aria-label={`查看 ${item.title}`} onclick={() => void openDetail(item)}>
+                <button class="art" data-gm={item.id} aria-label={`查看 ${item.title}`} aria-describedby={`gm-badges-${item.id}`} onclick={() => void openDetail(item)}>
                   <GameMapsPicture image={item.image} caption />
-                  <span class="type">{item.typeLabel}</span>
+                  <span class="badges" id={`gm-badges-${item.id}`}>
+                    {#each marks as f (f)}<i class={f}>{GM_FLAG_LABEL[f]}</i>{/each}
+                    {#if item.typeLabel}<i>{item.typeLabel}</i>{/if}
+                    {#if beta}<i class="beta">Beta</i>{/if}
+                  </span>
                 </button>
                 <div class="info">
                   <button class="title" title={item.title} onclick={() => void openDetail(item)}><span>{item.title}</span></button>
@@ -277,7 +284,13 @@
   .art { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: var(--md-surface-container-high); }
   .art :global(img) { transition: transform 360ms var(--ease-out); }
   @media (hover: hover) and (pointer: fine) { .card:hover .art :global(img) { transform: scale(1.04); } }
-  .type { position: absolute; left: 8px; top: 8px; font-size: 11px; height: 22px; line-height: 22px; padding: 0 8px; border-radius: 8px; background: color-mix(in srgb, var(--md-surface) 88%, transparent); color: var(--fg); box-shadow: 0 2px 6px -2px rgb(0 0 0 / .3); }
+  /* 和 B 站页的角标同一套：「新」用 tertiary 突出；按最新排序时大半是老图「更新」，只染字色，归档压暗。 */
+  .badges { position: absolute; inset: 8px 8px auto; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
+  .badges i { height: 22px; padding: 0 8px; border-radius: 8px; color: var(--fg); background: color-mix(in srgb, var(--md-surface) 88%, transparent); font-size: 11px; font-style: normal; line-height: 22px; white-space: nowrap; box-shadow: 0 2px 6px -2px rgb(0 0 0 / .3); }
+  .badges i.new { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+  .badges i.updated { color: var(--md-primary); }
+  .badges i.archived { color: var(--fg-3); }
+  .badges i.beta { color: var(--fg-2); }
   .stats { display: inline-flex; align-items: center; gap: 4px; }
   .stats :global(svg:not(:first-child)) { margin-left: 6px; }
 

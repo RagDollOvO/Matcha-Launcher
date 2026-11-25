@@ -13,6 +13,30 @@ export async function directory(p, create = false) {
   if (!s.isDirectory() || s.isSymbolicLink()) fail('unsafe_path', `需要真实目录：${p}`);
   return p;
 }
+/** 游戏的 addons 和 addons/workshop。玩家常用 mklink 把它们挪到别的盘，原位置只留目录链接（/J 或 /D）。
+ *  只对这两层放行：链接必须指向一个真实目录；之后仍按原路径读写，由系统顺着链接走，路径计算不变。 */
+export async function addonsDirectory(p, create = false) {
+  if (create) await fs.mkdir(p).catch(e => { if (e.code !== 'EEXIST') throw e; });
+  const s = await fs.lstat(p);
+  if (!s.isSymbolicLink()) return directory(p);
+  const real = await fs.realpath(p).catch(e => {
+    if (['ENOENT', 'ENOTDIR'].includes(e.code)) fail('unsafe_path', `目录链接指向的文件夹不存在：${p}`);
+    throw e;
+  });
+  const target = await fs.lstat(real);
+  if (!target.isDirectory() || target.isSymbolicLink()) fail('unsafe_path', `目录链接需要指向真实文件夹：${p}`);
+  return p;
+}
+/** addons 链到另一个盘时，硬链接和改名跨不了盘。把系统的 EXDEV 换成玩家看得懂的话。 */
+export function crossVolume(error, what) {
+  if (error?.code === 'EXDEV') fail('cross_volume', `${what}：Mod 文件夹（addons）用目录链接放在了另一个盘，Matcha 暂时不能跨盘移动 VPK。可以先在资源管理器里处理这个文件。`);
+  throw error;
+}
+/** 跨盘时退回复制（源文件保留），同盘仍用硬链接。 */
+export async function linkOrCopy(source, target) {
+  try { await fs.link(source, target); }
+  catch (e) { if (e.code !== 'EXDEV') throw e; await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL); }
+}
 export async function writeJson(file, data) {
   const temp = `${file}.${randomUUID()}.tmp`;
   try {

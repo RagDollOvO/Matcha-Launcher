@@ -14,7 +14,7 @@ import { zipFixture } from './browser-fixtures.mjs';
 
 // Reduced markup from the live /l4d2/maps, /details/22803 and /details/4746 DOM,
 // observed 2026-11-17. Instructions/Steam link below exercise optional fields.
-const card = (id, title) => `<article class="list-item list-item-file" data-type="file" data-id="${id}"><div class="thumbnail"><img src="/img/card.jpg"></div><span class="type">3 Maps</span><div class="content"><header><a href="/details/${id}"><div class="title">${title}</div></a><span class="rating">8.9</span></header><p>Description</p><div class="byline">By PlayGamesTB</div><footer><time datetime="2026-11-17T04:03:39"></time><span class="views"><span class="value">11,529</span></span></footer></div></article>`;
+const card = (id, title, { states = '', status = '' } = {}) => `<article class="list-item list-item-file" data-type="file" data-id="${id}"><div class="thumbnail"><img src="/img/card.jpg"></div><span class="type">3 Maps</span><div class="content"><header><a href="/details/${id}"><div class="title">${title}</div></a>${status}<span class="rating">8.9</span></header><p>Description</p><div class="byline">By PlayGamesTB</div><footer><ul class="states">${states}</ul><time datetime="2026-11-17T04:03:39"></time><span class="views"><span class="value">11,529</span></span></footer></div></article>`;
 const listing = `<ul class="item-slide-list-items"><li>${card('27469', 'Featured')}</li></ul><div class="paged-list"><ul class="item-list itemlist-view-rows"><li>${card('36646', 'Blood Medal v0.4')}</li></ul><a rel="last" href="?page=77">77</a></div>`;
 const detail = (id, name = 'COD5.zip') => `<title>Bloody Pacific (Map) for Left 4 Dead 2 - GameMaps.com</title><div class="title-block"><img class="thumbnail" src="/img/bloody.jpg"><div class="title-row"><aside class="item-typelabel">4 Maps</aside><h1>Bloody Pacific</h1></div></div>
 <ul class="statsrow"><li class="views">81.9K</li><li class="rating"><button>Like</button></li></ul>
@@ -32,6 +32,14 @@ test('GameMaps live DOM structure: main list, metadata, instructions and strict 
   assert.equal(page.items[0].image, 'https://www.gamemaps.com/img/card.jpg');
   assert.equal(parseBrowse(listing.replaceAll('src="/img/card.jpg"', 'src="/img/placeholder.jpg" data-src="/img/card.jpg"')).items[0].image, page.items[0].image);
   assert.equal(parseBrowse(listing.replaceAll('src="/img/card.jpg"', '')).items[0].image, '');
+  assert.deepEqual(page.items[0].flags, []);
+  // Site markers observed on /l4d2/maps and /l4d2/mods, 2026-11-25.
+  const marked = parseBrowse(`<div class="paged-list"><ul class="item-list">${[
+    card('36797', 'Ink', { states: '<li class="new">New</li>', status: '<span class="status beta">Beta</span>' }),
+    card('36793', 'Reality', { states: '<li class="updated">Updated</li>' }),
+    card('30001', 'Old', { states: '<li class="archived">Archived</li><li class="hot">Hot</li>' }),
+  ].map(c => `<li>${c}</li>`).join('')}</ul></div>`);
+  assert.deepEqual(marked.items.map(i => i.flags), [['new', 'beta'], ['updated'], ['archived']]);
   const d = parseDetail(detail('22803'), '22803');
   assert.equal(d.title, 'Bloody Pacific'); assert.equal(d.file.name, 'COD5.zip'); assert.equal(d.file.sizeBytes, 199000000); assert.equal(d.file.version, '1.0 Beta');
   assert.equal(d.description, 'First line\nSecond & third'); assert.equal(d.instructions, 'sv_consistency 0'); assert.equal(d.views, 81900);

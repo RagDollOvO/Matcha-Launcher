@@ -8,11 +8,12 @@ const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const invalid = (field, message) => { throw Object.assign(new Error(`${field}：${message}`), { code: 'game_settings_invalid', details: { field } }); };
 export const defaultGameSettings = () => ({ display: { mode: 'default', width: null, height: null, refreshHz: null }, fpsMax: null,
   novid: true, console: false, lowViolence: false, consoleLog: false, highPriority: false, extraArgs: '', autoexec: { enabled: false, values: {}, extra: '' } });
-const forbiddenArgs = new Set(['+connect', '-insecure', '-secure', '-game', '-defaultgamedir', '-applaunch']);
+// -insecure 是玩家可选项（L4N 说明里也这么写）；带上后 launchSpec 按实际参数把 vacMode 记成 insecure。
+const forbiddenArgs = new Set(['+connect', '-secure', '-game', '-defaultgamedir', '-applaunch']);
 export function extraTokens(text) {
   if (typeof text !== 'string' || /["'\r\n\x00-\x08\x0b-\x1f\x7f;]/.test(text)) invalid('extraArgs', '请使用空白分隔的参数，去掉引号、控制字符和分号。');
   const tokens = text.trim().split(/\s+/).filter(Boolean);
-  for (const token of tokens) if (forbiddenArgs.has(token.toLowerCase().split('=')[0])) invalid('extraArgs', '连接目标、游戏路径和安全模式由启动流程管理。');
+  for (const token of tokens) if (forbiddenArgs.has(token.toLowerCase().split('=')[0])) invalid('extraArgs', `自定义启动项里不能写 ${token}：连接目标、游戏路径和安全模式由启动流程管理，请删掉它。`);
   if (tokens.length && !/^[+-][a-z_]/i.test(tokens[0])) invalid('extraArgs', '每组参数需要以 - 或 + 参数名开头。');
   return tokens;
 }

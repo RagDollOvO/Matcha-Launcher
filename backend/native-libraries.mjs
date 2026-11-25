@@ -42,7 +42,8 @@ export class NativeLibraries {
     if(state?.status==='installed' && !local.installed && !state.enabled) Object.assign(l4n,{installed:true,enabled:false,version:state.version});
     if(l4n.version && !l4n.unmanaged && c.l4n.version.localeCompare(l4n.version,'en',{numeric:true})>0) l4n.download=info;
     dxvk.entries=await localRender(root);
-    dxvk.installed=dxvk.entries.some(e=>e.kind==='dxvk');
+    // Valve 随游戏放的 bin/dxvk_d3d9.dll（native-x.y）每台都有、只在 -vulkan 时生效，不算玩家装了 DXVK。
+    dxvk.installed=dxvk.entries.some(e=>e.kind==='dxvk' && !/^native-/i.test(e.version??''));
     dxvk.version=dxvk.entries.find(e=>e.kind==='dxvk'&&e.route==='default')?.version??null;
     dxvk.pending=!!(await this.store.read(root,'dxvk'))?.pending;
     return base;

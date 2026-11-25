@@ -47,13 +47,20 @@ function imageUrl(value) {
 function imageFrom(img) {
   return imageUrl(img.attr('data-src')) || imageUrl(img.attr('src'));
 }
+// 列表卡片的站点标记：footer `ul.states li.new|updated|archived`，标题旁 `span.status.beta`。
+const STATES = ['new', 'updated', 'archived'];
+function flags(r) {
+  const found = STATES.filter(state => r.find(`.states li.${state}`).length);
+  if (r.find('header .status.beta').length) found.push('beta');
+  return found;
+}
 function item($, row) {
   const r = $(row), id = gameMapsId(r.attr('data-id') ?? r.attr('data-item-id'));
   const title = r.find('header .title,header h3').first().text().trim();
   if (!title) fail('gamemaps_response', 'GameMaps 条目标题读取失败。');
   return { id, title, image: imageFrom(r.find('.thumbnail img,.thumb img').first()), typeLabel: r.find('.type').first().text().trim(),
     summary: text($, r.find('.content > p')), author: r.find('.byline').text().trim().replace(/^By\s+/, '') || undefined,
-    views: numeric(r.find('.views .value').text()), updatedAt: r.find('time').attr('datetime'), url: `${HOME}/details/${id}` };
+    views: numeric(r.find('.views .value').text()), updatedAt: r.find('time').attr('datetime'), flags: flags(r), url: `${HOME}/details/${id}` };
 }
 export function parseBrowse(html, page = 1) {
   const $ = htmlDocument(html), rows = $('.paged-list .item-list article.list-item-file');

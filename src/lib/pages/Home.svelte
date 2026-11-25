@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { launchFx } from '../launch-fx';
+  import { stockDxvk, dxvkShort, DXVK_HOWTO } from '../components/LocalRender.svelte';
   import Play from '@lucide/svelte/icons/play';
   import Square from '@lucide/svelte/icons/square';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -69,7 +70,11 @@
   const options = $derived(app.game.installed ? (gameSettings.status === 'ready' ? gameSettings.args(app.launchConfig.mode) : app.launchConfig.launchOptions).join(' ') : 'Steam · L4D2 尚未就绪');
   const renderRoute = $derived(options.toLowerCase().split(/\s+/).includes('-vulkan') ? 'vulkan' : 'default');
   const renderEntry = $derived(app.nativeLibraries?.dxvk.entries?.find(e=>e.route===renderRoute));
-  const dxvk = $derived(renderEntry?.kind==='dxvk' ? (renderEntry.version??'版本待识别') : renderEntry ? '入口待核对' : '当前入口未检测到');
+  // 只说这次启动实际走哪条：根目录没有 d3d9.dll 时游戏用原生 D3D9，游戏自带的旧 DXVK 只在 -vulkan 时生效。
+  const dxvkOn = $derived(renderEntry?.kind === 'dxvk');
+  const dxvk = $derived(!renderEntry ? (renderRoute === 'default' ? '未启用 · 本次走原生 D3D9' : '-vulkan 入口未检测到')
+    : renderEntry.kind !== 'dxvk' ? '入口待核对'
+    : stockDxvk(renderEntry) ? `游戏自带旧版 ${dxvkShort(renderEntry.version!)}` : renderEntry.version ?? '版本待识别');
   const meta = $derived([mode === 'clean' || gameSettings.status !== 'ready' ? '' : gameSettings.summary(), options].filter(Boolean).join(' · '));
 
   // Steam 账号
@@ -173,7 +178,7 @@
       <i></i>
       <button class:bad={!l4nOk && mode !== 'clean'} data-sfx="tab" onclick={() => (app.route = 'plugins')}>L4N {mode==='clean' ? (l4nOk ? '需原版目录' : '纯净检查') : l4nOk && app.nativeLibraries?.l4n.launchEnabled===false ? '下次跳过' : l4nOk ? '已启用' : '已停用'}</button>
       <i></i>
-      <span>DXVK {dxvk}</span>
+      <span title={dxvkOn ? renderEntry?.path : DXVK_HOWTO}>DXVK {dxvk}</span>
     </div>
 
     {#if inGame}
@@ -230,7 +235,7 @@
     <aside class="live">
       <div class="lh"><span class="live-dot"></span>收藏服务器<span class="lh-sub">每 30 秒探测</span></div>
       {#each favorites as s, i (s.id)}
-        <button class="srv rise" style="animation-delay:{300 + i * 80}ms" title={app.launchState === 'running' || (s.vac && app.launchConfig.vacMode === 'insecure') ? '复制连接命令' : '启动并连接'} disabled={s.status !== 'online' || app.launchState === 'requested' || app.launchState === 'launching' || !!app.busy} onclick={() => app.connectServer(s.id)}>
+        <button class="srv rise" style="animation-delay:{300 + i * 80}ms" title={app.launchState === 'running' || (s.vac && app.insecureLaunch) ? '复制连接命令' : '启动并连接'} disabled={s.status !== 'online' || app.launchState === 'requested' || app.launchState === 'launching' || !!app.busy} onclick={() => app.connectServer(s.id)}>
           <span class="sn">{s.name}</span>
           <span class="meta mono">
             <span class="sig" aria-label="信号">{#each [1, 2, 3, 4] as b (b)}<i class:on={b <= bars(s.ping)} style="height:{b * 3 + 2}px"></i>{/each}</span>

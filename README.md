@@ -5,7 +5,7 @@
 <p align="center"><strong>给战役和对抗各留一套 Mod。今晚玩哪种，就选哪套开局。</strong></p>
 <p align="center">
   <a href="https://github.com/RagDollOvO/Matcha-Launcher/releases/latest"><strong>↓ 下载 Windows x64 正式包</strong></a>
-  &nbsp; · &nbsp; <a href="https://github.com/RagDollOvO/Matcha-Launcher/releases/tag/v1.0.2">1.0.2 更新说明</a>
+  &nbsp; · &nbsp; <a href="docs/platform/MATCHA_DESKTOP_UPDATE.md">1.0.3 更新说明</a>
   &nbsp; · &nbsp; <a href="docs/platform/MATCHA_DESKTOP.md">使用手册</a>
 </p>
 

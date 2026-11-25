@@ -63,6 +63,8 @@ description: 在 Matcha 中管理 Left 4 Dead 2 的 VPK Mod：查看包内内容
 
 玩家要求“把收藏应用到方案”时，先按所选条目或合集查询收藏 ID，再用 `mod_favorites_to_profiles {favoriteIds, profileIds}` 一次追加到指定方案。外部文件请先在收藏夹的应用窗口导入 Mod 库。收藏夹自身不作为启动方案，之后的成员增删各自独立。
 
+用户问怎么手动改名时，指引到 Mod 卡片右键的 **修改显示名…**，或详情标题旁的铅笔。输入新名或点 **恢复原名** 后，点 **保存**。
+
 用户说「给 Mod 改名」或「加分类前缀」时，使用 `mod_rename` 更新 Matcha 库内的显示名。按 `mod_inventory` 返回的 ID 选条目：`title` 是当前显示名，`sourceTitle` 是原名。此操作只写启动器设置；本地、工坊、独立库和缺少 addoninfo 的普通 VPK 都可直接改。
 
 - 指定新名字：`mod_rename {"items":[{"modId":"m60.vpk","name":"我的 M249"}]}`。

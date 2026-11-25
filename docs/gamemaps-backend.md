@@ -17,7 +17,7 @@
 | 下载 | 详情页里是表单：`POST /downloads/download`，字段 `ids[]=<id>`、`noqueue=true`、`direct=true`；页面显示「You are downloading as a guest」，游客可下 |
 | 工坊版本 | `POST /downloads/outsourced/<id>/steam`（跳转到创意工坊；能解析出工坊 id 就放进 `workshopId`） |
 
-主列表选择器为 `.paged-list .item-list article.list-item-file[data-id]`：标题在 `header .title`，封面在 `.thumbnail img`，类型在 `.type`，作者在 `.byline`，浏览数在 `.views .value`，日期在 `time[datetime]`。`li[data-type="file"] article[data-info]` 属于顶部推荐轮播，解析列表时排除该区域和底部推荐。
+主列表选择器为 `.paged-list .item-list article.list-item-file[data-id]`：标题在 `header .title`，封面在 `.thumbnail img`，类型在 `.type`，作者在 `.byline`，浏览数在 `.views .value`，日期在 `time[datetime]`，站点标记在 footer 的 `ul.states li.new|updated|archived`（新发布 / 老图更新 / 已归档）和标题旁的 `span.status.beta`，读成 `flags`（2026-11-25 实看地图和 Mod 列表）。详情页标题区没有这些标记，前端沿用列表卡片上的。`li[data-type="file"] article[data-info]` 属于顶部推荐轮播，解析列表时排除该区域和底部推荐。
 
 详情标题和封面来自 `.title-row h1` / `.title-block > img.thumbnail`；正文为 `section.desc > pre`；作者包括旧版纯文字署名，读取 `.developers .username-val` 和相邻角色；文件名取 `section.details p[title]` 的完整 title，日期取 time 的 datetime。截图限于主媒体区，关联条目取 `section.linked article.shortrow-item` 并保留 L4D2 条目。作者说明按 Instructions 标题所属 section 提取纯文本。
 
@@ -36,6 +36,7 @@ interface GmItem {
   image: string;            // 站内相对路径即可，前端补 https://www.gamemaps.com
   typeLabel: string;        // 原样
   summary?: string; author?: string; sizeBytes?: number; views?: number; likes?: number; updatedAt?: string;
+  flags?: ('new' | 'updated' | 'archived' | 'beta')[]; // 列表页的站点标记，只认这四种
   url: string;              // https://www.gamemaps.com/details/<id>
 }
 interface GmPage { items: GmItem[]; page: number; totalPages: number }

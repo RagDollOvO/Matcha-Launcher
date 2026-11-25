@@ -14,7 +14,7 @@ export function beaconBridge(options = {}) {
       const service = new DesktopService(options), token = randomBytes(32).toString('hex'), clients = new Set();
       service.on('event', event => {
         const message = `data: ${JSON.stringify(event)}\n\n`;
-        for (const res of clients) res.write(message);
+        for (const res of clients) if (!res.writableEnded) res.write(message);
       });
       let closed = false;
       cleanup = async () => { if (closed) return; closed = true; for (const res of clients) res.end(); clients.clear(); await service.close(); };
@@ -30,7 +30,8 @@ export function beaconBridge(options = {}) {
         if (req.method === 'GET' && req.url === '/events') {
           res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
           res.write(': connected\n\n'); clients.add(res);
-          const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000);
+          // Vite 因后端文件变动重启时 cleanup 先 end 了连接，'close' 可能晚到；写之前看一眼，别让心跳把 dev server 写崩。
+          const heartbeat = setInterval(() => { if (res.writableEnded) clearInterval(heartbeat); else res.write(': ping\n\n'); }, 15000);
           res.on('close', () => { clearInterval(heartbeat); clients.delete(res); });
           return;
         }

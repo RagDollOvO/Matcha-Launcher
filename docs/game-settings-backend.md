@@ -49,7 +49,7 @@ interface GameSettingsReply extends GameSettings {
 | `fpsMax !== null` | `+fps_max N` |
 | `extraArgs` | 按空白拆分后追加 |
 
-校验：`extraArgs` 中的连接目标、模式和游戏路径由启动流程管理（`+connect`、`-insecure`、`-secure`、`-game`、`-defaultgamedir`、`-applaunch`）；拦截引号、换行、控制字符和分号。宽高为 320–7680 整数或 null；fpsMax 为 0–1000 整数或 null。无效参数返回 `game_settings_invalid`，`details.field` 和 message 带字段名。
+校验：`extraArgs` 中的连接目标、模式和游戏路径由启动流程管理（`+connect`、`-secure`、`-game`、`-defaultgamedir`、`-applaunch`），报错时点名是哪一项；`-insecure` 是玩家可选项，可以写（2026-11-25 放开），写了 `launchSpec` 的 `vacMode` 记为 `insecure`，连接 VAC 服务器会被拦下并给连接命令；拦截引号、换行、控制字符和分号。宽高为 320–7680 整数或 null；fpsMax 为 0–1000 整数或 null。无效参数返回 `game_settings_invalid`，`details.field` 和 message 带字段名。
 
 旧配置、旧调用可省略 `refreshHz` 和 `consoleLog`，分别按 null 和 false 处理。刷新率和日志参数对应 [Steam 的启动项说明](https://help.steampowered.com/en/faqs/view/7D01-D2DD-D75E-2955)。草稿预览和实际启动共用 `backend/launch-argv.mjs` 合并同名组（含 `-freq` / `-refresh`）。快照、设置回执与启动确认均使用最终参数；服务器连接目标始终在末尾。
 

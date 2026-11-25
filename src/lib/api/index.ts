@@ -76,6 +76,10 @@ export const api = {
   removeMissingProfileMods: (id: string, gameRoot: string, modIds: string[]) =>
     call<{ removed: string[] }>('remove-missing-profile-mods', { id, gameRoot, modIds }, true),
   saveCategories: (categories: Category[], assignments: Record<string, string>) => call('save-categories', { categories, assignments }),
+  renameMod: (gameRoot: string, mod: Pick<Mod, 'id' | 'title' | 'sourceTitle'>, name: string | null) =>
+    call<{ historyId: string | null; changeCount: number }>('rename-mod', {
+      gameRoot, id: mod.id, name, expected: { title: mod.title, sourceTitle: mod.sourceTitle ?? mod.title },
+    }, true),
   previewMod: (file: string) => call<VpkPreview>('preview-mod', { file }),
   copyModFiles: (ids: string[], gameRoot: string, favorites = false) => call<{ paths: string[] }>('copy-mod-files', { ids, gameRoot, favorites }),
   queueVpkDrop: (paths: string[]) => call<{ queued: number; errors: string[] }>('vpk-drop', { paths }, true),

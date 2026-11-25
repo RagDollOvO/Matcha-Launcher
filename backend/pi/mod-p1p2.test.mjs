@@ -225,6 +225,24 @@ test('Mod display names: batch, Workshop and managed files, restart, source refr
   assert.equal((await lookup(run,library)).title, '工坊原名'); assert.equal((await lookup(run,'music.vpk')).title, '音乐');
 });
 
+test('manual display names share the assistant override and reject a stale editor', async t => {
+  const f = await fixture(t), id = 'music.vpk', sourceTitle = '音乐';
+  const save = (title, name, gameRoot = f.gameRoot) => f.service.dispatch('rename-mod',
+    { gameRoot, id, name, expected: { title, sourceTitle } }, { approved: true, source: 'user' });
+  const current = async () => (await f.run('mod_inventory')).mods.find(m => m.id === id).title;
+  await assert.rejects(save(sourceTitle, '片尾曲', f.base), { code: 'game_changed' });
+  f.setRunning([{ pid: 101, name: 'offline-fixture' }]);
+  await save(sourceTitle, '  片尾曲  ');
+  assert.equal(await current(), '片尾曲');
+  await f.run('mod_rename', { items: [{ modId: id, name: '战役配乐' }] });
+  await assert.rejects(save('片尾曲', null), { code: 'mod_name_changed' });
+  assert.equal(await current(), '战役配乐');
+  const reset = await save('战役配乐', null);
+  assert.equal(await current(), sourceTitle);
+  await f.run('mod_undo', { historyId: reset.historyId });
+  assert.equal(await current(), '战役配乐');
+});
+
 test('Mod P1 category move/merge/delete keep hierarchies and are reversible', async t => {
   const f = await fixture(t);
   const categories = [{ id: 'cat-none', name: '未分类', builtin: true }, { id: 'a', name: '来源' }, { id: 'child', name: '子分类', parentId: 'a' }, { id: 'b', name: '目标' }];

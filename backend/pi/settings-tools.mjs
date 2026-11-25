@@ -21,7 +21,7 @@ const launchSchema = {
     lowViolence: { type: 'boolean', description: '-lv 低血腥度' },
     consoleLog: { type: 'boolean', description: '-condebug 控制台输出写入 left4dead2/console.log' },
     highPriority: { type: 'boolean', description: '-high 高优先级' },
-    extraArgs: { type: 'string', maxLength: 1000, description: '自定义启动项原文（整段替换），空白分隔；+connect、-insecure、-game 等由启动流程管理，不能写。' },
+    extraArgs: { type: 'string', maxLength: 1000, description: '自定义启动项原文（整段替换），空白分隔；+connect、-secure、-game 等由启动流程管理，不能写。-insecure 可以写，写了会关闭 VAC，进不了带 VAC 的服务器，写之前跟玩家说清楚。' },
   },
 };
 

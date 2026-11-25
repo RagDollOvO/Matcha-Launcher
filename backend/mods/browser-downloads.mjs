@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import yauzl from 'yauzl';
-import { directory, fail, safeResourcePath, stamp } from './files.mjs';
+import { directory, addonsDirectory, fail, safeResourcePath, stamp } from './files.mjs';
 import { regular, identity } from './vpk.mjs';
 
 const indexVpk = name => /\.vpk$/i.test(name) && !/_\d{3}\.vpk$/i.test(name);
@@ -136,7 +136,7 @@ export async function legacyArchiveImported(archive,addons,ids){
   if(!ids.size)return false;
   const matched=new Set(),seen=new Set(),mismatch=new Error('mismatch');
   try{
-    await directory(addons);const names=new Map((await fs.readdir(addons)).map(n=>[n.toLowerCase(),n]));
+    await addonsDirectory(addons);const names=new Map((await fs.readdir(addons)).map(n=>[n.toLowerCase(),n]));
     await zipEntries(archive,async(zip,entry)=>{
       const key=path.basename(entry.fileName).toLowerCase(),name=names.get(key);
       if(!name||seen.has(key))throw mismatch;seen.add(key);

@@ -192,13 +192,13 @@ export class ServerManager {
     await Promise.all(wanted.map(e => this.queryOne(e)));
     return this.list();
   }
-  async connectTarget(id, mode = 'development') {
-    const spec = launchSpec(mode);
+  async connectTarget(id, mode = 'development', settings) {
+    const spec = launchSpec(mode, undefined, settings);
     const server = typeof id === 'string' && id.startsWith('friend:') ? await this.friends.forJoin(id)
       : (await this.query([id])).find(e => e.id === id);
     if (!server) throw serverError('server_missing', '服务器已从列表移除。');
     if (server.status !== 'online') throw serverError('server_unavailable', server.error || '请先刷新服务器状态。');
-    if (server.vac && spec.vacMode === 'insecure') throw serverError('server_vac_secure', '当前启动参数包含 -insecure。请选择「L4N 平台启动」或「纯净对抗」，或复制连接命令到已运行的游戏。');
+    if (server.vac && spec.vacMode === 'insecure') throw serverError('server_vac_secure', '当前启动参数包含 -insecure，进不了带 VAC 的服务器。请从自定义启动项去掉 -insecure 或改用「纯净对抗」，也可以复制连接命令到已运行的游戏。');
     return server.connectAddr;
   }
   async close() { await this.writes; await Promise.allSettled(this.inFlight.values()); }

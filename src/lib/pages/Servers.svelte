@@ -109,7 +109,7 @@
   // ---------- 卡片小工具 ----------
   const pad = (n: number | undefined) => String(n ?? 0).padStart(2, '0');
   const hasData = (s: Server) => s.status === 'online' || (s.status === 'querying' && s.players !== null);
-  const copyOnly = (s: Server) => app.launchState === 'running' || (s.vac === true && app.launchConfig.vacMode === 'insecure');
+  const copyOnly = (s: Server) => app.launchState === 'running' || (s.vac === true && app.insecureLaunch);
   const connectBlock = (s: Server): string => s.status !== 'online' ? (s.status === 'querying' ? '正在探测' : '服务器不在线') : app.launchState !== 'idle' ? '游戏正在启动' : app.busy ? `正在${app.busy}` : '';
   function connect(s: Server) {
     if (copyOnly(s)) return app.copyServer(s);
@@ -765,7 +765,7 @@
     {:else}
       <footer>
         <span>{app.serversRefreshing ? '正在查询…' : `${stat(app.servers).online} 在线 / ${app.servers.length} 已添加`}</span>
-        <span>{app.launchConfig.mode === 'clean' ? '纯净对抗 · 使用 Steam 原版目录' : app.launchConfig.vacMode === 'insecure' ? 'L4N 平台启动 · 当前带 -insecure，VAC 服务器提供连接命令' : 'L4N 平台启动 · 保持 Steam 登录'}</span>
+        <span>{app.launchConfig.mode === 'clean' ? '纯净对抗 · 使用 Steam 原版目录' : app.insecureLaunch ? 'L4N 平台启动 · 当前带 -insecure，进不了 VAC 服务器，只给连接命令' : 'L4N 平台启动 · 保持 Steam 登录'}</span>
       </footer>
     {/if}
   </div>

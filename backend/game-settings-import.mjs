@@ -21,7 +21,7 @@ const sha = buf => createHash('sha256').update(buf).digest('hex');
 const FLAGS = { '-novid': 'novid', '-console': 'console', '-lv': 'lowViolence', '-condebug': 'consoleLog', '-high': 'highPriority' };
 const WINDOWED = new Set(['-windowed', '-sw', '-window', '-win', '-startwindowed']);
 const FULLSCREEN = new Set(['-fullscreen', '-full']);
-const MANAGED = new Set(['+connect', '-insecure', '-secure', '-game', '-defaultgamedir', '-applaunch']);
+const MANAGED = new Set(['+connect', '-secure', '-game', '-defaultgamedir', '-applaunch']);
 const int = (s, min, max) => /^\d+$/.test(s ?? '') && +s >= min && +s <= max ? +s : null;
 
 /** 按引号切分；返回 { tokens, prefix }，prefix 是 %command% 前面的包装命令（Windows 下 Matcha 不用） */

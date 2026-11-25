@@ -7,6 +7,8 @@ import type { ModTask } from '../types';
 export type GmSection = 'maps' | 'mods';
 export type GmSort = 'recent' | 'popular' | 'rviews';
 export interface GmQuery { section: GmSection; category: string; sort: GmSort; page: number; q: string }
+/** 列表卡片上的站点标记：新发布 / 老图更新 / 已归档 / 测试版 */
+export type GmFlag = 'new' | 'updated' | 'archived' | 'beta';
 export interface GmItem {
   id: string; title: string;
   /** 站内相对地址或绝对地址都行，前端用 gmImage() 补全 */
@@ -14,8 +16,11 @@ export interface GmItem {
   /** 站点给的类型标签，如 "Map"、"4 Maps"、"Mod" */
   typeLabel: string;
   summary?: string; author?: string; sizeBytes?: number; views?: number; likes?: number; updatedAt?: string;
+  /** 只有列表页有；详情页沿用列表里带过来的 */
+  flags?: GmFlag[];
   url: string;
 }
+export const GM_FLAG_LABEL: Record<GmFlag, string> = { new: '新', updated: '更新', archived: '已归档', beta: 'Beta' };
 export interface GmPage { items: GmItem[]; page: number; totalPages: number }
 export interface GmDetail extends GmItem {
   authors: { name: string; role: string }[];
@@ -48,12 +53,12 @@ export const gmApi = {
 // ---------------- 开发预览假数据 ----------------
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ITEMS: GmItem[] = [
-  { id: '35511', title: '[CLASSIFIED] The Parish Reloaded V2.2/教区重装上阵 V2.2', image: '', typeLabel: '4 Maps', author: 'Scari', sizeBytes: 412_000_000, views: 18200, likes: 340, updatedAt: '2026-11-10', summary: 'The Parish Reloaded 2.0 out now.', url: gmUrl('35511') },
-  { id: '36624', title: 'Glubtastic: Back 4 Glub', image: '', typeLabel: 'Map', author: 'DrFace', sizeBytes: 77_300_000, views: 3100, likes: 10, updatedAt: '2026-11-02', url: gmUrl('36624') },
-  { id: '36645', title: 'City 5', image: '', typeLabel: '5 Maps', author: 'PlayGamesTB', sizeBytes: 520_000_000, views: 9200, likes: 120, updatedAt: '2026-11-14', url: gmUrl('36645') },
+  { id: '35511', title: '[CLASSIFIED] The Parish Reloaded V2.2/教区重装上阵 V2.2', image: '', typeLabel: '4 Maps', author: 'Scari', sizeBytes: 412_000_000, views: 18200, likes: 340, updatedAt: '2026-11-10', flags: ['updated'], summary: 'The Parish Reloaded 2.0 out now.', url: gmUrl('35511') },
+  { id: '36624', title: 'Glubtastic: Back 4 Glub', image: '', typeLabel: 'Map', author: 'DrFace', sizeBytes: 77_300_000, views: 3100, likes: 10, updatedAt: '2026-11-02', flags: ['new', 'beta'], url: gmUrl('36624') },
+  { id: '36645', title: 'City 5', image: '', typeLabel: '5 Maps', author: 'PlayGamesTB', sizeBytes: 520_000_000, views: 9200, likes: 120, updatedAt: '2026-11-14', flags: ['new'], url: gmUrl('36645') },
   { id: '22803', title: 'Atrocity Valley', image: '', typeLabel: '3 Maps', author: 'Valley Team', sizeBytes: 230_000_000, views: 52000, likes: 880, updatedAt: '2026-10-21', url: gmUrl('22803') },
-  { id: '36516', title: 'Back 4 Blood M16A2 (L4D2 Animations)', image: '', typeLabel: 'Mod', author: 'Ryker', sizeBytes: 18_500_000, views: 1400, likes: 42, updatedAt: '2026-11-11', url: gmUrl('36516') },
-  { id: '36586', title: 'Gears of War Menu Backgrounds', image: '', typeLabel: 'Mod', author: 'Marcus', sizeBytes: 96_000_000, views: 2100, likes: 37, updatedAt: '2026-11-09', url: gmUrl('36586') },
+  { id: '36516', title: 'Back 4 Blood M16A2 (L4D2 Animations)', image: '', typeLabel: 'Mod', author: 'Ryker', sizeBytes: 18_500_000, views: 1400, likes: 42, updatedAt: '2026-11-11', flags: ['updated'], url: gmUrl('36516') },
+  { id: '36586', title: 'Gears of War Menu Backgrounds', image: '', typeLabel: 'Mod', author: 'Marcus', sizeBytes: 96_000_000, views: 2100, likes: 37, updatedAt: '2026-11-09', flags: ['archived'], url: gmUrl('36586') },
 ];
 async function mockBrowse(q: GmQuery): Promise<GmPage> {
   await sleep(500);

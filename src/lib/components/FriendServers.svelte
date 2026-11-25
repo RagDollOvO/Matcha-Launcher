@@ -58,7 +58,7 @@
   const names = (people: Person[]) => people.length > 2 ? `${people[0].name}、${people[1].name} 等 ${people.length} 人` : people.map(p => p.name).join('、');
   const place = (r: FriendServer) => r.addr ? r.name : r.name === '游戏大厅' ? '游戏大厅' : '游戏中';
   const quality = (ping: number) => ping <= 80 ? 'good' : ping <= 150 ? 'fair' : 'poor';
-  const copyOnly = (r: FriendServer) => app.launchState === 'running' || (r.vac && app.launchConfig.vacMode === 'insecure') || ['timeout','error'].includes(r.status);
+  const copyOnly = (r: FriendServer) => app.launchState === 'running' || (r.vac && app.insecureLaunch) || ['timeout','error'].includes(r.status);
   const duration = (ms: number) => reduceMotion() ? 0 : ms;
 
   /** 弹出：从按钮下方落下来，带一点回弹；收起时干脆利落 */

@@ -12,9 +12,23 @@ import { previewRecycleSources, recycleSources } from './favorite-recycle.mjs';
 import { favoriteProfilePlan } from './favorite-profiles.mjs';
 import { favoritePath, importFavoriteCopy } from './favorite-vault.mjs';
 import { favoriteTrashView } from './favorite-trash.mjs';
+import { planMetadata } from '../pi/mod-metadata.mjs';
+import { commitMetadata } from '../pi/mod-history.mjs';
 
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 const exists = async p => fs.access(p).then(() => true, () => false);
+
+async function renameMod(service, { gameRoot, id, name, expected }, confirmation) {
+  service.confirm(confirmation);
+  const root = await service.requireRoot();
+  if (!samePath(root, gameRoot)) fail('game_changed', '游戏目录已切换，请重新选择 Mod。');
+  const inventory = await service.modManager.scan(root, { conflicts: false });
+  const plan = planMetadata('rename', { items: [{ modId: id, name }] }, service.settings, inventory, root);
+  const mod = inventory.mods.find(m => m.id === id);
+  if (mod.title !== expected?.title || mod.sourceTitle !== expected?.sourceTitle)
+    fail('mod_name_changed', '这个 Mod 的名称刚有更新，请重新打开改名窗口。');
+  return commitMetadata(service, root, plan.label, plan.next);
+}
 
 async function saveCategories(service, p) {
   const modMeta = { ...service.settings.modMeta };
@@ -141,6 +155,7 @@ export const modCommands = new Map([
   ['apply-mod-profile', (service, p, confirmation) => service.applyModProfile(p.id, confirmation)],
   ['set-mod-conflict-reviewed', setConflictReviewed],
   ['disable-mod-conflict-provider', disableConflictProvider],
+  ['rename-mod', renameMod],
   ['save-categories', saveCategories],
   ['save-mod-meta', saveModMeta],
   ['import-favorite-copy', importCopy],

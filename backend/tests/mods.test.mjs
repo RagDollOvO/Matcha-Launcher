@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import iconv from 'iconv-lite';
 import { ModManager } from '../mods/manager.mjs';
+import { crossVolume } from '../mods/files.mjs';
 import { readVpk, readResource, verifyVpk } from '../mods/vpk.mjs';
 import { parseAddonList, readAddonList, updateAddonList } from '../mods/addonlist.mjs';
 import { vpkFixture, addonInfo } from './mods-fixtures.mjs';
@@ -134,6 +135,26 @@ test('Mods import: GBK addonlist keeps existing Chinese entries and registers th
   const inventory = await f.manager.scan(f.gameRoot);
   assert.equal(inventory.writable, true); assert.deepEqual(inventory.issues, []);
   assert.equal(inventory.mods.find(m => m.id === result.id).enabled, false);
+});
+
+test('Mods: addons moved elsewhere with mklink /J still scans, imports and replaces in place', async () => {
+  const f = await fixture(), moved = path.join(f.base, 'other-drive', 'addons');
+  await fs.mkdir(path.dirname(moved)); await fs.rename(f.addons, moved);
+  await fs.symlink(moved, f.addons, 'junction');
+  let s = await f.manager.scan(f.gameRoot);
+  assert.deepEqual(s.issues, []); assert.deepEqual(s.mods.map(m => m.id).sort(), ['local.vpk', 'workshop/123.vpk']);
+  assert.equal(await f.manager.resolve(f.gameRoot, 'workshop/123.vpk'), path.join(f.addons, 'workshop', '123.vpk'));
+  const file = await vpkFixture(path.join(f.base, 'source/linked.vpk'), { 'addoninfo.txt': addonInfo('链接目录导入'), 'models/linked.mdl': 'model' });
+  const result = await f.manager.import({ gameRoot: f.gameRoot, file, confirmation: approval });
+  await fs.access(path.join(moved, 'linked.vpk'));
+  const again = await vpkFixture(path.join(f.base, 'source2/linked.vpk'), { 'addoninfo.txt': addonInfo('链接目录替换'), 'models/linked.mdl': 'model v2' });
+  assert.equal((await f.manager.import({ gameRoot: f.gameRoot, file: again, confirmation: approval, replaceExisting: true })).replaced, true);
+  s = await f.manager.scan(f.gameRoot); assert.equal(s.mods.find(m => m.id === result.id).title, '链接目录替换');
+  // 链接指向的文件夹没了：说清楚，不当成空目录。
+  await fs.rm(path.dirname(moved), { recursive: true });
+  await assert.rejects(f.manager.scan(f.gameRoot), e => e.code === 'unsafe_path' && /目录链接指向的文件夹不存在/.test(e.message));
+  assert.throws(() => crossVolume(Object.assign(new Error('x'), { code: 'EXDEV' }), '删除没成功'), e => e.code === 'cross_volume' && /另一个盘/.test(e.message));
+  assert.throws(() => crossVolume(Object.assign(new Error('x'), { code: 'EPERM' }), '删除没成功'), e => e.code === 'EPERM');
 });
 
 test('Mods: true inventory, overlaps, apply with backup, process guard and invalid addon isolation', async () => {

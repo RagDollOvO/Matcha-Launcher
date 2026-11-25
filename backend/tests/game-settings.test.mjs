@@ -35,9 +35,16 @@ test('game argv: validation, grouped dedup, explicit toggles and connect-last; o
   assert(!override.includes('-refresh')); assert(override.includes('144'));
   assert.throws(() => validateGameSettings({ ...full, display: { ...full.display, refreshHz: 0 } }), { code: 'game_settings_invalid' });
   assert.equal(validateGameSettings({ ...value, consoleLog: undefined }).display.refreshHz, null);
-  for (const arg of ['+connect host', '-INSECURE', '-game=x', '-applaunch 550', '-w "1920"', '-console\n-high']) {
+  for (const arg of ['+connect host', '-secure', '-game=x', '-applaunch 550', '-w "1920"', '-console\n-high']) {
     assert.throws(() => validateGameSettings({ ...value, extraArgs: arg }), e => e.code === 'game_settings_invalid' && e.details.field === 'extraArgs');
   }
+  assert.throws(() => validateGameSettings({ ...value, extraArgs: '-novid -game x' }), { message: /不能写 -game/ });
+  // -insecure 是玩家可选项：L4N 平台启动带上它，VAC 状态跟着变；纯净对抗不吃自定义启动项。
+  assert.equal(launchSpec('modded', undefined, value).vacMode, 'game-default');
+  const insecure = launchSpec('modded', undefined, validateGameSettings({ ...value, extraArgs: '-INSECURE +mat_phong 1' }));
+  assert(insecure.launchOptions.includes('-INSECURE')); assert.equal(insecure.vacMode, 'insecure');
+  const cleanInsecure = launchSpec('clean', undefined, { ...value, extraArgs: '-insecure' });
+  assert(!cleanInsecure.launchOptions.includes('-insecure')); assert.equal(cleanInsecure.vacMode, 'game-default');
   assert.throws(() => validateGameSettings({ ...value, fpsMax: 1001 }), { code: 'game_settings_invalid' });
   assert.throws(() => validateGameSettings({ ...value, display: { ...value.display, width: 319 } }), { code: 'game_settings_invalid' });
   assert.throws(() => validateGameSettings({ ...value, autoexec: { enabled: true, values: { volume: '1"\nquit' }, extra: '' } }), { code: 'game_settings_invalid' });

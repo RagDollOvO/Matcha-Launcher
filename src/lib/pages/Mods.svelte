@@ -44,6 +44,7 @@
   import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
   import Toggle from '../components/Toggle.svelte';
   import ModThumb from '../components/ModThumb.svelte';
+  import ModNameDialog from '../components/ModNameDialog.svelte';
   import Menu from '../components/Menu.svelte';
   import SoundList from '../components/SoundList.svelte';
   import TrashView from '../components/TrashView.svelte';
@@ -74,6 +75,16 @@
   let selected = $state<string[]>([]);
   let anchor: string | null = null;
   let detailId = $state<string | null>(null);
+  let nameEditor = $state.raw<{ mod: Mod; gameRoot: string; trigger: HTMLElement } | null>(null);
+  function editModName(mod: Mod, trigger: HTMLElement) {
+    nameEditor = { mod: { ...mod }, gameRoot: app.game.root, trigger };
+  }
+  async function closeNameEditor() {
+    const trigger = nameEditor?.trigger;
+    nameEditor = null;
+    await tick();
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  }
   let sort = $state<'name' | 'size' | 'updated'>('name');
   let importOpen = $state(false);
   let importPath = $state('');
@@ -137,6 +148,7 @@
   /** 方案相关的计算只在分类视图里用；库视图里没有“当前方案” */
   const scoped = $derived(lib ? undefined : prof);
   const overlap = $derived(scoped ? app.conflictReviews[scoped.id] : undefined);
+  const hasConflict = (id: string) => (overlap?.byMod[id]?.pending ?? 0) > 0;
   const reviewing = $derived(conflictFilesOpen && !!scoped);
   const missingMods = $derived(scoped ? app.missingMods(scoped) : []);
   /** 库视图忽略按方案状态的筛选，回到分类后筛选还在 */
@@ -163,8 +175,10 @@
     all: scopeMods.length,
     on: scopeMods.filter((m) => prof.modIds.includes(m.id)).length,
     off: scopeMods.filter((m) => !prof.modIds.includes(m.id) && !isPkg(m)).length,
+    conflict: scopeMods.filter((m) => hasConflict(m.id)).length,
   });
-  const filters = [['all', '全部'], ['on', '启用'], ['off', '停用']] as const;
+  // 「冲突」= 本方案里有同路径不同内容、还没确认共存的文件；内容相同的「重叠」不算。
+  const filters = [['all', '全部'], ['on', '启用'], ['off', '停用'], ['conflict', '冲突']] as const;
 
   const folders = $derived(flat ? [] : app.childCategories(cur));
   const rows = $derived.by(() => {
@@ -175,6 +189,7 @@
       if (isPkg(m) && (fstatus === 'on' || fstatus === 'off')) return false;
       if (fstatus === 'on' && !on) return false;
       if (fstatus === 'off' && on) return false;
+      if (fstatus === 'conflict' && !hasConflict(m.id)) return false;
       return !q || m.title.toLowerCase().includes(q) || m.sourceTitle?.toLowerCase().includes(q) || m.file.toLowerCase().includes(q) || m.author.toLowerCase().includes(q);
     });
     const by: Record<typeof sort, (a: Mod, b: Mod) => number> = {
@@ -326,7 +341,7 @@
     ];
   }
   function shortcutsBlocked(e: Event) {
-    return e.defaultPrevented || welcome.open || quickTest || conflictFilesOpen || menu || workshop || collectionDialog || app.confirmation || edit ||
+    return e.defaultPrevented || welcome.open || quickTest || conflictFilesOpen || menu || workshop || collectionDialog || nameEditor || app.confirmation || edit ||
       (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable], dialog, [role="dialog"], .agent-slot'));
   }
   /** 在 Mod 页按 Ctrl+V：剪贴板里是工坊链接就直接打开下载对话框 */
@@ -476,7 +491,7 @@
       { label: '新建分类并移入', icon: FolderPlus, run: () => newFolderWith(ids) },
     ];
   }
-  function modItems(ids: string[]): MenuItem[] {
+  function modItems(ids: string[], trigger: HTMLElement): MenuItem[] {
     const mods = ids.map((id) => app.mod(id)).filter((m): m is Mod => !!m);
     if (!mods.length) return [];
     const one = mods.length === 1 ? mods[0] : null;
@@ -486,6 +501,7 @@
     const items: MenuItem[] = one
       ? [{ label: '查看详情', icon: PanelRight, hint: 'Enter', run: () => (detailId = one.id) }]
       : [{ kind: 'label', label: `已选 ${mods.length} 个 Mod` }];
+    if (one && !isPkg(one)) items.push({ label: '修改显示名…', icon: Pencil, disabled: busyReason || false, run: () => editModName(one, trigger) });
     // 库视图不属于任何方案：只给「加入方案」子菜单，不给当前方案的启停
     if (!lib) items.push({
       label: allOn ? `在「${prof.name}」中停用` : `在「${prof.name}」中启用`, icon: allOn ? ToggleLeft : ToggleRight,
@@ -985,7 +1001,7 @@
         {#if !lib}
           <div class="seg" role="radiogroup" aria-label="按方案状态筛选">
             {#each filters as [k, label] (k)}
-              <button role="radio" aria-checked={f.status === k} class:on={f.status === k}
+              <button role="radio" aria-checked={f.status === k} class:on={f.status === k} class:danger={k === 'conflict' && counts.conflict > 0}
                       onclick={() => (f.status = k)}>{label}<span class="mono n">{counts[k]}</span></button>
             {/each}
           </div>
@@ -1048,6 +1064,11 @@
             <p>没有待整理的新下载</p>
             <span>从创意工坊链接下载的 Mod 会先放在这里，不加入任何方案。在 Mod 页按 Ctrl+V 也能粘贴链接</span>
             <button class="btn" disabled={!!workshopBlock} onclick={() => openWorkshop()}><Link size={14} />添加工坊链接</button>
+          {:else if flat && fstatus === 'conflict' && !f.q.trim()}
+            <CheckCheck size={28} strokeWidth={1.25} />
+            <p>这个方案没有冲突</p>
+            <span>同路径内容相同的重叠和已确认共存的文件不算冲突，可以在「检查资源」里看</span>
+            <button class="btn ghost" onclick={() => (f.status = 'all')}>看全部 Mod</button>
           {:else if flat}
             <p>没有符合条件的 Mod</p>
             <button class="btn ghost" onclick={() => { f.q = ''; f.status = 'all'; }}>清除筛选</button>
@@ -1105,7 +1126,7 @@
             <div class="tile" class:off={!on && !lib && !isPkg(m)} class:open={detailId === m.id} class:picked class:moving={!drag?.folder && drag?.ids.includes(m.id)}
                  class:flash={flashId === m.id} data-mod={m.id} role="button" tabindex="0" aria-label={m.title}
                  onpointerdown={(e) => onPress(e, m.id)} onclick={(e) => activate(e, m.id)} onkeydown={(e) => onItemKey(e, m.id)}
-                 oncontextmenu={(e) => menuAt(e, modItems(targets(m.id)))}>
+                 oncontextmenu={(e) => menuAt(e, modItems(targets(m.id), e.currentTarget))}>
               <div class="cover">
                 <ModThumb mod={m} />
                 <input type="checkbox" class="pick" class:show={selected.length > 0} checked={picked} tabindex="-1"
@@ -1180,7 +1201,7 @@
             <div class="row" class:off={!on && !lib && !isPkg(m)} class:open={detailId === m.id} class:picked={selected.includes(m.id)} class:moving={!drag?.folder && drag?.ids.includes(m.id)}
                  class:flash={flashId === m.id} data-mod={m.id} role="button" tabindex="0"
                  onpointerdown={(e) => onPress(e, m.id)} onclick={(e) => activate(e, m.id)} onkeydown={(e) => onItemKey(e, m.id)}
-                 oncontextmenu={(e) => menuAt(e, modItems(targets(m.id)))}>
+                 oncontextmenu={(e) => menuAt(e, modItems(targets(m.id), e.currentTarget))}>
               <input type="checkbox" checked={selected.includes(m.id)} tabindex="-1" onclick={stop} onchange={() => toggleSel(m.id)} aria-label={`选择 ${m.title}`} />
               <span class="mini"><ModThumb mod={m} /></span>
               <div class="nm">
@@ -1232,11 +1253,17 @@
         <span class="section-label">{detail.source === 'workshop' ? '创意工坊' : '本地'}</span>
         <span class="grow"></span>
         <button class="icon-btn" class:faved={fav} title={fav ? '更新收藏副本（F）' : '收藏（F）'} aria-pressed={fav} aria-label="收藏" onclick={() => app.setFavorite([detail.id], true)}><Star size={14} fill={fav ? 'currentColor' : 'none'} /></button>
-        <button class="icon-btn" title="更多操作" aria-label="更多操作" onclick={(e) => menuBelow(e.currentTarget, modItems([detail.id]))}><Ellipsis size={14} /></button>
+        <button class="icon-btn" title="更多操作" aria-label="更多操作" onclick={(e) => menuBelow(e.currentTarget, modItems([detail.id], e.currentTarget))}><Ellipsis size={14} /></button>
         <button class="icon-btn" aria-label="关闭" onclick={() => (detailId = null)}><X size={14} /></button>
       </div>
       <div class="hero"><ModThumb mod={detail} fit="contain" /></div>
-      <h3 bind:this={detailTitle} tabindex="-1">{detail.title}</h3>
+      <div class="detail-name">
+        <h3 bind:this={detailTitle} tabindex="-1">{detail.title}</h3>
+        {#if !isPkg(detail)}
+          <button class="icon-btn" type="button" title="修改显示名" aria-label="修改显示名" disabled={!!app.busy}
+                  onclick={(e) => editModName(detail!, e.currentTarget)}><Pencil size={14} /></button>
+        {/if}
+      </div>
       {#if detail.sourceTitle && detail.sourceTitle !== detail.title}<p class="meta">原名：{detail.sourceTitle}</p>{/if}
       <p class="meta">{detail.author || '作者未填写'}{detail.version ? ` · v${detail.version}` : ''}{detail.updatedAt ? ` · ${detail.updatedAt.slice(0, 10)}` : ''}</p>
       {#if detail.error}<p class="warn">{detail.error}</p>{/if}
@@ -1392,6 +1419,7 @@
   {#if menu}<Menu items={menu.items} x={menu.x} y={menu.y} onclose={closeMenu} />{/if}
 {/key}
 {#if workshop}<WorkshopDialog initial={workshop.text} onclose={() => (workshop = null)} />{/if}
+{#if nameEditor}<ModNameDialog mod={nameEditor.mod} gameRoot={nameEditor.gameRoot} onclose={closeNameEditor} />{/if}
 {#if collectionDialog}<FavoriteCollectionDialog fromLibrary {...collectionDialog} onclose={() => collectionDialog = null} onsaved={id => { collectionDialog = null; openCollection(id); }} />{/if}
 {#if quickTest}<QuickTest seed={quickTest.seed} onclose={()=>quickTest=null}/>{/if}
 
@@ -1498,6 +1526,7 @@
   .seg button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; height: 26px; padding: 0 10px; border-radius: 9px; color: var(--fg-2); font-size: 13px; transition: background var(--dur), color var(--dur); }
   .seg button:hover { color: var(--fg); }
   .seg button.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+  .seg button.danger .n { color: var(--danger); }
   .seg .n { font-size: 12px; color: var(--fg-3); }
   .seg button.on .n { color: inherit; opacity: .7; }
   .seg button.danger, .seg button.danger .n { color: var(--danger); }
@@ -1675,9 +1704,11 @@
   .dh { display: flex; align-items: center; gap: 2px; }
   .dh .faved { color: var(--fg); }
   .hero { position: relative; aspect-ratio: 16 / 10; margin-top: 10px; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
-  h3 { margin: 14px 0 2px; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+  .detail-name { display: flex; align-items: baseline; gap: 6px; margin: 14px 0 2px; }
+  .detail-name h3 { min-width: 0; margin: 0; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+  .detail-name .icon-btn { flex: none; align-self: flex-start; color: var(--md-primary); }
   h3:focus { outline: none; }
-  .detail .meta { display: block; padding: 0; margin: 0 0 12px; white-space: normal; }
+  .detail .meta { display: block; padding: 0; margin: 0 0 12px; white-space: normal; overflow-wrap: anywhere; }
   .warn { margin: 8px 0; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
   .desc { color: var(--fg-2); margin: 0 0 16px; overflow-wrap: anywhere; }
   .origins { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }

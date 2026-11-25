@@ -18,8 +18,10 @@ export function launchSpec(mode = 'development', connect, settings) {
   const base = baseLaunchArgv(mode), policy = modes[mode];
   // The clean route uses the official default renderer and no custom flags.
   const args = settings === undefined || mode === 'clean' ? base : gameLaunchArgs(base, settings);
+  // VAC 状态跟实际参数走：玩家在自定义启动项里写了 -insecure，L4N 平台启动也进不了 VAC 服务器。
+  const vacMode = args.some(arg => arg.toLowerCase() === '-insecure') ? 'insecure' : policy.vacMode;
   return {
-    mode, ...policy,
+    mode, ...policy, vacMode,
     launchOptions: [...args, ...(target ? ['+connect', target] : [])],
     ...(target ? { connect: target } : {}),
   };

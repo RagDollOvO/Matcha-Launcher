@@ -918,7 +918,7 @@ export class DesktopService extends EventEmitter {
     const mode = launchSpec(desktopMode(p.mode ?? this.launchMode)).mode;
     const profileId = p.profileId ?? this.settings.activeProfileId;
     if (!this.settings.profiles.some(profile => profile.id === profileId)) fail('profile_missing', '方案已不存在。');
-    const serverId = p.serverId ?? '', connect = serverId ? await this.serverManager.connectTarget(serverId, mode) : '';
+    const serverId = p.serverId ?? '', connect = serverId ? await this.serverManager.connectTarget(serverId, mode, mode === 'clean' ? undefined : this.gameSettings()) : '';
     const server = serverId && (this.serverManager.friends.rows.get(serverId) ?? (await this.serverManager.list()).find(s => s.id === serverId));
     return { mode, profileId, serverId, connect, remote: remoteTarget(connect), modeId: server?.modeId ?? '' };
   }
@@ -1210,7 +1210,7 @@ export class DesktopService extends EventEmitter {
         const mode = launchSpec(desktopMode(p.mode ?? this.launchMode)).mode;
         const gameRoot = await this.requireRoot();
         if (mode === 'clean') return this.core.launch({ gameRoot, mode, connect: await this.serverManager.connectTarget(p.id, mode), confirmation });
-        const connect = await this.serverManager.connectTarget(p.id, mode);
+        const connect = await this.serverManager.connectTarget(p.id, mode, this.gameSettings());
         await this.applyGameSettings(gameRoot, true);
         await this.applyModProfile(p.profileId ?? this.settings.activeProfileId, confirmation);
         return this.core.launch({ gameRoot, mode, connect, gameSettings: this.gameSettings(), confirmation });

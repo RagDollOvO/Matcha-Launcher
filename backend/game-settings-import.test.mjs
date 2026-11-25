@@ -18,6 +18,9 @@ test('Steam 启动选项：认得的进开关，其余整组进自定义启动�
   assert.deepEqual(c.patch, { display: { mode: 'noborder' } });
   assert.deepEqual(c.extra, ['-w 1920', '-freq 60'], '单个宽、非全屏刷新率原样保留');
   assert.equal(mergeExtraArgs('-hide_neko -language schinese', ['-language English']), '-hide_neko -language English');
+  const d = parseLaunchOptions('-novid -insecure -secure');
+  assert.deepEqual(d.extra, ['-insecure'], '-insecure 是玩家可选项，照常导入');
+  assert.deepEqual(d.skipped.map(s => s.text), ['-secure']);
 });
 
 test('autoexec：段外的行按原顺序搬进管理段，引号不成对的留在外面', () => {

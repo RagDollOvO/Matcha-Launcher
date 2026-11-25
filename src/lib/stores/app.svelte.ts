@@ -113,7 +113,7 @@ class AppState {
   requestedMode: LaunchMode = 'development';
   launchedAt = $state<number | null>(null);
   requestedAt = 0;
-  modFilter = $state<{ category: string; status: 'all' | 'on' | 'off'; q: string }>({ category: 'all', status: 'all', q: '' });
+  modFilter = $state<{ category: string; status: 'all' | 'on' | 'off' | 'conflict'; q: string }>({ category: 'all', status: 'all', q: '' });
   modPanel = $state<'conflicts' | 'missing' | null>(null);
   toasts = $state<Toast[]>([]);
 
@@ -1001,6 +1001,14 @@ class AppState {
     toast: (text, action) => this.toast(text, action),
     openServerPage: () => { this.route = 'servers'; },
   });
+  /** 这次真实启动参数里有没有 -insecure（玩家可以写在自定义启动项里）。带上就进不了 VAC 服务器。
+   *  按游戏设置现算，不等后端快照刷新；设置还没读到时退回后端给的 vacMode。 */
+  get insecureLaunch() {
+    const { mode } = this.launchConfig;
+    if (mode === 'clean') return false;
+    if (gameSettings.status !== 'ready') return this.launchConfig.vacMode === 'insecure';
+    return gameSettings.args(mode).some(arg => arg.toLowerCase() === '-insecure');
+  }
   get servers() { return this.serverStore.servers; }
   get serverLayout() { return this.serverStore.serverLayout; }
   get serverLayoutConflict() { return this.serverStore.serverLayoutConflict; }
@@ -1041,7 +1049,12 @@ class AppState {
     const server = discovered ?? this.servers.find(s => s.id === id);
     if (!server) return;
     if (this.launchState === 'running') return this.copyServer(server);
-    if (server.vac && this.launchConfig.vacMode === 'insecure') { this.toast('此服务器启用了 VAC，请切换到纯净对抗。'); return this.copyServer(server); }
+    if (server.vac && this.insecureLaunch) {
+      const command = `connect ${server.connectAddr ?? server.addr}`;
+      const copied = await navigator.clipboard.writeText(command).then(() => true, () => false);
+      this.toast(`这台服务器开了 VAC，启动项带 -insecure 进不去。去掉 -insecure 或切到纯净对抗再连。${copied ? '连接命令已复制。' : `连接命令：${command}`}`, undefined, 6000);
+      return;
+    }
     if (this.launchState !== 'idle' || this.busy) return;
     const clean = this.launchConfig.mode === 'clean';
     if (!this.game.installed || (!clean && !this.runtime.installed && !this.nativeLibraries?.l4n.enabled)) { this.route = 'plugins'; return; }
@@ -1091,10 +1104,13 @@ class AppState {
   /** 按这次真实的启动参数说明，不按模式名猜 */
   private launchNotice(config: LaunchConfiguration) {
     if (config.mode === 'clean') return '使用 Steam 登记的原版目录和默认渲染；L4N 启动偏好和 Mod 方案保留。若选中的目录仍有 L4N、渲染代理或启用的附加内容，检查会停在启动前。';
-    if(config.launchOptions.some(arg=>arg.toLowerCase()==='-hide_neko')) return '此次跳过 L4N 及依赖它的模组，沿用所选 VPK 方案和游戏渲染入口。';
-    return config.launchOptions.includes('-insecure')
-      ? '沿用游戏渲染入口，按配置加载 L4N 和 DLL 模组。本次参数带 -insecure，只能进入非 VAC 服务器。'
-      : '沿用游戏渲染入口，按配置加载 L4N 和 DLL 模组，使用游戏默认 VAC 模式。请保持 Steam 登录。';
+    const args = config.launchOptions.map(arg => arg.toLowerCase());
+    const skipL4n = args.includes('-hide_neko');
+    const detail = skipL4n
+      ? '此次跳过 L4N 及依赖它的模组，沿用所选 VPK 方案和游戏渲染入口。'
+      : '沿用游戏渲染入口，按配置加载 L4N 和 DLL 模组。';
+    if (args.includes('-insecure')) return detail + ' 本次带 -insecure，联机仅限非 VAC 服务器。';
+    return skipL4n ? detail : detail + ' 使用游戏默认 VAC 模式。请保持 Steam 登录。';
   }
   async launch(connect?: string) {
     if (this.launchState !== 'idle') return;

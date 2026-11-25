@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { PlatformError } from '../errors.mjs';
 import { regular } from './vpk.mjs';
 import { directory } from './manager.mjs';
+import { addonsDirectory, crossVolume } from './files.mjs';
 import { displayNames, replaceDisplayNames } from './display-names.mjs';
 import { gameFolder, folderName } from '../legacy-names.mjs';
 
@@ -39,8 +40,8 @@ export class ModTrash {
       for (const part of parts.slice(0, -1)) parent = await directory(path.join(parent, part), create);
       return path.join(parent, parts.at(-1));
     }
-    const addons = await directory(path.join(content, 'addons'), create);
-    if (file.startsWith('workshop/')) await directory(path.join(addons, 'workshop'), create);
+    const addons = await addonsDirectory(path.join(content, 'addons'), create);
+    if (file.startsWith('workshop/')) await addonsDirectory(path.join(addons, 'workshop'), create);
     return path.join(addons, file);
   }
   async record(root, trashId) {
@@ -149,7 +150,7 @@ export class ModTrash {
           for (const f of r.files) {
             const source = await this.original(c.root, f.file), target = await this.savedFile(c.root, r, f.file);
             if (stamp(await regular(source)) !== f.stamp) fail('file_changed', '删除期间 Mod 已变化，请刷新后重试。');
-            await fs.link(source, target); // Exclusive, same-volume move; index disappears first.
+            await fs.link(source, target).catch(e => crossVolume(e, '删除没成功，Mod 已保留')); // Exclusive, same-volume move; index disappears first.
             if (stamp(await regular(source)) !== f.stamp || stamp(await regular(target)) !== f.stamp) fail('file_changed', '移动期间 Mod 已变化，请在回收站还原。');
             await fs.unlink(source);
           }
@@ -212,7 +213,7 @@ export class ModTrash {
           const source = await this.savedFile(c.root, r, f.file), target = await this.original(c.root, f.file, true);
           if (await exists(source)) {
             if (stamp(await regular(source)) !== f.stamp) fail('file_changed', `回收文件已变化：${f.file}`);
-            if (!await exists(target)) await fs.link(source, target);
+            if (!await exists(target)) await fs.link(source, target).catch(e => crossVolume(e, '还原没成功，回收站里的文件已保留'));
             else if (stamp(await regular(target)) !== f.stamp) fail('restore_conflict', `原位置刚出现同名文件：${f.file}`);
             await fs.unlink(source);
           }

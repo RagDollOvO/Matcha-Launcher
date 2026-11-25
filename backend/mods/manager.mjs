@@ -8,7 +8,7 @@ import { readAddonList, updateAddonList, addonKey } from './addonlist.mjs';
 import { ModLibrary, libraryWorkshopId, deployName } from './library.mjs';
 import { gameFolder } from '../legacy-names.mjs';
 import { cacheModThumbnail } from './thumbnails.mjs';
-import { directory } from './files.mjs';
+import { directory, addonsDirectory, crossVolume, linkOrCopy } from './files.mjs';
 import { detectPlatformPackage } from '../platforms/packages.mjs';
 export { directory } from './files.mjs';
 
@@ -53,8 +53,8 @@ export class ModManager {
     if (typeof id === 'string' && id.startsWith('library:')) return this.library.resolve(gameRoot, id);
     if (typeof id !== 'string' || !/^(?:workshop\/)?[^/\\:<>"|?*\x00-\x1f]+\.vpk$/i.test(id)) fail('invalid_argument', 'Mod ID 无效。');
     const content = await directory(path.join(gameRoot, 'left4dead2'));
-    const addons = await directory(path.join(content, 'addons'));
-    const folder = id.startsWith('workshop/') ? await directory(path.join(addons, 'workshop')) : addons;
+    const addons = await addonsDirectory(path.join(content, 'addons'));
+    const folder = id.startsWith('workshop/') ? await addonsDirectory(path.join(addons, 'workshop')) : addons;
     const name = (await fs.readdir(folder)).find(n => n.toLowerCase() === path.basename(id).toLowerCase());
     if (!name) fail('mod_missing', '选中的 Mod 已移除，请重新扫描。');
     const absolutePath = path.join(folder, name);
@@ -105,11 +105,11 @@ export class ModManager {
     const library = await this.library.entries(gameRoot);
     const owned = new Set(library.filter(m => m.deployed).map(m => m.deployment.file.toLowerCase()));
     if (await exists(addons)) {
-      await directory(addons);
+      await addonsDirectory(addons);
       for (const sub of ['', 'workshop']) {
         const folder = path.join(addons, sub);
         if (!await exists(folder)) continue;
-        try { await directory(folder); } catch (e) { issues.push(errorRecord(e)); continue; }
+        try { await addonsDirectory(folder); } catch (e) { issues.push(errorRecord(e)); continue; }
         const names = await fs.readdir(folder);
         const lower = new Set(names.map(n => n.toLowerCase()));
         for (const name of names.filter(n => /\.vpk$/i.test(n)).sort()) {
@@ -301,11 +301,11 @@ export class ModManager {
     try {
       for (const f of old) {
         await regular(f);
-        await fs.rename(f, path.join(backup, path.basename(f))); saved.push(f);
+        await fs.rename(f, path.join(backup, path.basename(f))).catch(e => crossVolume(e, '替换没成功，原文件已保留')); saved.push(f);
       }
       await this.idle(c.root);
       for (const f of [...files.slice(1), files[0]]) {
-        const dest = path.join(addons, path.basename(f)); await fs.link(f, dest); published.push(dest);
+        const dest = path.join(addons, path.basename(f)); await linkOrCopy(f, dest); published.push(dest);
       }
     } catch (error) {
       for (const f of published.reverse()) await fs.unlink(f);
@@ -328,7 +328,7 @@ export class ModManager {
     try {
       for (const file of [...files.slice(1), files[0]]) {
         const target = path.join(addons, path.basename(file));
-        await fs.link(file, target); published.push(target);
+        await linkOrCopy(file, target); published.push(target);
       }
       return { status: 'imported', id: addonKey(name), file: path.join(addons, name), enabled: false, backup: saved.backup };
     } catch (e) {
@@ -338,12 +338,12 @@ export class ModManager {
   }
   async importPacked({ gameRoot, file, confirmation, replaceExisting = false }) {
     return this.mutation(gameRoot, confirmation, async c =>
-      this.publishImport(c, await directory(path.join(c.content, 'addons'), true), [file], replaceExisting));
+      this.publishImport(c, await addonsDirectory(path.join(c.content, 'addons'), true), [file], replaceExisting));
   }
   async import({ gameRoot, file, confirmation, ownedDownload = false, replaceExisting = false, favoritePrefix = '' }) {
     return this.mutation(gameRoot, confirmation, async c => {
       if (typeof file !== 'string' || !/\.vpk$/i.test(file)) fail('invalid_argument', '请选择 .vpk 文件。');
-      const vpk = await readVpk(file), addons = await directory(path.join(c.content, 'addons'), true);
+      const vpk = await readVpk(file), addons = await addonsDirectory(path.join(c.content, 'addons'), true);
       const staging = await directory(path.join(addons, `.matcha-import-${randomUUID()}`), true);
       try {
         for (const item of vpk.files) {

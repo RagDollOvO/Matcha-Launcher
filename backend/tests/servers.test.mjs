@@ -7,6 +7,7 @@ import dgram from 'node:dgram';
 import { parseServerAddress } from '../servers/address.mjs';
 import { queryServer, emptyObservation } from '../servers/query.mjs';
 import { ServerManager } from '../servers/manager.mjs';
+import { defaultGameSettings } from '../game-settings.mjs';
 import { DesktopService } from '../desktop/service.mjs';
 import { createPlatform } from '../core.mjs';
 import { createFixture } from './fixtures.mjs';
@@ -160,6 +161,7 @@ test('address validation, persisted favorites, deduplicated query, stale removal
   manager.probe = async () => ({ ...emptyObservation(), status: 'online', vac: true, connectAddr: 'localhost:27015' });
   await assert.rejects(manager.connectTarget(id), { code: 'server_vac_secure' });
   assert.equal(await manager.connectTarget(id, 'modded'), 'localhost:27015');
+  await assert.rejects(manager.connectTarget(id, 'modded', { ...defaultGameSettings(), extraArgs: '-insecure' }), { code: 'server_vac_secure' });
   manager.probe = async () => { await new Promise(r => finish = r); return { ...emptyObservation(), status: 'online' }; };
   const pending = manager.query([id]); await new Promise(r => setImmediate(r));
   await manager.remove(id); finish(); await pending;
